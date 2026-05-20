@@ -1,0 +1,56 @@
+# ── Build ────────────────────────────────────────────────
+target/
+build/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# ── Node / frontend ──────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── Environment & secrets ────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# ── IDE ──────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+
+# ── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Generated scratch (committed corpus lives in seed/generated/*.json) ──
+seed/.cache/
+seed/generated/*.tmp
+
+# ── Planning and audit docs - local only, never committed ────────────────
+docs/planning/
+docs/UI-UX-AUDIT.md
+docs/ONBOARDING-ACTIVATION-AUDIT.md
+docs/ui-audit/
+docs/superpowers/
+docs/design-trace.md
+docs/migrations.md
+docs/phase-2-handoff.md
+
+# ── Test output ──────────────────────────────────────────
+surefire-reports/
+.jacoco/
+
+.vercel
+.env*
