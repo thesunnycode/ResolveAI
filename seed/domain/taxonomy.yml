@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# THE SINGLE SOURCE OF TRUTH for categories and team routing.
+#
+# These eight values appear in FIVE places and must agree exactly:
+#   1. the Category enum                  (doc 11 T15)
+#   2. the triage prompt's output schema  (doc 11 T14)
+#   3. team.skills[] in the seeder        (doc 09 T17)
+#   4. eval_case labels                   (doc 11 T34)
+#   5. the generated corpus               (doc 14 T9)
+#
+# Change here, regenerate everywhere. Never edit a copy.
+# ─────────────────────────────────────────────────────────────────────────────
+
+categories:
+  PAYMENT:
+    description: "Payment initiation, gateway failures, refunds, settlement delays"
+    team: Payments
+    # Deliberately confusable with BILLING — see the note at the bottom.
+    example: "Customer paid by UPI, money left their account, invoice still shows unpaid"
+
+  BILLING:
+    description: "Ledgerly's OWN subscription: plan changes, our invoices to the customer"
+    team: Payments
+    example: "I was charged for PRO but I downgraded to FREE last month"
+
+  AUTH:
+    description: "Login, password reset, 2FA, session expiry, API key management"
+    team: Platform
+    example: "Logged out every few minutes since yesterday"
+
+  API:
+    description: "Public API errors, rate limiting, webhook delivery, SDK issues"
+    team: Platform
+    example: "Getting 429 on /v1/invoices even though we are well under the documented limit"
+
+  PERFORMANCE:
+    description: "Slowness, timeouts, crashes, unresponsive pages"
+    team: Platform
+    example: "Dashboard takes 40 seconds to load since this morning"
+
+  INTEGRATION:
+    description: "Tally and Zoho Books connectors, bank feed ingestion, sync failures"
+    team: Integrations
+    example: "Tally sync stopped three days ago, no error shown anywhere"
+
+  DATA:
+    description: "Reports, exports, GST returns, missing or duplicated records"
+    team: Integrations
+    example: "March export is missing 14 entries that I can see in the web view"
+
+  ONBOARDING:
+    description: "KYC, business verification, document review, initial account setup"
+    team: "Customer Success"
+    example: "Uploaded my GST certificate four days ago, still says pending"
+
+teams:
+  Payments:
+    skills: [PAYMENT, BILLING]
+    default: false
+  Platform:
+    skills: [AUTH, API, PERFORMANCE]
+    default: false
+  Integrations:
+    skills: [INTEGRATION, DATA]
+    default: false
+  "Customer Success":
+    skills: [ONBOARDING]
+    default: true      # catch-all for UNROUTED
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DELIBERATE OVERLAP — doc 14 Task 8
+#
+# PAYMENT and BILLING both concern money and both route to the Payments team,
+# and the distinction (the customer's money vs. OUR money) is genuinely subtle.
+#
+# This is intentional. A taxonomy of eight cleanly separated categories makes
+# classification accuracy look excellent and teaches nothing. The confusion
+# matrix in doc 11 T34 is more interesting, and far more honest, when two
+# categories actually overlap — and "accuracy is 84%, and the confusion matrix
+# shows PAYMENT/BILLING accounts for most of the error, which is a taxonomy
+# problem not a model problem" is a much better interview answer than a
+# rounder number you cannot explain.
+# ─────────────────────────────────────────────────────────────────────────────
