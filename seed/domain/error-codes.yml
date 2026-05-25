@@ -1,0 +1,45 @@
+# Error codes by category. The developer persona (~15% of tickets) includes
+# these verbatim; other personas never do.
+error_codes:
+  PAYMENT:
+    - ERR_PAY_TIMEOUT
+    - ERR_PAY_DECLINED
+    - ERR_UPI_COLLECT_FAILED
+    - ERR_UPI_COLLECT_EXPIRED
+    - ERR_SETTLEMENT_DELAY
+    - ERR_REFUND_PENDING
+    - ERR_GATEWAY_5XX
+  BILLING:
+    - ERR_PLAN_DOWNGRADE_BLOCKED
+    - ERR_PRORATION_MISMATCH
+    - ERR_CARD_ON_FILE_EXPIRED
+  AUTH:
+    - ERR_AUTH_TOKEN_EXPIRED
+    - ERR_2FA_MISMATCH
+    - ERR_SESSION_REVOKED
+    - ERR_APIKEY_REVOKED
+  API:
+    - ERR_RATE_LIMIT
+    - ERR_WEBHOOK_DELIVERY_FAILED
+    - ERR_IDEMPOTENCY_CONFLICT
+    - ERR_SCHEMA_VALIDATION
+  PERFORMANCE:
+    - ERR_UPSTREAM_TIMEOUT
+    - ERR_QUERY_TIMEOUT
+  INTEGRATION:
+    - ERR_SYNC_MAPPING
+    - ERR_TALLY_CONN
+    - ERR_ZOHO_AUTH_EXPIRED
+    - ERR_BANK_FEED_STALE
+  DATA:
+    - ERR_EXPORT_INCOMPLETE
+    - ERR_GST_RECONCILE_FAIL
+    - ERR_DUPLICATE_UTR
+  ONBOARDING:
+    - ERR_KYC_DOC_REJECT
+    - ERR_GSTIN_INVALID
+    - ERR_PAN_MISMATCH
+
+# HTTP statuses only extracted in an error-like context — a bare "404" in prose
+# ("404 pages of documentation") must NOT be extracted. See doc 12 T3.
+http_statuses: [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504]

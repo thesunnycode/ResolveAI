@@ -1,0 +1,18 @@
+# Three tenants, one per plan tier, so the priority policy's PLAN_TIER_BUMP
+# rule (doc 11 T22) has something to act on.
+tenants:
+  - name: "Acme Traders"
+    slug: acme
+    plan_tier: ENTERPRISE
+    character: "High volume, contractual SLA, impatient. Mostly PAYMENT and API."
+    ticket_share: 0.50
+  - name: "Bluestone Design"
+    slug: bluestone
+    plan_tier: PRO
+    character: "Mid volume, integration-heavy. Mostly INTEGRATION and DATA."
+    ticket_share: 0.33
+  - name: "Chai Corner"
+    slug: chai
+    plan_tier: FREE
+    character: "Low volume, non-technical, onboarding-heavy."
+    ticket_share: 0.17

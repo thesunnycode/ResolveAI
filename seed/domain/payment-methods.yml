@@ -1,0 +1,15 @@
+payment_methods:
+  - UPI
+  - card
+  - netbanking
+  - wallet
+  - NEFT
+  - IMPS
+  - RTGS
+
+# Natural-language variants the extractor normalises to the canonical value.
+aliases:
+  UPI:        [upi, "google pay", gpay, phonepe, paytm upi, bhim]
+  card:       [credit card, debit card, visa, mastercard, rupay]
+  netbanking: ["net banking", "internet banking", nb]
+  wallet:     [paytm wallet, amazon pay]
