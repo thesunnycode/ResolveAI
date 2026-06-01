@@ -1,0 +1,379 @@
+{
+  "documents": [
+    {
+      "source": "ARTICLE",
+      "title": "UPI payment failures",
+      "body": "## Why a UPI collect request can fail\n\nA UPI collect request routed through payment-service can fail for a handful of\nreasons, and the error code Ledgerly logs tells you which one:\n\n- **ERR_UPI_COLLECT_FAILED** — the customer's bank declined the request outright.\n  This usually means insufficient balance, an incorrect UPI PIN entered too many\n  times, or the receiving VPA being temporarily suspended by the PSP.\n- **ERR_UPI_COLLECT_EXPIRED** — the customer did not approve the request within\n  the UPI-mandated window (typically 2 minutes on most apps). The request must\n  be raised again; it cannot be resurrected.\n\n## Reversal timeline\n\nPayments that are debited from the customer's account without a corresponding\norder being marked paid on the Ledgerly side are automatically detected by the\nnightly reconciliation job and reversed by the PSP within **5–7 business days**.\nThis is not a Ledgerly-controlled window; it is set by the NPCI dispute\nresolution process that every UPI-enabled PSP must follow.\n\n## What to tell the customer\n\nIf a customer reports money left their account but Ledgerly still shows the\norder as unpaid, confirm the UPI reference number (a 12-digit UTR) and check\nwhether ERR_UPI_COLLECT_FAILED or ERR_SETTLEMENT_DELAY appears against the\ntransaction in payment-service's logs. If neither appears and the debit is\nconfirmed, the reversal is already in progress and the 5–7 business day window\napplies from the debit date, not from the date the customer contacts support."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Manual reversal process",
+      "body": "## When a manual reversal is needed\n\nThe automatic reconciliation job in payment-service catches the overwhelming\nmajority of failed-but-debited UPI payments. A manual reversal is only needed\nwhen the automatic job has not picked up the transaction after 7 business days,\nor when the customer disputes the amount reversed.\n\n## Requesting one\n\nAn agent can request a manual reversal by sharing the customer's UPI reference\nnumber (UTR) with the payments operations team via the internal reversal queue.\nThe UTR is a 12-digit number visible in the customer's bank statement and in\npayment-service's transaction log against the same order.\n\n## What happens after\n\nOnce submitted, payment-service opens a dispute case with the PSP directly.\nThis typically resolves within 3 additional business days beyond the standard\nwindow, because it skips the automated reconciliation cycle. The customer\nshould be told the manual path is the exception, not the default — most\nreversals never need it."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Settlement delays",
+      "body": "## What ERR_SETTLEMENT_DELAY means\n\nSettlement is the process by which money collected via UPI, cards or netbanking\nactually lands in the merchant's bank account, distinct from the collection\nitself succeeding. ERR_SETTLEMENT_DELAY appears in payment-service's logs when\na batch of collected payments has not settled within the PSP's stated SLA,\ntypically T+2 working days.\n\n## Common causes\n\n- A bank holiday extending the settlement window (settlement only happens on\n  working days for the receiving bank, not the paying one).\n- The PSP's own settlement batch running late — this is visible on the PSP's\n  status page and is outside Ledgerly's control.\n- An account-level hold placed by the PSP pending KYC re-verification.\n\n## Communicating with the customer\n\nSettlement delay is not the same as payment failure. The customer has already\nbeen charged; the money is in transit to the merchant's account. Reassure them\nthe payment succeeded and give the T+2 (or T+3 across a bank holiday) figure\nrather than an open-ended \"we're looking into it,\" which reads as uncertainty\nabout something that is actually well understood."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Gateway timeouts and 5xx errors",
+      "body": "## ERR_GATEWAY_5XX\n\nWhen the payment gateway itself returns a 5xx error mid-transaction, the\noutcome is genuinely ambiguous from the customer's side: the money may or may\nnot have been debited, because the failure could have happened before or after\nthe bank processed it.\n\n## The safe response\n\nNever tell a customer a gateway-5xx transaction definitely failed. Check\npayment-service's transaction log for a matching entry with status PENDING or\nFAILED. A PENDING entry older than 15 minutes should be treated as failed and\nthe customer should retry; a FAILED entry means no debit occurred and no\nrefund is needed, because none was taken.\n\n## Timeout versus decline\n\nERR_PAY_TIMEOUT (the gateway never responded within the configured window) and\nERR_PAY_DECLINED (the gateway responded, and the bank said no) are different\nfailure modes with different next steps. A timeout is safe to retry\nimmediately. A decline should not be retried without the customer checking\ntheir bank app first — most declines are insufficient balance or a blocked\ncard, and an immediate retry just fails the same way again."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Refund processing timeline",
+      "body": "## ERR_REFUND_PENDING and normal refund timing\n\nA refund initiated through Ledgerly typically takes 5–7 business days to\nreflect in the customer's account once approved, matching the UPI reversal\ntimeline because refunds and reversals both go through the same PSP settlement\nrails. ERR_REFUND_PENDING in payment-service's log is not an error in the\neveryday sense — it is the normal status for a refund that has been approved\nbut has not yet cleared the bank's processing window.\n\n## When to escalate\n\nA refund still showing ERR_REFUND_PENDING after 10 business days (beyond the\nnormal window with margin) should be escalated to payments operations with the\nrefund reference number. Before escalating, confirm the customer is checking\nthe correct account — refunds to a UPI-linked account return to the original\npayment method, which is not always the account balance the customer expects\nif they paid via a linked card."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Duplicate charge detection",
+      "body": "## How Ledgerly prevents double-charging\n\nEvery payment request from the Ledgerly client carries an idempotency key.\npayment-service rejects a second request with the same key within a 24-hour\nwindow with ERR_IDEMPOTENCY_CONFLICT rather than processing it twice — this is\nthe mechanism that makes a customer's accidental double-tap on \"Pay\" safe.\n\n## What a genuine duplicate looks like\n\nA genuine duplicate charge — two separate successful debits for what the\ncustomer intended as one payment — almost always means two different\nidempotency keys were used, typically because the customer's connection\ndropped between the first attempt appearing to fail and them retrying.\n\n## Resolving a confirmed duplicate\n\nConfirm both transaction UTRs are distinct and both show SUCCESS in\npayment-service. If confirmed, the second (later) transaction is refunded in\nfull, following the standard refund timeline. The first transaction is left\nuntouched as the transaction of record."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Payment method troubleshooting",
+      "body": "## Card, UPI and netbanking failure patterns\n\nDifferent payment methods fail for different reasons, and matching the pattern\nto the method rules out the wrong root cause quickly.\n\n**Cards** most often fail on ERR_PAY_DECLINED from the issuing bank —\ninsufficient limit, an international-transaction block, or 3D-Secure OTP\nexpiry. Card failures rarely relate to Ledgerly's own systems.\n\n**UPI** failures are usually ERR_UPI_COLLECT_FAILED (declined) or\nERR_UPI_COLLECT_EXPIRED (not approved in time) — see the dedicated UPI article\nfor the reversal timeline that applies to a failed-but-debited case.\n\n**Netbanking** failures are the rarest and, when they happen, are almost\nalways ERR_GATEWAY_5XX from the bank's own netbanking gateway rather than\nanything payment-service controls.\n\n## The one question that resolves most cases quickly\n\n\"Did your bank send you an SMS or notification about this transaction?\" A yes\nmeans the bank attempted the debit and the outcome is on their side to\nconfirm; a no means the request likely never reached the bank and a clean\nretry is the right next step."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Investigating a stuck UPI payment",
+      "body": "## Procedure\n\n1. Pull the transaction record from payment-service by order id or UTR.\n2. Check `status`. `PENDING` older than 15 minutes: treat as stuck.\n   `FAILED`: no customer-facing action beyond explaining the decline reason.\n   `SUCCESS` with the order still unpaid: this is a reconciliation lag, not a\n   stuck payment — check the nightly reconciliation job's last run time first.\n3. For a genuinely stuck `PENDING` transaction, do not manually mark it paid.\n   File a ticket with payments operations quoting the UTR; they query the PSP\n   directly, which agents do not have access to do.\n4. Log every stuck-payment investigation in the internal ops channel with the\n   UTR, even if it resolves itself — the pattern across many \"resolved itself\"\n   cases is what eventually gets a flaky PSP integration fixed.\n\n## What not to do\n\nNever issue a refund for a `PENDING` transaction. If it later clears as\n`SUCCESS`, the customer has been refunded for a successful payment, which is a\nmuch harder mistake to unwind than a delayed answer."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Escalating a PSP-side settlement dispute",
+      "body": "## When this runbook applies\n\nUse this when a merchant disputes a settlement amount, not a customer disputing\na charge — those are different tickets with different owners (BILLING and\nPAYMENT respectively) even though both eventually touch payment-service.\n\n## Steps\n\n1. Export the settlement batch report for the disputed date range from\n   payment-service's admin panel.\n2. Cross-reference against the PSP's own settlement report, available from the\n   PSP's merchant dashboard (credentials in the ops vault, not agent-accessible\n   — request from a team lead).\n3. A discrepancy under ₹500 across a batch is typically a rounding artefact in\n   fee calculation and self-resolves at the next settlement cycle.\n4. A discrepancy over ₹500, or any recurring discrepancy, gets escalated to the\n   PSP's merchant support with both reports attached. Expect a 5-business-day\n   response time from the PSP.\n5. Never promise the merchant a specific resolution date for a PSP-side\n   dispute — Ledgerly does not control the PSP's investigation timeline."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding your Ledgerly invoice",
+      "body": "## What appears on a Ledgerly invoice\n\nA Ledgerly subscription invoice lists the plan tier (FREE, PRO or ENTERPRISE),\nthe billing period, any add-ons, and — for a PRO or ENTERPRISE plan billed\nannually — the prorated adjustment if the plan changed mid-cycle.\n\n## Reading a proration line\n\nA proration line with a negative amount is a credit for time unused on the\nprevious plan; a positive amount is the additional charge for the new plan's\nremaining period. Both are calculated to the day, not the month, so a plan\nchange on the 17th of a 30-day cycle prorates 13/30ths of the difference.\n\n## Tax and GST\n\nEvery invoice includes GST at the applicable rate for the customer's\nregistered state. A customer disputing the GST amount should be asked to\nconfirm their GSTIN is current in account settings — an outdated or missing\nGSTIN is the most common cause of an unexpected tax line."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Plan downgrade blocked",
+      "body": "## ERR_PLAN_DOWNGRADE_BLOCKED\n\nLedgerly blocks a downgrade from PRO or ENTERPRISE to a lower tier when the\naccount is currently using a feature the target tier does not support — most\ncommonly more team members than FREE allows, or more than one connected bank\nfeed on a plan that only supports one.\n\n## Resolving it\n\nThe invoice or account page names the specific blocking condition. The\ncustomer needs to remove the excess team members, disconnect the extra bank\nfeed, or otherwise bring usage within the target plan's limits before the\ndowngrade can proceed. Ledgerly does not automatically remove data or\ndisconnect integrations on a customer's behalf, because that decision belongs\nto the customer.\n\n## What downgrading does not affect\n\nHistorical data, past invoices and exported reports are retained regardless of\nplan tier. A downgrade only affects what can be created or connected going\nforward, never what already exists."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Card on file expired",
+      "body": "## ERR_CARD_ON_FILE_EXPIRED\n\nLedgerly attempts to charge the card on file three days before a subscription\nrenewal. If the card has expired, this fails with ERR_CARD_ON_FILE_EXPIRED and\nthe customer receives an email prompting them to update their payment method.\n\n## Grace period\n\nThe subscription remains active for a 7-day grace period from the failed\ncharge, during which the customer can update their card and the renewal will\nretry automatically overnight. After 7 days with no successful charge, the\naccount is downgraded to FREE — not suspended, and no data is lost.\n\n## Reactivating\n\nOnce the customer updates their card, ask them to trigger the retry manually\nfrom the billing page rather than waiting for the overnight job, if they want\ntheir PRO features back the same day."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Subscription plan comparison",
+      "body": "## FREE, PRO and ENTERPRISE\n\nFREE supports one team member, one connected bank feed, and core invoicing.\nPRO adds unlimited team members, up to five bank feeds, GST return filing, and\npriority support routing. ENTERPRISE adds unlimited bank feeds, a dedicated\naccount manager, and SLA-backed support response times.\n\n## Choosing between PRO and ENTERPRISE\n\nThe deciding factor is almost always bank-feed count and support SLA\nrequirements rather than any individual feature — most PRO features are\navailable on ENTERPRISE too, and ENTERPRISE is priced for businesses that need\nthe guaranteed response time more than any specific capability.\n\n## Trial periods\n\nA 14-day PRO trial is available once per account, starting from first\nactivation. It cannot be repeated by downgrading and re-upgrading; the trial\nflag is set permanently on the account, not on the current subscription\nstate."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Invoice payment methods",
+      "body": "## How Ledgerly charges for its own subscription\n\nLedgerly's own subscription invoices (as opposed to the customer's payments to\ntheir own customers, handled by payment-service) are charged via card only —\nUPI and netbanking are not supported for subscription billing, only for the\ncustomer's own collections through the product.\n\n## Updating the card on file\n\nThe card on file for subscription billing is managed separately from any card\nsaved for other purposes. A customer confused about \"why did my card get\ncharged for Ledgerly\" versus a payment collected through Ledgerly should be\nshown the distinction: subscription charges appear with the merchant name\n\"LEDGERLY SUBSCRIPTION\", collected payments show the customer's own business\nname."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "GST invoice corrections",
+      "body": "## When a GST invoice needs correcting\n\nAn incorrect GSTIN, business name or address on a past Ledgerly subscription\ninvoice can be corrected by support, but only going forward — a GST invoice,\nonce issued, cannot be edited retroactively under GST rules. Instead, a credit\nnote is issued for the incorrect invoice and a fresh one is generated with the\ncorrected details.\n\n## What the customer needs to provide\n\nThe corrected GSTIN (verified against the GST portal format: 15 characters,\nstate code first two digits), the correct legal business name matching GST\nregistration, and the correct registered address. Support cannot accept a\ntrade name in place of the GST-registered legal name."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Processing a billing credit note",
+      "body": "## When to issue one\n\nA credit note is issued when a past subscription invoice needs correcting\n(GST details, an incorrectly applied proration) or when a goodwill credit is\napproved for a service disruption.\n\n## Steps\n\n1. Confirm the original invoice number and the exact amount to credit.\n2. For a GST correction, the credit note must reference the original invoice\n   number per GST compliance rules — never issue a standalone credit for a GST\n   correction.\n3. For a goodwill credit, team-lead approval is required above ₹2,000; below\n   that, any agent may issue it directly from the billing admin panel.\n4. The credit is applied to the next invoice automatically; it is not paid out\n   as cash or a bank transfer under any circumstance."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Handling a disputed subscription charge",
+      "body": "## Procedure\n\n1. Pull the subscription's billing history and confirm the disputed charge\n   matches an actual renewal or plan-change event — check for\n   ERR_PRORATION_MISMATCH in the billing log, which flags a proration\n   calculated against a stale plan snapshot.\n2. If ERR_PRORATION_MISMATCH appears, the charge is incorrect by construction\n   and should be corrected via a credit note (see the credit note runbook)\n   without further investigation.\n3. If no error is logged and the charge matches a plan the account was\n   genuinely on, explain the charge using the plan comparison and invoice\n   articles rather than crediting by default — most disputes are a\n   misunderstanding of proration, not a billing bug.\n4. Escalate to a team lead only when the customer disputes a charge that both\n   matches the account's plan history and has no logged discrepancy — that is\n   the case actually worth a second pair of eyes."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Password reset not arriving",
+      "body": "## Why a reset email might not arrive\n\nThe most common causes, in order of frequency: the email landed in spam or a\npromotions tab, the customer is checking an inbox different from the one\nregistered on the account, or — rarely — auth-service's outbound mail queue is\ndelayed.\n\n## What to check first\n\nAsk the customer to search their inbox (including spam) for \"Ledgerly\" rather\nthan scrolling, and confirm the email address they are checking matches the\none on the account exactly — a common failure is a customer with two email\naddresses checking the wrong one.\n\n## If genuinely not delivered\n\nauth-service logs every reset email dispatch with a delivery status. If the\ndispatch log shows SENT but the customer has confirmed they checked spam and\nthe right inbox, request a fresh reset — reset links expire after 30 minutes,\nand a customer troubleshooting for a while may simply need a new one."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Two-factor authentication issues",
+      "body": "## ERR_2FA_MISMATCH\n\nThis appears when the six-digit code the customer entered does not match what\nauth-service's TOTP validator expects for that moment. The most common cause\nby far is the customer's phone clock being out of sync — TOTP codes are\ntime-based and a phone more than 30 seconds off will generate wrong codes\nconsistently.\n\n## Resolving it\n\nAsk the customer to check their phone's date and time are set to automatic\nrather than manual. If codes still mismatch after that, the authenticator app\nmay have been set up against a different account or re-installed without\nre-scanning the QR code, which silently generates a different code sequence.\n\n## Resetting 2FA\n\nResetting 2FA requires identity verification beyond a normal support\ninteraction — see the 2FA reset runbook. Agents should never disable 2FA on a\ncustomer's say-so alone."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Session expiry and unexpected logouts",
+      "body": "## Normal session length\n\nA Ledgerly session lasts 24 hours of inactivity, or until the browser's\nstorage is cleared, whichever comes first. Being logged out after exactly that\nwindow is expected behaviour, not a bug.\n\n## ERR_SESSION_REVOKED\n\nThis specific error means the session was invalidated deliberately — most\noften because the customer (or someone with access to their account) changed\nthe password, which auth-service treats as \"log out every other active\nsession\" as a security measure. A customer reporting frequent unexpected\nlogouts should be asked whether they changed their password recently, or\nwhether anyone else has account access.\n\n## Frequent logouts with no password change\n\nIf sessions are ending well inside the 24-hour window and no password change\noccurred, check whether the customer uses aggressive browser privacy settings\nor an extension that clears cookies — this is a browser-side behaviour, not\nsomething auth-service does."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "API key management",
+      "body": "## Creating and revoking API keys\n\nAPI keys are created from the developer settings page and are shown in full\nexactly once, at creation. Ledgerly does not store the raw key — only a hash —\nso a lost key cannot be recovered and must be revoked and replaced.\n\n## ERR_APIKEY_REVOKED\n\nThis means the specific key used in a request has been revoked, either\ndeliberately by an admin or automatically after auth-service detected the key\nbeing used from an unrecognised IP range that the account's security policy\ndoes not allow.\n\n## Key rotation\n\nRotating a key (revoking the old one and issuing a new one) does not require\ndowntime if the integration is updated to use the new key before the old one\nis revoked — Ledgerly supports both keys being valid simultaneously for up to\n1 hour to allow a clean cutover."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Login troubleshooting checklist",
+      "body": "## Before escalating a login issue\n\n1. Confirm the customer is using the correct tenant — Ledgerly accounts are\n   tenant-scoped, and a customer with access to multiple businesses on\n   Ledgerly must select the right one at login, not just enter credentials.\n2. Confirm the password itself, not just that \"login isn't working\" — ask them\n   to try a password reset rather than guessing at the actual symptom.\n3. Check auth-service's login attempt log for the account: repeated\n   ERR_AUTH_TOKEN_EXPIRED entries suggest a client-side clock or caching\n   issue; repeated failed-password entries suggest the customer genuinely has\n   the wrong password.\n\n## When it is not a Ledgerly issue\n\nA customer who can log in from a phone but not a laptop (or vice versa) almost\nalways has a browser extension, corporate firewall, or cached credentials\nissue on the failing device — this is rarely something auth-service logs will\nexplain, because the request may never be reaching Ledgerly at all."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding auth token expiry",
+      "body": "## ERR_AUTH_TOKEN_EXPIRED\n\nLedgerly's access tokens are short-lived by design — 15 minutes — and are\nsilently refreshed in the background by the client as long as the underlying\nsession is valid. This error surfacing to a customer means the refresh itself\nfailed, not that their login expired in the everyday sense.\n\n## Common causes\n\nA refresh failure usually means the customer's device clock is significantly\nwrong (the token's validity window is time-based), or a browser extension is\nblocking the background refresh request specifically while allowing the main\npage to load normally.\n\n## What resolves it\n\nA full logout and login back in obtains a fresh token pair and resolves the\nsymptom in essentially all cases. This is different from merely refreshing\nthe page, which does not force a new token exchange."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Verifying identity before a 2FA reset",
+      "body": "## Why this exists\n\n2FA exists specifically to prevent account takeover. Resetting it on request\nwithout verification defeats the purpose entirely — an attacker's most direct\npath into an account is convincing support to remove the second factor.\n\n## Required verification, all three\n\n1. The email address on file, confirmed by the customer replying from it (not\n   stated in chat).\n2. The last four digits of the payment card on file, OR the exact amount of\n   the most recent Ledgerly subscription invoice.\n3. A photo of a government ID matching the legal name on the account, for\n   PRO/ENTERPRISE accounts only — FREE accounts skip this step given the lower\n   stakes.\n\n## After verification\n\nReset 2FA from the admin panel, which immediately invalidates the old\nauthenticator pairing and forces the customer through fresh QR-code setup on\nnext login. Log the verification method used in the account's security notes\n— this record is what protects the agent if the reset is later disputed."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Investigating repeated ERR_SESSION_REVOKED reports",
+      "body": "## Steps\n\n1. Check the account's password change history for a timestamp matching the\n   customer's report of being logged out.\n2. If a password change matches, this is expected behaviour — explain it and\n   close.\n3. If no password change occurred, check for any admin-initiated session\n   revocation (visible in the tenant's audit log) — a team lead or admin on\n   the account may have revoked sessions deliberately, including their own by\n   mistake.\n4. If neither explains it, escalate to platform engineering with the account\n   id and timestamps — an unexplained mass session revocation with no\n   corresponding action in the audit log is a signal worth investigating\n   rather than explaining away."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Rate limiting and ERR_RATE_LIMIT",
+      "body": "## Current limits\n\napi-gateway enforces 100 requests per minute per API key on PRO, and 500 per\nminute on ENTERPRISE. FREE-tier accounts do not have API access at all.\n\n## Diagnosing an unexpected rate limit\n\nA customer hitting ERR_RATE_LIMIT while believing they are well under the\ndocumented limit is very often making requests from multiple processes or\nservers sharing one API key — the limit is per key, not per calling process,\nso five workers each making 30 requests a minute against the same key hit the\nPRO limit collectively even though none of them individually would.\n\n## Response headers\n\nEvery api-gateway response includes RateLimit-Limit, RateLimit-Remaining and\nRateLimit-Reset headers so an integration can self-throttle before hitting the\nlimit rather than discovering it by trial and error. Point developers at these\nheaders before assuming a limit increase is needed."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Webhook delivery failures",
+      "body": "## ERR_WEBHOOK_DELIVERY_FAILED\n\napi-gateway retries a failed webhook delivery with exponential backoff for up\nto 24 hours before giving up and marking it permanently failed. A delivery is\nconsidered failed if the receiving endpoint does not return a 2xx status\nwithin 10 seconds.\n\n## Common customer-side causes\n\nThe receiving endpoint returning a non-2xx status because of an unrelated bug\non the customer's own server, the endpoint being behind a firewall that blocks\nLedgerly's outbound IP range, or a slow endpoint that exceeds the 10-second\ntimeout under load.\n\n## Manual redelivery\n\nWebhook events remain available for manual redelivery from the developer\ndashboard for 30 days after the original attempt, so once a customer fixes the\nreceiving-side issue, historical events are not lost — they simply need to be\nmanually replayed."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "API idempotency keys",
+      "body": "## Why every write request needs one\n\nEvery POST to the Ledgerly API that creates or modifies a resource requires an\nIdempotency-Key header. Retrying a request with the same key returns the\noriginal response without creating a duplicate; the same key with a different\nbody returns ERR_IDEMPOTENCY_CONFLICT.\n\n## Choosing a key\n\nThe key should be generated once per logical operation on the client side —\ntypically a UUID — and reused only for retries of that exact operation, never\nshared across genuinely different requests.\n\n## Key lifetime\n\nIdempotency keys are honoured for 24 hours from first use. A retry after 24\nhours with the same key and same body is treated as a new request rather than\na replay, which is a deliberate trade-off: keeping keys forever would mean the\nidempotency store grows without bound."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Schema validation errors",
+      "body": "## ERR_SCHEMA_VALIDATION\n\nReturned when a request body does not match the documented JSON schema for\nthat endpoint — a missing required field, a value of the wrong type, or an\nenum value outside the documented set.\n\n## Reading the error detail\n\nThe error response's `errors` array names the specific field and what was\nwrong with it. Point developers here first rather than re-explaining the\nwhole endpoint's schema — the error already identifies exactly which field\nfailed and why.\n\n## A common false positive\n\nA client library that has not been updated to the latest API version may send\na field the current schema no longer accepts. Check the API changelog for\nrecent breaking changes before assuming the integration code itself has a bug."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding API error responses",
+      "body": "## The standard error shape\n\nEvery Ledgerly API error follows the same RFC 7807 problem+json shape: `type`,\n`title`, `status`, `errorCode`, `detail`, `instance`, `timestamp` and\n`traceId`. Integration code should switch on `errorCode`, never parse\n`detail`, which is human-readable prose that may change wording without a\nversion bump.\n\n## The traceId field\n\nEvery error carries a traceId that finds the exact request server-side. When a\ndeveloper reports an API error, always ask for the traceId rather than\nattempting to reproduce the issue independently — it is the fastest path to\nthe actual server-side log entry."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "SDK version compatibility",
+      "body": "## Supported SDK versions\n\nLedgerly supports the current major SDK version and the previous one. An SDK\ntwo major versions behind is not guaranteed compatible with current API\nbehaviour and may fail in ways that look like a server-side bug but are\nactually a client-side schema mismatch.\n\n## Checking a customer's SDK version\n\nMost integration issues reported as \"the API changed and broke everything\"\ntrace back to an outdated SDK encountering a schema addition (rarely a\nremoval — additive changes are the norm) that it was not built to expect.\nConfirm the SDK version before escalating to engineering."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Diagnosing a webhook delivery failure report",
+      "body": "## Steps\n\n1. Pull the webhook delivery log for the endpoint from api-gateway's admin\n   panel, filtered to the reported time window.\n2. If every attempt shows a non-2xx response from the customer's endpoint,\n   this is a customer-side issue — provide the response codes and let them\n   investigate their own server.\n3. If attempts show a timeout with no response at all, check whether\n   Ledgerly's outbound IP range (published in the developer docs) is on the\n   customer's firewall allow-list.\n4. If delivery genuinely never left api-gateway (no attempts logged at all\n   despite the triggering event existing), escalate to platform engineering —\n   this is the one pattern that indicates an actual Ledgerly-side bug rather\n   than a customer-side integration issue."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Handling a suspected rate-limit false positive",
+      "body": "## When to use this\n\nA customer reports ERR_RATE_LIMIT while their own logging shows well under the\ndocumented per-minute limit for their plan.\n\n## Steps\n\n1. Pull the RateLimit-Remaining header history for their API key from\n   api-gateway's logs across the disputed window.\n2. Check for multiple source IPs using the same key — this is the most common\n   actual cause, distinct from what the customer believes is happening.\n3. If genuinely under the limit with a single consistent source, check for a\n   clock skew between the customer's rate-limit tracking and api-gateway's —\n   a sliding window measured slightly differently on each side can appear as\n   a false positive near the boundary.\n4. A confirmed platform-side rate-limiting bug (rare) goes to platform\n   engineering with the full request log attached, not a manual limit\n   override — overriding masks the bug rather than fixing it."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Dashboard slowness troubleshooting",
+      "body": "## First questions to ask\n\nIs the slowness affecting one page or the whole product? One specific report\nor export, or everything? Since when, and did anything change around that\ntime (a new integration connected, a much larger data import)?\n\n## ERR_QUERY_TIMEOUT\n\nreport-service logs this when a report query exceeds its execution budget,\nmost often on accounts with an unusually large transaction history combined\nwith a wide date range selected. Narrowing the date range is the immediate\nworkaround; the underlying query performance is a platform engineering\nconcern, not something support resolves directly.\n\n## When it is genuinely global\n\nWidespread slowness across many accounts simultaneously is a platform\nincident, not an individual ticket — check the status page and the internal\nincident channel before spending time on a single-customer investigation."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Report generation delays",
+      "body": "## Normal generation time\n\nMost reports generate within 10–15 seconds. A GST return report over a full\nfinancial year with a high transaction volume can take up to 2 minutes — this\nis expected, not a fault.\n\n## When a report never completes\n\nreport-service marks a generation attempt failed after 5 minutes with\nERR_QUERY_TIMEOUT. If this recurs specifically for one report type on one\naccount, the likely cause is a data volume the report's query was not sized\nfor — narrow the date range as an immediate workaround while flagging the\naccount's data volume to engineering.\n\n## Exports versus reports\n\nAn export (a raw data download) and a report (an aggregated view) go through\ndifferent code paths in report-service and can fail independently — a working\nreport does not imply exports will work for the same date range, and vice\nversa."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Upstream service timeouts",
+      "body": "## ERR_UPSTREAM_TIMEOUT\n\nThis appears when Ledgerly's own services call another Ledgerly service (for\nexample, report-service calling ledger-service for transaction data) and that\ncall exceeds its timeout budget. It is an internal dependency issue, distinct\nfrom ERR_GATEWAY_5XX, which is an external payment gateway failing.\n\n## What it tells you\n\nAn upstream timeout on one specific operation, recurring, points at a real\nperformance issue in the called service under specific conditions (often data\nvolume) rather than a one-off network blip. A single isolated occurrence with\nno recurrence is usually transient and not worth escalating on its own.\n\n## What support can and cannot fix\n\nSupport cannot resolve an upstream timeout directly — it requires engineering\nto look at the called service's performance. Support's job is to confirm\nwhether it is isolated or recurring, and to communicate a realistic timeline\nrather than a resolution."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Browser and device performance factors",
+      "body": "## Ruling out the client side first\n\nBefore treating slowness as a Ledgerly-side issue, confirm: is this the only\ntab open, or are there many? Is the browser up to date? Does the same\nslowness occur in a different browser or in incognito mode (which disables\nextensions)?\n\n## Extensions are a common cause\n\nAd blockers and privacy extensions frequently intercept or delay Ledgerly's\nown network requests, producing symptoms that look identical to a server-side\nperformance issue but resolve immediately in incognito mode. This single test\nrules out or confirms a large class of \"slow\" reports in under a minute.\n\n## Older devices and large datasets\n\nAn account with a very large transaction history rendering a data-heavy page\n(the full ledger view, for instance) genuinely renders slower on older or\nlower-memory devices — this is expected client-side rendering cost, not a\nserver response time issue."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding crash and error reports",
+      "body": "## What to collect\n\nA crash report is far more actionable with: the exact page or action that\ntriggered it, the browser and version, and — most valuably — the traceId if\nan API error appeared alongside the crash (see the API error response\narticle for where to find it).\n\n## Reproducibility\n\nA crash that reproduces consistently on a specific action is escalated\ndifferently from one that occurred once and has not recurred — ask the\ncustomer to attempt the same action again before escalating, since a\nnon-reproducing crash with no traceId gives engineering very little to work\nwith."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Triaging a report of platform-wide slowness",
+      "body": "## Steps\n\n1. Check the internal status dashboard and incident channel first — do not\n   start an individual investigation if a platform incident is already being\n   tracked.\n2. If no incident is logged, check whether multiple unrelated tickets are\n   reporting the same symptom in the same time window — three or more\n   independent reports of slowness within 15 minutes should be flagged to\n   platform engineering as a possible undetected incident, even before\n   confirming a root cause.\n3. For a single ticket with no corroborating reports, proceed with the normal\n   dashboard-slowness troubleshooting article rather than assuming a wider\n   issue."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Escalating a recurring ERR_QUERY_TIMEOUT",
+      "body": "## When to escalate\n\nA single occurrence, resolved by narrowing the date range, does not need\nescalation. Escalate when the same account hits ERR_QUERY_TIMEOUT on the same\nreport type more than twice in a month despite the date-range workaround.\n\n## What to include\n\nThe account id, the specific report type, the date ranges attempted, and the\naccount's approximate transaction volume (visible in the account overview\npanel). This is the information report-service's owning team needs to decide\nwhether the account needs a dedicated query optimisation or the account has\nsimply outgrown the report's current implementation."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Tally sync troubleshooting",
+      "body": "## ERR_TALLY_CONN\n\nThis means sync-service could not establish a connection to the customer's\nlocal Tally instance. Tally sync is a local, on-premises connection — Tally\nitself is not cloud software — so this is almost always a network or Tally\nconfiguration issue on the customer's side, not a Ledgerly outage.\n\n## Checklist before escalating\n\n1. Is Tally actually running and the company file open on the machine running\n   the Ledgerly sync connector?\n2. Is the sync connector's configured port (default 9000) open on the local\n   firewall?\n3. Was Tally recently updated? A Tally version upgrade can change the local\n   API port or require the connector to be reconfigured.\n\n## What sync-service logs\n\nsync-service logs the last successful connection timestamp per account, which\nis the fastest way to tell \"never connected\" (a setup issue) from \"was\nconnected, now is not\" (an environment change) — the two have completely\ndifferent troubleshooting paths."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Zoho Books integration setup",
+      "body": "## Connecting Zoho Books\n\nZoho Books integrates via OAuth, unlike Tally's local connection — the\ncustomer authorises Ledgerly from within their Zoho account, and sync-service\nreceives a token rather than connecting to anything on the customer's\nmachine.\n\n## ERR_ZOHO_AUTH_EXPIRED\n\nZoho OAuth tokens expire after 60 days of inactivity (not 60 days from\nissuance — an active connection stays authorised indefinitely). This error\nmeans the token has expired and the customer needs to re-authorise from the\nintegrations page; it is not recoverable without customer action, because\nLedgerly cannot silently re-request access.\n\n## What syncs and how often\n\nInvoices, contacts and payment records sync every 15 minutes once connected.\nA customer who just connected and does not see data yet should be told to\nwait for the next sync cycle rather than assuming the connection failed."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Bank feed connection issues",
+      "body": "## ERR_BANK_FEED_STALE\n\nsync-service marks a bank feed stale when it has not received new transaction\ndata from the banking data provider for more than 48 hours, which almost\nalways means the underlying bank-side authorisation has lapsed rather than a\nsync-service problem.\n\n## Resolving a stale feed\n\nThe customer needs to re-authenticate the bank connection from the bank feeds\nsettings page — this re-establishes the provider-side authorisation. Ledgerly\ncannot refresh a bank connection on the customer's behalf; the re-auth must\nhappen through the customer's own banking credentials.\n\n## Feed limits by plan\n\nFREE supports one bank feed, PRO up to five, ENTERPRISE unlimited — see the\nplan comparison article. A customer wanting to connect an additional feed\nbeyond their plan's limit will not see an error; the connection option is\nsimply not offered in the UI."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Sync mapping errors",
+      "body": "## ERR_SYNC_MAPPING\n\nThis appears when a record from the connected system (Tally or Zoho) cannot\nbe matched to the corresponding Ledgerly record during sync — most often a\ncustomer or vendor name that differs slightly between the two systems (extra\nwhitespace, a different legal-name format).\n\n## Resolving a mapping error\n\nThe sync log names the specific unmapped record. The customer can create a\nmanual mapping from the sync settings page, which sync-service then reuses\nfor all future syncs of that same external record — this is a one-time fix\nper mismatched record, not a recurring task.\n\n## Preventing future mapping errors\n\nAdvise customers to keep customer and vendor names as close to identical as\npossible between Ledgerly and their connected system; sync-service's matching\nis close but not identical-string matching, and large naming discrepancies\nwill always need a manual mapping."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Choosing between Tally and Zoho integration",
+      "body": "## When a customer asks which to use\n\nThis is determined by what accounting software the business already uses, not\na Ledgerly preference — Ledgerly does not replace either, it synchronises\nwith whichever the business already runs day to day.\n\n## Running both\n\nA business using both Tally (for statutory books) and Zoho (for day-to-day\ninvoicing) can connect both integrations simultaneously; sync-service treats\nthem as independent connections and does not attempt to reconcile Tally data\nagainst Zoho data or vice versa."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Sync failure notifications",
+      "body": "## How Ledgerly reports a sync failure\n\nA failed sync attempt (any ERR_SYNC_MAPPING, ERR_TALLY_CONN or\nERR_ZOHO_AUTH_EXPIRED) triggers an email to the account's admin within 15\nminutes, and a persistent banner on the sync settings page until resolved.\n\n## Repeated failure notifications\n\nIf the same failure email arrives repeatedly despite the customer believing\nthey fixed it, the most likely cause is the fix not being fully applied — for\nTally, this often means the connector was reconfigured but not restarted; for\nZoho, that re-authorisation was started but not completed through to Zoho's\nown consent screen."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Diagnosing a persistent ERR_TALLY_CONN report",
+      "body": "## Steps\n\n1. Confirm the customer's Tally version against the supported version list\n   (in the internal integrations wiki) — an unsupported version is a known\n   root cause that has no fix beyond upgrading Tally itself.\n2. Ask for the connector's local log file (the customer can export it from\n   the connector's system tray icon) rather than relying on a description of\n   the symptom.\n3. A log showing repeated connection refused (not timeout) almost always\n   means the local firewall or antivirus is blocking the connector — this is\n   outside Ledgerly's control to fix remotely.\n4. A log showing timeout rather than refused suggests Tally itself is not\n   responding, which points back to whether Tally and the company file are\n   actually open and idle (not mid-operation) on the customer's machine."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Export troubleshooting",
+      "body": "## ERR_EXPORT_INCOMPLETE\n\nreport-service marks an export incomplete when it terminates before writing\nevery expected row — most commonly a timeout on a very large date range, the\nsame underlying cause as ERR_QUERY_TIMEOUT on reports.\n\n## Confirming a genuinely missing row\n\nBefore treating a report as buggy, confirm the specific missing entry exists\nin the main ledger view for that date — an entry created very close to the\nexport's cutoff timestamp can legitimately fall just outside the exported\nwindow depending on timezone handling, which is expected rather than an\nerror.\n\n## Workaround for large exports\n\nSplitting a large export into smaller date-range chunks (monthly instead of\nannual, for instance) avoids the timeout and is the standard workaround while\nany underlying performance issue is investigated separately."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "GST return reconciliation",
+      "body": "## ERR_GST_RECONCILE_FAIL\n\nThis appears when Ledgerly's GST return generation cannot reconcile the\naccount's recorded transactions against the GSTIN-linked GSTR-2A/2B data\nfetched from the GST portal — usually because of a mismatch between an\ninvoice's recorded GSTIN and the one on the portal's records for the same\ntransaction.\n\n## Resolving a reconciliation failure\n\nThe reconciliation report names the specific invoices that failed to match.\nThe customer needs to verify the GSTIN entered against that transaction is\ncorrect — a single-digit GSTIN typo is by far the most common cause and\nexplains the large majority of reconciliation failures reported.\n\n## What this does not affect\n\nA reconciliation failure affects only the GST return generation for the\nmismatched invoices specifically; it does not affect the underlying ledger\nentries, which remain correct regardless of GST reconciliation status."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Missing or duplicate records",
+      "body": "## Investigating a missing record\n\nAsk for the exact date, amount and counterparty of the missing entry. Check\nledger-service directly for a matching record before assuming it was never\ncreated — the far more common cause of an apparently \"missing\" record is a\nfilter on the current view (a date range, a category filter) hiding an entry\nthat does exist.\n\n## Investigating a duplicate\n\nA genuine duplicate ledger entry (not just an entry appearing twice in a\nreport view, which is usually a rendering issue) requires checking whether it\noriginated from two separate sync events — see the sync mapping article — or\nwas manually entered twice by the customer.\n\n## Never delete without confirmation\n\nA record believed to be a duplicate must be confirmed with the customer\nbefore deletion. Financial records that look duplicate can represent two\ngenuinely separate transactions (a customer paying twice for two different\ninvoices with the same amount, for instance)."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Data export formats",
+      "body": "## Supported formats\n\nLedgerly exports data as CSV, XLSX, or a GST-portal-ready JSON for return\nfiling. PDF is available for individual invoices and reports but not for bulk\ntransaction exports.\n\n## Choosing the right format for accounting software import\n\nXLSX preserves number formatting that CSV does not (leading zeros in\nreference numbers, for instance, which CSV can silently strip) — always\nrecommend XLSX over CSV for a customer planning to import the export into\nanother accounting tool."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding report date ranges and timezones",
+      "body": "## How date ranges are applied\n\nEvery report and export in Ledgerly applies its date range in the account's\nconfigured timezone (set in account settings), not UTC and not the browser's\nlocal timezone. A transaction timestamped just before or after midnight can\nappear in a different day's report than expected if the account timezone is\nmisconfigured.\n\n## Diagnosing a suspected off-by-one-day issue\n\nConfirm the account's configured timezone matches the business's actual\nlocation. A business operating in IST with the account still on the default\nUTC setting will see transactions from the last few hours of each IST day\nappear in the following day's report."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Data retention and historical access",
+      "body": "## How long data is retained\n\nTransaction and ledger data is retained indefinitely regardless of plan tier\nor subscription status — even a downgraded FREE account retains full\nhistorical access to data created while on a paid plan.\n\n## Accessing very old data\n\nReports default to the last 90 days for performance reasons, but any\nhistorical range can be explicitly selected — data is never deleted or\narchived out of reach, only out of the default view."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Investigating a GST reconciliation failure pattern",
+      "body": "## When this applies\n\nMultiple ERR_GST_RECONCILE_FAIL entries for one account across many invoices,\nrather than a single isolated mismatch.\n\n## Steps\n\n1. Export the reconciliation failure list from report-service's admin panel.\n2. Check whether the failures cluster around a specific counterparty GSTIN —\n   a single wrong GSTIN reused across many invoices (common when a customer\n   copies an old invoice as a template) explains most bulk-failure cases at\n   once.\n3. If failures are scattered across many different GSTINs with no pattern,\n   check whether the GST portal itself had a known outage during the affected\n   period — a portal-side sync gap looks identical to individual GSTIN errors\n   from Ledgerly's side."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Handling a bulk export performance escalation",
+      "body": "## Steps\n\n1. Confirm the exact export type, date range, and account transaction volume\n   from the failed export's log entry.\n2. Recommend the date-range-splitting workaround immediately while\n   investigating — the customer should not be left waiting on an\n   investigation before getting a usable export.\n3. Escalate to report-service's owning team only if the same account hits\n   ERR_EXPORT_INCOMPLETE even on a single-month range, which indicates a\n   genuine performance problem rather than simply a large total dataset."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "KYC document requirements",
+      "body": "## What is required\n\nA PAN card and one business proof document (GST certificate, Udyam\nregistration, or a partnership deed for non-GST-registered businesses) are\nrequired for every account above FREE tier. Sole proprietors without GST\nregistration can use a bank statement showing business transactions as an\nalternative business proof.\n\n## ERR_KYC_DOC_REJECT\n\nkyc-service rejects a document automatically when the uploaded image is\nillegible, the document type does not match what was selected, or the\ndocument has visibly expired (relevant for some business registration\ncertificates that carry a validity date).\n\n## Resubmission\n\nA rejected document can be re-uploaded immediately from the same onboarding\nscreen; there is no cooldown period and no limit on resubmission attempts."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "GSTIN verification issues",
+      "body": "## ERR_GSTIN_INVALID\n\nkyc-service validates a submitted GSTIN's format (15 characters, matching the\nstate-code-plus-PAN-plus-checksum structure) and, separately, verifies it\nagainst the GST portal's registry. This error can mean either a format\nproblem or a portal-verification failure, and the two need different fixes.\n\n## Format errors\n\nA format error is almost always a transcription mistake — ask the customer to\ncopy-paste directly from their GST certificate rather than typing it.\n\n## Portal verification failures\n\nA correctly formatted GSTIN that still fails portal verification usually\nmeans the registration is very recent and has not yet propagated to the\nlookup Ledgerly queries, or the registration status is anything other than\n\"Active\" (cancelled, suspended, or under cancellation) on the GST portal\nitself."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "PAN verification mismatches",
+      "body": "## ERR_PAN_MISMATCH\n\nThis occurs when the PAN submitted during KYC does not match the name\nprovided elsewhere in the application — kyc-service checks the PAN against\nthe income-tax database's registered name, and a business name that differs\nfrom the PAN-registered legal name (a trade name used instead of the\nregistered name, commonly) triggers this.\n\n## Resolving it\n\nThe customer needs to enter the legal name exactly as registered against\ntheir PAN, not their trade name or brand name. This is a common source of\nfriction for businesses that operate primarily under a trade name different\nfrom their formal registration."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Account setup checklist",
+      "body": "## The full onboarding sequence\n\n1. Basic business details (name, address, industry).\n2. KYC document upload (see the KYC requirements article).\n3. GSTIN entry and verification, if applicable.\n4. Bank feed connection (optional at setup, can be added later).\n5. Team member invitations, if applicable.\n\n## What blocks account activation\n\nOnly step 2 (KYC) is strictly required before the account can process any\nreal transactions — steps 3–5 can be completed later, and a customer stuck on\nGSTIN verification should be told they can proceed with basic invoicing\nimmediately once KYC clears, without waiting for GST setup to complete."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Business verification timeline",
+      "body": "## How long verification takes\n\nKYC document review is typically completed within 24 hours of a valid\nsubmission. A submission stuck beyond 48 hours with no rejection and no\napproval should be escalated — this indicates the review queue itself has a\nproblem, not that the customer's specific documents are unusually complex.\n\n## What happens during the wait\n\nThe account is fully created and accessible during KYC review; only specific\nactions (sending invoices to real customers, connecting live bank feeds) are\ngated behind verification completing. The customer can explore the product\nand set up their chart of accounts while waiting."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Team member invitations during onboarding",
+      "body": "## Inviting team members\n\nTeam member invitations can be sent from account settings once the primary\naccount holder's own KYC has cleared — a team member's individual access does\nnot require separate KYC, only the business-level verification.\n\n## Invitation link expiry\n\nAn invitation link expires after 7 days. An expired invitation must be\nresent, not resubmitted — the original link cannot be reactivated once\nexpired, a new one must be generated."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Escalating a stuck KYC review",
+      "body": "## When to escalate\n\nA submission with no ERR_KYC_DOC_REJECT and no approval after 48 hours.\n\n## Steps\n\n1. Confirm from kyc-service's admin panel that the submission is actually in\n   the review queue and not stuck in an upload-processing state (rare, but\n   distinguishable — an upload-processing stall shows no reviewer assignment\n   at all, where a genuine queue delay shows an assigned reviewer with no\n   completed decision).\n2. For a queue delay, escalate to the KYC review team with the account id and\n   submission timestamp — do not attempt to expedite by re-uploading, which\n   creates a duplicate submission and can reset queue position.\n3. For an upload-processing stall, ask the customer to re-upload; this is a\n   one-time processing glitch, not a queue issue, and resubmission resolves\n   it directly."
+    },
+    {
+      "source": "RUNBOOK",
+      "title": "Verifying a disputed KYC rejection",
+      "body": "## When this applies\n\nA customer disputes an ERR_KYC_DOC_REJECT they believe was incorrect — the\ndocument was legible and correctly typed in their view.\n\n## Steps\n\n1. Pull the actual submitted document image from kyc-service's admin panel\n   and review it directly rather than taking the customer's description at\n   face value.\n2. Check the specific rejection reason code, not just that a rejection\n   occurred — kyc-service records which check failed (illegibility, type\n   mismatch, or expiry).\n3. A genuinely incorrect automated rejection (document is clearly legible and\n   correctly typed) is escalated to the KYC review team for manual override —\n   agents cannot override an automated KYC rejection directly."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "UPI refund vs reversal terminology",
+      "body": "## Two different words for related outcomes\n\nAgents and customers often use \"refund\" and \"reversal\" interchangeably, but\npayment-service distinguishes them: a reversal undoes a payment that was\ndebited but never successfully completed on Ledgerly's side (see the UPI\npayment failures article). A refund returns money for a payment that did\ncomplete successfully, initiated afterward -- a cancelled order, for\ninstance.\n\n## Why the distinction matters to a customer\n\nA reversal happens automatically once ERR_UPI_COLLECT_FAILED or a similar\nfailure is detected; a refund requires an explicit request or business action\n(cancelling an order) before it is initiated. Telling a customer \"your refund\nis being processed\" for what is actually an automatic reversal sets an\ninaccurate expectation about who needs to do what next."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Recognising a phishing attempt targeting Ledgerly customers",
+      "body": "## What Ledgerly never asks for\n\nLedgerly never asks for a customer's password, OTP, or full card number over\nemail, phone or chat -- support can see account details but never the\ncustomer's actual credentials, because auth-service stores only hashed\npasswords and kyc-service redacts card numbers to the last four digits\neverywhere they appear.\n\n## Common phishing patterns reported by customers\n\nEmails claiming a subscription payment failed and demanding immediate card\nre-entry via an external link, or messages claiming a large \"cashback\" is\npending release. Genuine Ledgerly billing emails always link to the\nin-product billing page, never to a third-party payment form.\n\n## What to tell a customer who reports one\n\nConfirm the email did not come from a ledgerly.com address, advise them not\nto click any links in it, and forward the phishing email to the security\nteam via the internal report-phishing address."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Multi-currency limitations",
+      "body": "## Current currency support\n\nLedgerly currently supports INR only for both collection and subscription\nbilling. A customer asking about multi-currency invoicing should be told\nthis is not currently supported, rather than given a workaround that will\nnot actually function correctly.\n\n## Why this comes up\n\nCustomers occasionally attempt to enter a foreign-currency amount in an\ninvoice field expecting automatic conversion; Ledgerly treats any numeric\nentry as INR regardless of any currency symbol typed alongside it, which can\nproduce a wildly incorrect invoice amount if not caught early."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding two-factor recovery codes",
+      "body": "## What recovery codes are for\n\nWhen 2FA is enabled, auth-service generates ten single-use recovery codes,\nshown once at setup. Each one can be used in place of a TOTP code if the\ncustomer loses access to their authenticator app, without going through the\nfull identity-verification 2FA reset process.\n\n## When recovery codes are exhausted\n\nOnce all ten are used, the customer must go through the standard 2FA reset\nverification (see the identity verification runbook) -- recovery codes are\nnot regenerated automatically, and a customer who saved them somewhere\ninsecure should be advised to reset 2FA proactively rather than wait until\nlocked out."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "API pagination",
+      "body": "## How list endpoints paginate\n\nEvery Ledgerly API list endpoint returns a cursor-based page: a data array\nand a pagination object with nextCursor and hasNext. There is no\npage-number parameter -- cursor pagination is used throughout because the\nunderlying data changes while a client may be paging through it.\n\n## Common integration mistakes\n\nConstructing a cursor manually instead of passing back exactly what\nnextCursor returned is the most common integration bug reported -- the\ncursor is an opaque token and must be round-tripped unmodified, never\nparsed or reconstructed by the client."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Deprecated API endpoint migration",
+      "body": "## Currently deprecated endpoints\n\nThe v0 invoice creation endpoint is deprecated in favour of the current v1\nendpoint and will stop accepting new integrations from a published sunset\ndate, though existing integrations continue to function until then.\n\n## Identifying deprecated usage\n\nA Deprecation response header appears on every call to a deprecated\nendpoint, naming the replacement. Point developers at this header directly\nrather than requiring them to check documentation separately."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Dashboard widget customisation",
+      "body": "## What can be customised\n\nThe dashboard's summary widgets (revenue, outstanding invoices, recent\nactivity) can be reordered and individually hidden from account settings.\nThis is purely a display preference and does not affect any underlying data\nor report accuracy.\n\n## A common support confusion\n\nA customer who has hidden a widget sometimes reports the underlying data as\n\"missing\" rather than recognising it as a display preference -- confirm\nwhether the data is absent from the full report view (a real issue) or only\nfrom the dashboard summary (a display setting) before investigating further."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Mobile app feature parity",
+      "body": "## What the mobile app supports\n\nThe Ledgerly mobile app supports invoice creation, payment collection\nstatus, and basic reporting. It does not currently support bank feed\nconfiguration, Tally/Zoho integration setup, or team member management --\nthose remain web-only.\n\n## Setting expectations\n\nA customer trying to complete an integration setup from the mobile app\nshould be redirected to the web app rather than troubleshooting a feature\nthat does not exist there; this is a common source of \"it's broken\" reports\nthat are actually \"not available here yet.\""
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Handling a request to merge two accounts",
+      "body": "## When this comes up\n\nA customer who signed up twice, or two customers who registered a business\nthat should be one account, occasionally ask to merge accounts.\n\n## Current limitation\n\nAccount merging is not currently supported as a self-service or agent\naction -- each account's transaction history, KYC verification and billing\nstate are tied to its account id in a way that cannot be safely combined\nwithout risking duplicate or lost financial records.\n\n## What to offer instead\n\nRecommend the customer choose one account to continue using and manually\nre-enter any data unique to the other, rather than promising a merge that\ncannot currently be delivered."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Explaining the audit trail feature",
+      "body": "## What is logged\n\nEvery status change, assignment, priority change and message on a\nticket-like record is logged with a timestamp and, where applicable, who\nmade the change -- this is the same append-only pattern used for Ledgerly's\nown support ticketing internally, and PRO/ENTERPRISE accounts get an\nequivalent audit trail for their own team's actions within the product\n(invoice edits, user permission changes).\n\n## Why it cannot be edited\n\nThe audit trail is intentionally immutable -- even an admin cannot edit or\ndelete a past entry, because an editable audit trail defeats its own\npurpose as a record of what actually happened."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Password strength requirements",
+      "body": "## Current requirements\n\nA Ledgerly password must be at least 12 characters. There is no requirement\nfor a specific mix of character types (uppercase, digits, symbols) -- length\nalone is the enforced control, which auth-service checks against a\ncommonly-breached-password list rather than arbitrary complexity rules.\n\n## Why length rather than complexity rules\n\nA long passphrase is measurably harder to guess than a short password\nforced into an arbitrary complexity pattern, and complexity rules are well\nknown to push people toward predictable substitutions (like a 1 for an I)\nthat do not actually add meaningful strength."
+    },
+    {
+      "source": "ARTICLE",
+      "title": "Understanding notification preferences",
+      "body": "## What can be configured\n\nEmail notification preferences (payment received, invoice overdue, sync\nfailure) can be individually enabled or disabled from account settings.\nSecurity notifications (password changed, new device login) cannot be\ndisabled -- they are sent regardless of preference settings, deliberately.\n\n## A common request Ledgerly declines\n\nCustomers occasionally ask to disable security notifications entirely,\nusually because of email volume. This is not offered, because a security\nnotification a customer cannot see is a security control that does not\nfunction."
+    }
+  ]
+}
