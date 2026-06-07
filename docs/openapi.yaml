@@ -1,0 +1,4369 @@
+# ResolveAI — OpenAPI 3.1 specification
+#
+# Phase 2, Task 14. Hand-written from docs/planning/05-API-CONTRACT.md, not generated:
+# there is no code yet, and this file is the contract the code will be written against.
+# springdoc-openapi will emit its own document from annotations in Phase 4+; when it does,
+# this file becomes the reference that document is diffed against.
+#
+# Coverage: all 64 operations. Twelve carry full schemas and realistic examples — the ones
+# the frontend needs first. The rest carry method, summary, auth, parameters and a
+# `TODO: schema` marker, filled in as each is built.
+#
+# Examples use real data copied from doc 05. A spec full of "string" is useless to a
+# frontend developer and useless to you in three months.
+
+openapi: 3.1.0
+
+info:
+  title: ResolveAI API
+  version: 1.0.0
+  summary: AI-powered helpdesk and incident triage platform
+  description: |
+    ResolveAI triages support tickets, tracks business-hours SLAs, correlates ticket
+    storms into incidents, and drafts grounded replies from a tenant knowledge base.
+
+    **The governing principle of the whole API: AI produces signals, deterministic code
+    makes decisions.** The model never returns a priority — it returns observations
+    (`category`, `reportedImpact`, `paymentAffected`, `linguisticUrgency`), and a versioned
+    rule set turns those into a priority. `GET /tickets/{id}/priority-rationale` exposes both
+    halves separately so a wrong answer can be attributed to the model or to the policy.
+
+    ### Conventions that apply everywhere
+
+    - Every path is prefixed `/api/v1`. The API is versioned as a whole, never per endpoint.
+    - All errors are RFC 7807 `application/problem+json`. Clients switch on `errorCode`,
+      never on `detail`, which is human prose and may change.
+    - All timestamps are ISO 8601, UTC, `Z`-suffixed. Never epoch millis.
+    - JSON is `camelCase`; enum values are `SCREAMING_SNAKE` strings.
+    - List responses are wrapped in `{ data, pagination }`, never a bare array.
+    - Cursor pagination on live queues, offset pagination on slow-moving admin lists.
+      Offset on a live queue is not merely slow, it is **wrong**: a ticket resolved on page 1
+      shifts the set and page 2 silently skips a row the agent never saw.
+    - Cross-tenant and cross-customer reads return **404, not 403**. A 403 confirms the
+      resource exists and turns every id into a probe.
+    - Tokens are never accepted as query parameters — access logs, browser history and
+      `Referer` headers all leak them. `Authorization` header only.
+  contact:
+    name: ResolveAI
+    url: https://github.com/sunnykrsingh/resolveai
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development (docker compose)
+  - url: https://resolveai.fly.dev/api/v1
+    description: Deployed demo
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Registration, login, refresh-token rotation, identity.
+  - name: Tickets
+    description: |
+      Ticket lifecycle. Every mutation is a specific, auditable transition — there is no
+      `PUT /tickets/{id}`, because a whole-resource replace makes mass assignment trivial
+      and the audit trail meaningless.
+  - name: Triage & AI
+    description: Triage signals, priority rationale, grounded drafts and their verdicts.
+  - name: SLA
+    description: |
+      Business-hours SLA clocks. Elapsed time is a `SUM()` over append-only `RUNNING`
+      segments — there is no stored counter anywhere.
+  - name: Incidents
+    description: |
+      Correlated ticket storms. Proposed by a deterministic gate
+      (`clusterSize >= K AND arrivalRate > 3x baseline`), confirmed by a human.
+  - name: Knowledge
+    description: Knowledge documents, chunking, and hybrid lexical+vector retrieval.
+  - name: Notifications
+    description: Per-recipient notifications. Never visible to another user, including admins.
+  - name: Attachments
+    description: Presigned two-step upload with server-side magic-byte verification.
+  - name: Admin
+    description: SLA policy, calendar, AI policy, usage, evaluation runs, audit, outbox DLQ.
+  - name: Demo
+    description: |
+      One-click demo mode. **Every path here is a `404` unless the deployment sets
+      `resolveai.demo.enabled=true`** — which is how the SPA knows to show the plain sign-in
+      form on a real deployment. Only `GET /demo` and `POST /demo/login` are public; the rest
+      require a session inside the demo tenant.
+  - name: Analytics
+    description: First-party onboarding analytics — a fixed event vocabulary, no free text.
+
+paths:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # AUTH
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Register a customer account
+      description: |
+        Registers a customer under an existing tenant, identified by slug. Agents, leads and
+        admins are created by an admin and never self-register.
+
+        **The `409` does leak whether an email is registered with a tenant.** Accepted
+        deliberately: a portal that silently swallows a duplicate registration produces a
+        worse failure — the user cannot log in and does not know why. Mitigated by a 5/hour
+        per-IP rate limit.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+            example:
+              tenantSlug: acme
+              email: priya@example.com
+              password: monsoon-2026-rupee
+              fullName: Priya Raman
+      responses:
+        '201':
+          description: Account created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+              example:
+                id: 4821
+                email: priya@example.com
+                fullName: Priya Raman
+                role: CUSTOMER
+                tenantSlug: acme
+                createdAt: '2026-09-20T09:14:33Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404':
+          description: '`TENANT_NOT_FOUND` — slug unknown or tenant inactive.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`EMAIL_ALREADY_EXISTS` — already registered for this tenant.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Exchange credentials for an access token and a rotating refresh token
+      description: |
+        **A single `401 INVALID_CREDENTIALS` covers all three failure causes** — no such
+        user, wrong password, wrong tenant. Distinguishing them turns login into a
+        user-enumeration oracle. Response time is padded to a constant by always running a
+        BCrypt comparison, against a dummy hash when the user does not exist, so timing does
+        not leak what the status code does not.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example:
+              tenantSlug: acme
+              email: arjun@acme.com
+              password: monsoon-2026-rupee
+      responses:
+        '200':
+          description: Authenticated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjA0IiwidGlkIjozfQ.8Qk1
+                refreshToken: 8f3a1c0e-4d72-4f19-9f0b-5a1e2c3d4b27
+                tokenType: Bearer
+                expiresIn: 900
+                user:
+                  id: 1204
+                  email: arjun@acme.com
+                  fullName: Arjun Mehta
+                  role: AGENT
+                  teamId: 7
+                  tenantId: 3
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: '`INVALID_CREDENTIALS` — wrong email, wrong password, or no such user.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/invalid-credentials
+                title: Invalid credentials
+                status: 401
+                errorCode: INVALID_CREDENTIALS
+                detail: Email or password is incorrect.
+                instance: /api/v1/auth/login
+                timestamp: '2026-09-20T09:14:33Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+        '403':
+          description: '`ACCOUNT_DISABLED` — account or tenant deactivated.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Rotate the access token; consumes the presented refresh token
+      description: |
+        Returns a new access token **and a new refresh token**. The presented token is
+        consumed.
+
+        **Reuse detection:** presenting a token whose `used_at` is already set means either
+        the token was stolen and replayed, or the legitimate client is replaying. The system
+        cannot tell which party is the attacker, so it **revokes the entire `family_id`** and
+        forces a fresh login. That is the standard refresh-token-rotation defence.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+            example:
+              refreshToken: 8f3a1c0e-4d72-4f19-9f0b-5a1e2c3d4b27
+      responses:
+        '200':
+          description: Rotated. Same shape as login.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjA0IiwidGlkIjozfQ.Lm4z
+                refreshToken: b91d7f22-6c3a-4a80-8e11-7d9c0f4a6e58
+                tokenType: Bearer
+                expiresIn: 900
+                user:
+                  id: 1204
+                  email: arjun@acme.com
+                  fullName: Arjun Mehta
+                  role: AGENT
+                  teamId: 7
+                  tenantId: 3
+        '401':
+          description: |
+            `INVALID_REFRESH_TOKEN` — unknown, expired or revoked.
+            `TOKEN_REUSE_DETECTED` — already used; the whole token family is now revoked.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                reuseDetected:
+                  summary: Replay of a consumed token
+                  value:
+                    type: https://resolveai.dev/errors/token-reuse-detected
+                    title: Refresh token reuse detected
+                    status: 401
+                    errorCode: TOKEN_REUSE_DETECTED
+                    detail: This refresh token was already used. All sessions in this family have been revoked. Sign in again.
+                    instance: /api/v1/auth/refresh
+                    timestamp: '2026-09-20T09:31:02Z'
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke the refresh-token family
+      description: 'TODO: schema. Body `{ refreshToken }`. Idempotent.'
+      responses:
+        '204':
+          description: Revoked. Revoking an already-revoked family is not an error.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Current identity, team and permissions
+      description: |
+        The explicit `permissions` array exists so the frontend never re-derives
+        authorization from the role string. **The server remains the only authority** — this
+        array is for hiding buttons, never for enforcing anything.
+      responses:
+        '200':
+          description: Current identity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUserResponse' }
+              example:
+                id: 1204
+                email: arjun@acme.com
+                fullName: Arjun Mehta
+                role: AGENT
+                teamId: 7
+                teamName: Payments
+                tenantId: 3
+                tenantSlug: acme
+                planTier: PRO
+                permissions:
+                  - ticket:read:team
+                  - ticket:reply
+                  - ticket:assign:self
+                  - draft:request
+                  - incident:read
+                agentProfile:
+                  maxConcurrent: 15
+                  openCount: 9
+                  isAvailable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me/password:
+    put:
+      tags: [Auth]
+      operationId: changePassword
+      summary: Change own password
+      description: 'TODO: schema. Body `{ currentPassword, newPassword }`; revokes every refresh-token family on success.'
+      responses:
+        '204':
+          description: Changed. All sessions revoked.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # TICKETS
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /tickets:
+    post:
+      tags: [Tickets]
+      operationId: createTicket
+      summary: Create a ticket; triage runs asynchronously
+      description: |
+        Commits the ticket **and an outbox event in one transaction** and returns
+        immediately. That single transaction is what removes the dual-write problem: there is
+        no window in which a ticket exists but its triage job does not, and no window in
+        which a job exists for a ticket that was rolled back.
+
+        **`202`, not `201`, and this is the interview question.** The resource *is* created,
+        which normally argues for `201`. But the response deliberately advertises
+        `analysisStatus: "PROCESSING"`, and `priority`, `category`, `assignee` and `team` are
+        all still null and **will change without any further client action**. `202` tells the
+        client to poll the status resource; `201` would imply the representation is final.
+
+        > **This endpoint returned `201` in Phase 5 and returns `202` from Phase 6.** In
+        > Phase 5 there was no outbox and no async triage, so the representation *was*
+        > final and `202` would have been a lie. The change landed in its own commit, which
+        > is the point: the status code follows the semantics rather than being chosen once
+        > and defended afterwards.
+
+        **`body` is capped at 20,000 characters as a security control**, not a tidiness rule.
+        Every ticket triggers an LLM call, so an uncapped body is a token-cost denial of
+        service.
+
+        **Idempotency:** replaying the same key with the same body returns the original `202`
+        verbatim, including the same `id`. The same key with a *different* body is `422`,
+        never a silent replay of the wrong response.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTicketRequest' }
+            examples:
+              customer:
+                summary: Customer reporting a failed payment
+                value:
+                  subject: Payment deducted but order still pending
+                  body: |
+                    I paid via UPI at 14:03 and the money left my account, but the order page
+                    still says "awaiting payment". I have the UPI reference if you need it.
+                  attachmentIds: [9021]
+              onBehalfOf:
+                summary: Agent logging a phone call on a customer's behalf
+                value:
+                  subject: Cannot log in after password reset
+                  body: Customer called; reset link lands but the new password is rejected.
+                  onBehalfOf: 4821
+      responses:
+        '202':
+          description: Accepted. Triage is in flight; poll `links.analysis`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketCreatedResponse' }
+              example:
+                id: 88213
+                reference: TKT-10428
+                subject: Payment deducted but order still pending
+                status: OPEN
+                priority: UNTRIAGED
+                category: null
+                analysisStatus: PROCESSING
+                requester: { id: 4821, fullName: Priya Raman }
+                assignee: null
+                team: null
+                createdAt: '2026-09-20T09:22:05Z'
+                links:
+                  self: /api/v1/tickets/88213
+                  analysis: /api/v1/tickets/88213/analysis
+        '400':
+          description: '`VALIDATION_ERROR`, or `IDEMPOTENCY_KEY_REQUIRED` when the header is missing or malformed.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ValidationProblem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`FORBIDDEN` — `onBehalfOf` used by a CUSTOMER.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — same key, different body.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/idempotency-key-conflict
+                title: Idempotency key conflict
+                status: 422
+                errorCode: IDEMPOTENCY_KEY_CONFLICT
+                detail: This Idempotency-Key was used for a different request body.
+                instance: /api/v1/tickets
+                timestamp: '2026-09-20T09:22:05Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: '`IDEMPOTENCY_UNAVAILABLE` — Redis is down and idempotency fails closed.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+    get:
+      tags: [Tickets]
+      operationId: listTickets
+      summary: List tickets — filtered, searched, cursor-paginated
+      description: |
+        **What the caller can see is determined by role, not by a query parameter**, and the
+        scoping is applied server-side and is not overridable:
+
+        | Role | Sees |
+        |---|---|
+        | `CUSTOMER` | only tickets where `requester_id = me` |
+        | `AGENT` | tickets assigned to them **or** in their team's queue |
+        | `TEAM_LEAD` | all tickets in their team |
+        | `ADMIN` | all tickets in the tenant |
+
+        **Cursor pagination, not `page`/`offset`, and the reason is correctness rather than
+        speed.** Tickets resolve out of a filtered set while an agent is paging through it.
+        With `OFFSET`, resolving a ticket on page 1 shifts everything up by one and **page 2
+        silently skips a ticket the agent never saw.** The cursor encodes `(created_at, id)`
+        and is stable under concurrent mutation.
+
+        There is no `totalElements`: counting a filtered set on every page is expensive and
+        nobody uses the number.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Size'
+        - name: status
+          in: query
+          description: 'Repeatable: `?status=OPEN&status=ASSIGNED`.'
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/TicketStatus' }
+          style: form
+          explode: true
+        - name: priority
+          in: query
+          description: Repeatable.
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/Priority' }
+          style: form
+          explode: true
+        - name: teamId
+          in: query
+          description: TEAM_LEAD+ only. A CUSTOMER passing this gets `403`.
+          schema: { type: integer, format: int64 }
+        - name: assigneeId
+          in: query
+          description: Numeric id, the literal `me`, or `none` for unassigned tickets.
+          schema: { type: string, examples: ['me', 'none', '1204'] }
+        - name: requesterId
+          in: query
+          description: |
+            AGENT+ only (a CUSTOMER passing this gets `403`). One customer's tickets - the
+            ticket page's customer-context pane.
+          schema: { type: integer, format: int64 }
+        - name: incidentId
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: slaState
+          in: query
+          schema: { type: string, enum: [AT_RISK, BREACHED] }
+        - name: q
+          in: query
+          description: |
+            Full-text over subject and body, **or** an exact ticket reference
+            (case-insensitive), so `tkt-1036` finds `TKT-1036`.
+          schema: { type: string, maxLength: 200 }
+        - name: createdFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: createdTo
+          in: query
+          schema: { type: string, format: date-time }
+        - name: sort
+          in: query
+          description: |
+            Keyset pagination follows `created_at`; with another sort key, only the first
+            page is meaningful. There is no SLA-deadline sort - the queue ranks a page by SLA
+            state client-side.
+          schema: { type: string, enum: [created_at, priority, updated_at], default: created_at }
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        '200':
+          description: A page of ticket summaries.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TicketSummary' }
+              example:
+                data:
+                  - id: 88213
+                    reference: TKT-10428
+                    subject: Payment deducted but order still pending
+                    status: ASSIGNED
+                    priority: P2
+                    category: PAYMENT
+                    requester: { id: 4821, fullName: Priya Raman }
+                    assignee: { id: 1204, fullName: Arjun Mehta }
+                    team: { id: 7, name: Payments }
+                    incidentRef: null
+                    sla:
+                      firstResponse: { state: RUNNING, remainingBusinessMinutes: 142, atRisk: false }
+                      resolution: { state: RUNNING, remainingBusinessMinutes: 812, atRisk: false }
+                    messageCount: 2
+                    createdAt: '2026-09-20T09:22:05Z'
+                    updatedAt: '2026-09-20T09:22:41Z'
+                pagination:
+                  size: 25
+                  nextCursor: eyJjIjoiMjAyNi0wOS0yMFQwOToyMjowNVoiLCJpIjo4ODIxM30
+                  hasNext: true
+        '400':
+          description: '`INVALID_CURSOR`, or `VALIDATION_ERROR` for a bad enum or out-of-range `size`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ValidationProblem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`FORBIDDEN` — a CUSTOMER passing `teamId`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [Tickets]
+      operationId: getTicket
+      summary: Full ticket detail
+      description: |
+        **Field visibility by role is enforced in the response mapper by returning a
+        different DTO, not by null-setting fields on a shared one.** A `CUSTOMER` never
+        receives `INTERNAL` messages, `priorityRationale`, `analysisStatus`, `latestDraftId`
+        or the internal SLA detail. A shared DTO with `if (role != CUSTOMER) ...` is one
+        forgotten branch away from leaking internal notes; separate types make the leak a
+        compile error.
+
+        **`404`, never `403`, for a ticket in another tenant or belonging to another
+        customer.** A `403` would confirm the ticket exists, which is an information leak.
+        `403` is reserved for "you are authenticated, this resource is in your scope, but this
+        *action* is not permitted".
+
+        The `ETag` response header carries the entity `version` and is required back as
+        `If-Match` on every mutation.
+      parameters:
+        - name: include
+          in: query
+          description: 'Comma-separated: `timeline`, `analysis`, `sla`, `incident`. Default: all except `timeline`.'
+          schema: { type: string, examples: ['timeline,sla'] }
+      responses:
+        '200':
+          description: Ticket detail.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              # AGENT and above get TicketDetail; a CUSTOMER gets TicketCustomerDetail. anyOf,
+              # not oneOf: the two shapes share their base fields, so a body can satisfy both.
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TicketDetail'
+                  - $ref: '#/components/schemas/TicketCustomerDetail'
+              example:
+                id: 88213
+                reference: TKT-10428
+                subject: Payment deducted but order still pending
+                body: I paid via UPI at 14:03 and the money left my account...
+                status: ASSIGNED
+                priority: P2
+                category: PAYMENT
+                priorityRationale:
+                  policyVersion: v3
+                  computed: P2
+                  because: ['plan tier PRO', 'payment affected', 'impact SINGLE_USER']
+                reopenCount: 0
+                messages:
+                  - id: 51002
+                    authorId: 4821
+                    authorName: Priya Raman
+                    authorRole: CUSTOMER
+                    visibility: PUBLIC
+                    body: I paid via UPI at 14:03...
+                    isFirstResponse: false
+                    fromDraftId: null
+                    attachments: []
+                    createdAt: '2026-09-20T09:22:05Z'
+                sla:
+                  firstResponse:
+                    state: RUNNING
+                    targetBusinessMinutes: 240
+                    elapsedBusinessMinutes: 98
+                    remainingBusinessMinutes: 142
+                    nextDeadlineAt: '2026-09-20T13:22:05Z'
+                    nextRung: 50
+                    escalationsFired: []
+                    atRisk: false
+                incident: null
+                analysisStatus: READY
+                latestDraftId: 9912
+                _etag: W/"7"
+                createdAt: '2026-09-20T09:22:05Z'
+                updatedAt: '2026-09-20T11:01:12Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+    patch:
+      tags: [Tickets]
+      operationId: updateTicket
+      summary: Update subject, category or team
+      description: |
+        `PATCH` handles plain field updates and nothing else. Anything with its own
+        authorization, side effects or error vocabulary gets a sub-resource `POST`
+        (`/assign`, `/status`, `/resolve`, `/reopen`) — see the deviation note in doc 05.
+
+        TODO: schema.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Updated.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+
+  /tickets/{id}/messages:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: addMessage
+      summary: Add a public reply or an internal note
+      description: |
+        **An agent's first `PUBLIC` message stops the first-response SLA clock in the same
+        transaction**, and `slaEffect` in the response is the important field. One transaction
+        is what closes the race against the SLA poller: an agent replying at the exact instant
+        a breach would fire cannot produce both a first response and a breach. Returning the
+        effect means the UI does not have to re-fetch to discover it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddMessageRequest' }
+            examples:
+              publicReply:
+                summary: Agent reply sent from an AI draft
+                value:
+                  body: Thanks Priya — I can see the UPI reference and have raised a reversal with the PSP.
+                  visibility: PUBLIC
+                  fromDraftId: 9912
+              internalNote:
+                summary: Internal note, never visible to the customer
+                value:
+                  body: PSP dashboard shows the debit but no capture. Waiting on their ops team.
+                  visibility: INTERNAL
+      responses:
+        '201':
+          description: Message created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+              example:
+                id: 51003
+                ticketId: 88213
+                authorId: 1204
+                authorName: Arjun Mehta
+                authorRole: AGENT
+                visibility: PUBLIC
+                body: Thanks Priya — I can see the UPI reference...
+                isFirstResponse: true
+                slaEffect:
+                  firstResponse: MET
+                  metAt: '2026-09-20T11:04:19Z'
+                createdAt: '2026-09-20T11:04:19Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`FORBIDDEN` — a CUSTOMER attempting `visibility: INTERNAL`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`TICKET_CLOSED` — cannot post to a CLOSED ticket.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`INVALID_DRAFT_REFERENCE` — `fromDraftId` is not a SHOWN draft on this ticket.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{id}/assign:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: assignTicket
+      summary: Assign to self or to another agent
+      description: |
+        **This is the endpoint with the concurrency test behind it.** The claim is a
+        conditional update with an affected-row check, not a `SELECT` followed by an `UPDATE`:
+
+        ```sql
+        UPDATE ticket
+           SET assignee_id = :agentId, status = 'ASSIGNED', version = version + 1
+         WHERE id = :ticketId AND assignee_id IS NULL;
+        -- affected rows = 0 → someone else won → 409 ALREADY_ASSIGNED
+        ```
+
+        Two agents clicking "Assign to me" in the same millisecond produce exactly one `200`
+        and one `409`. An integration test drives 20 concurrent requests and asserts exactly
+        that distribution.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRequest' }
+            examples:
+              selfAssign:
+                summary: Self-assign — omit the body entirely
+                value: {}
+              assignOther:
+                summary: Lead assigning to a specific agent
+                value: { assigneeId: 1207 }
+              forceReassign:
+                summary: Lead taking a ticket off another agent
+                value: { assigneeId: 1207, force: true }
+      responses:
+        '200':
+          description: Assigned. Returns the updated summary with a new ETag.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`FORBIDDEN` — an AGENT assigning to someone other than themselves.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`ALREADY_ASSIGNED` (and `force` not set), or `VERSION_CONFLICT` (stale `If-Match`).'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/already-assigned
+                title: Ticket already assigned
+                status: 409
+                errorCode: ALREADY_ASSIGNED
+                detail: Ticket 88213 was assigned to Neha Kulkarni while you were looking at it.
+                instance: /api/v1/tickets/88213/assign
+                timestamp: '2026-09-20T10:58:00Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+        '422':
+          description: '`AGENT_AT_CAPACITY` — target agent is at `max_concurrent` or unavailable.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: changeStatus
+      summary: Drive the ticket state machine
+      description: |
+        **Illegal transitions are rejected by the server, not prevented by the UI.** The
+        permitted graph:
+
+        ```
+        OPEN                → TRIAGED, ASSIGNED, CLOSED
+        TRIAGED             → ASSIGNED, CLOSED
+        ASSIGNED            → IN_PROGRESS, WAITING_ON_CUSTOMER, PENDING_THIRD_PARTY, RESOLVED, OPEN
+        IN_PROGRESS         → WAITING_ON_CUSTOMER, PENDING_THIRD_PARTY, RESOLVED, ASSIGNED
+        WAITING_ON_CUSTOMER → IN_PROGRESS, RESOLVED, CLOSED          ← SLA clock PAUSES on entry
+        PENDING_THIRD_PARTY → IN_PROGRESS, RESOLVED                  ← SLA clock PAUSES on entry
+        RESOLVED            → CLOSED, OPEN
+        CLOSED              → terminal; reopening goes through /reopen
+        ```
+
+        A rejection returns the **permitted targets** in `allowedTransitions`, so a client can
+        recover without hard-coding the state machine.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeStatusRequest' }
+            example:
+              status: WAITING_ON_CUSTOMER
+              reason: Asked the customer for the UPI reference number.
+      responses:
+        '200':
+          description: Transitioned. `slaEffect` reports any clock that paused or resumed.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusChangeResponse' }
+              example:
+                id: 88213
+                status: WAITING_ON_CUSTOMER
+                slaEffect:
+                  resolution:
+                    state: PAUSED
+                    pausedAt: '2026-09-20T11:30:00Z'
+                    reason: WAITING_ON_CUSTOMER
+                    elapsedBusinessMinutesAtPause: 128
+                _etag: W/"9"
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`ILLEGAL_TRANSITION`, with the permitted targets; or `VERSION_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/IllegalTransitionProblem' }
+              example:
+                type: https://resolveai.dev/errors/illegal-transition
+                title: Illegal status transition
+                status: 409
+                errorCode: ILLEGAL_TRANSITION
+                detail: Cannot move from CLOSED to IN_PROGRESS
+                allowedTransitions: []
+                instance: /api/v1/tickets/88213/status
+                timestamp: '2026-09-20T11:30:00Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+
+  /tickets/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: resolveTicket
+      summary: Resolve with resolution text
+      description: 'TODO: schema. Body `{ resolutionText }`. Stops the resolution clock and queues the ticket for knowledge-base indexing.'
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Resolved.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+
+  /tickets/{id}/reopen:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: reopenTicket
+      summary: Reopen a resolved or closed ticket
+      description: 'TODO: schema. Body `{ reason }`. Increments `reopenCount`, which feeds the REOPEN_BUMP priority rule at >= 2.'
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Reopened.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # TRIAGE & AI
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /tickets/{id}/analysis:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [Triage & AI]
+      operationId: getAnalysis
+      summary: Triage signals and their status — the resource POST /tickets points at
+      description: |
+        **`200`, never `404` or `503`, for the `UNAVAILABLE` case.** The analysis resource
+        exists and its state is "we tried and failed". That is a successful read of a
+        legitimate state, and the ticket remains fully workable. Returning an error status
+        would make a degraded AI feature look like a broken API.
+
+        **Note what the model returns and what it does not.** There is no `priority` field
+        here. The model reports observations — category, impact, whether a payment is
+        involved, how urgent the language is — and a versioned rule set turns those into a
+        priority. See `GET /tickets/{id}/priority-rationale`.
+
+        **`extractedEntities.orderRef` reads `«ORDER_1»`.** The order reference was
+        PII-redacted before the text left for the model, so the model never saw the real
+        value and the placeholder is what comes back. Rehydration happens only when rendering
+        for an authorised human.
+      responses:
+        '200':
+          description: The analysis resource, in whichever state it is in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisResponse' }
+              examples:
+                processing:
+                  summary: Still in flight
+                  value:
+                    ticketId: 88213
+                    status: PROCESSING
+                    enqueuedAt: '2026-09-20T09:22:05Z'
+                    retryAfterSeconds: 3
+                ready:
+                  summary: Complete
+                  value:
+                    ticketId: 88213
+                    status: READY
+                    signals:
+                      category: PAYMENT
+                      reportedImpact: SINGLE_USER
+                      serviceDownClaimed: false
+                      dataLossClaimed: false
+                      paymentAffected: true
+                      linguisticUrgency: HIGH
+                      extractedEntities:
+                        paymentMethod: UPI
+                        orderRef: «ORDER_1»
+                    modelConfidence: 0.91
+                    promptVersion: triage@7
+                    modelId: gpt-4.1-mini
+                    tokensIn: 1187
+                    tokensOut: 168
+                    costMicros: 412
+                    latencyMs: 2840
+                    completedAt: '2026-09-20T09:22:09Z'
+                unavailable:
+                  summary: Provider failed after retries — still a 200
+                  value:
+                    ticketId: 88213
+                    status: UNAVAILABLE
+                    reason: PROVIDER_ERROR
+                    attempts: 3
+                    lastError: upstream 503 after fallback
+                    manualTriageRequired: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+  /tickets/{id}/retriage:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Triage & AI]
+      operationId: retriage
+      summary: Re-drive triage after a failure
+      description: 'TODO: schema. No body. Enqueues a fresh outbox event; `409 TRIAGE_IN_PROGRESS` if one is already in flight.'
+      responses:
+        '202':
+          description: Re-triage enqueued.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`TRIAGE_IN_PROGRESS`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{id}/priority-rationale:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [Triage & AI]
+      operationId: getPriorityRationale
+      summary: Signals, policy evaluation and result — the endpoint that makes the AI auditable
+      description: |
+        **Why this endpoint exists at all:** `inputs` separates `fromModel` from
+        `fromSystem`, and `rules` shows the deterministic evaluation, rule by rule, including
+        the ones that did *not* match.
+
+        When an agent overrides a priority, this structure makes it possible to tell whether
+        **the model misread the ticket** or **the policy is wrong** — two completely
+        different bugs with two completely different fixes. A design where the LLM simply
+        returns `"priority": "P2"` makes that distinction unrecoverable.
+      responses:
+        '200':
+          description: The full decision record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PriorityRationale' }
+              example:
+                ticketId: 88213
+                computedPriority: P2
+                policyVersion: v3
+                decidedAt: '2026-09-20T09:22:09Z'
+                inputs:
+                  fromModel:
+                    category: PAYMENT
+                    reportedImpact: SINGLE_USER
+                    paymentAffected: true
+                    linguisticUrgency: HIGH
+                    serviceDownClaimed: false
+                    confidence: 0.91
+                  fromSystem:
+                    planTier: PRO
+                    linkedIncident: null
+                    reopenCount: 0
+                    contractualOverride: null
+                rules:
+                  - { rule: BASE_FROM_IMPACT, matched: true,  effect: P3,   note: SINGLE_USER impact starts at P3 }
+                  - { rule: PAYMENT_BUMP,     matched: true,  effect: '+1', note: paymentAffected raises one level }
+                  - { rule: PLAN_TIER_BUMP,   matched: false, effect: none, note: PRO does not bump; ENTERPRISE would }
+                  - { rule: INCIDENT_INHERIT, matched: false, effect: none }
+                  - { rule: REOPEN_BUMP,      matched: false, effect: none, note: requires reopenCount >= 2 }
+                humanReadable: P2 because the customer reports a payment problem affecting them individually, on a PRO plan.
+                overridable: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+  /tickets/{id}/priority-override:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Triage & AI]
+      operationId: overridePriority
+      summary: Override the computed priority, with a reason
+      description: |
+        The only human path to a priority — there is deliberately no
+        `POST /tickets/{id}/priority`, because priority is **computed, never set**.
+
+        Every override is stored as a label, which is what makes the policy improvable rather
+        than merely arguable.
+
+        TODO: schema. Body `{ priority, reason }`.
+      responses:
+        '200':
+          description: Overridden and recorded.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+  /tickets/{id}/drafts:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Triage & AI]
+      operationId: requestDraft
+      summary: Request a grounded resolution draft — async
+      description: |
+        **`402 Payment Required` is the honest code for an exhausted AI budget.** It is
+        rarely used, semantically exact, and distinguishable from `429` — which matters,
+        because a client should retry after a `429` and must **not** after a `402`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RequestDraftRequest' }
+            example:
+              instruction: explain the refund timeline
+      responses:
+        '202':
+          description: Draft queued. Poll `links.self`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftQueuedResponse' }
+              example:
+                draftId: 9912
+                status: PENDING
+                links: { self: /api/v1/drafts/9912 }
+                estimatedSeconds: 18
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402':
+          description: '`AI_BUDGET_EXHAUSTED` — the tenant monthly budget is spent. Do not retry.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`DRAFT_IN_PROGRESS` — a draft is already pending for this ticket.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`NO_KNOWLEDGE_BASE` — nothing indexed for this tenant to ground against.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: '`AI_DISABLED_BY_POLICY` — `external_model_allowed=false` and no local model configured.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /drafts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [9912] }
+    get:
+      tags: [Triage & AI]
+      operationId: getDraft
+      summary: The draft, with a verdict and citations for every claim
+      description: |
+        **The most important response body in the API.** Three things to point at:
+
+        1. **Claim 3 is returned, not hidden.** It was dropped from `assembledText`
+           (`kept: false`), but the agent can see that the model tried to invent a refund
+           amount and a date, and *why* it was rejected. Hiding rejections would make the
+           verification mechanism invisible and therefore untrustworthy. That rejection cost
+           **zero LLM calls** — the numeric pre-filter caught it before the entailment
+           verifier ran.
+        2. **`unresolvedAspects` is the most useful field for the agent.** A support agent's
+           real question is not "what does the KB say" but *"what am I going to have to figure
+           out myself?"*
+        3. **`tier: AUTHORITATIVE`** distinguishes a runbook from a resolved ticket. The agent
+           should weigh *"the runbook says"* differently from *"someone did this once"*.
+
+        **When coverage falls below the threshold, `assembledText` is `null` — not a hedged
+        draft.** The design position is that a confidently wrong answer is worse than no
+        answer. The refusal suite in CI asserts this path fires 100% of the time on the
+        no-coverage fixtures.
+      responses:
+        '200':
+          description: The draft in its terminal state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftResponse' }
+              examples:
+                shown:
+                  summary: Grounded and shown, with one claim rejected
+                  value:
+                    id: 9912
+                    ticketId: 88213
+                    status: SHOWN
+                    coverage: 1.0
+                    claims:
+                      - ordinal: 1
+                        text: UPI payments that are debited without an order confirmation are auto-reversed within 5–7 business days.
+                        verdict: SUPPORTED
+                        kept: true
+                        citations:
+                          - chunkId: 33401
+                            documentId: 1204
+                            documentTitle: UPI payment failures
+                            source: RUNBOOK
+                            charStart: 412
+                            charEnd: 578
+                            snippet: ...debited without a corresponding order are reversed by the PSP within 5–7 business days...
+                      - ordinal: 2
+                        text: You can request a manual reversal by sharing the UPI reference number.
+                        verdict: SUPPORTED
+                        kept: true
+                        citations:
+                          - chunkId: 33409
+                            documentId: 1290
+                            documentTitle: Manual reversal process
+                            source: ARTICLE
+                            charStart: 88
+                            charEnd: 214
+                            snippet: ...agents may raise a manual reversal once the customer supplies the UPI reference...
+                      - ordinal: 3
+                        text: Your refund of ₹2,499 will be credited by 24 September.
+                        verdict: FAILED_NUMERIC_CHECK
+                        kept: false
+                        rejectionReason: Values ₹2,499 and 24 September do not appear in any cited span
+                        citations: []
+                    assembledText: |
+                      Hi Priya,
+
+                      UPI payments that are debited without an order confirmation are auto-reversed within 5–7 business days. You can request a manual reversal by sharing the UPI reference number.
+
+                      — Arjun
+                    unresolvedAspects:
+                      - The customer asked whether they will be compensated for the delay — not covered by the knowledge base.
+                    sources:
+                      - { documentId: 1204, title: UPI payment failures, source: RUNBOOK, tier: AUTHORITATIVE }
+                      - { documentId: 1290, title: Manual reversal process, source: ARTICLE, tier: AUTHORITATIVE }
+                    promptVersion: draft@4
+                    modelId: gpt-4.1-mini
+                    tokensIn: 4102
+                    tokensOut: 288
+                    costMicros: 2840
+                    latencyMs: 19400
+                    createdAt: '2026-09-20T11:12:00Z'
+                suppressed:
+                  summary: Suppressed for low coverage — assembledText is null
+                  value:
+                    id: 9913
+                    ticketId: 88250
+                    status: SUPPRESSED_LOW_COVERAGE
+                    coverage: 0.33
+                    claims:
+                      - ordinal: 1
+                        text: Subscriptions cancelled mid-cycle are refunded pro rata.
+                        verdict: NOT_SUPPORTED
+                        kept: false
+                        rejectionReason: No retrieved chunk entails this claim
+                        citations: []
+                    assembledText: null
+                    suppressionReason: The knowledge base backed up 1 of the 3 points a reply would need to make (33%; at least 80% is required), so no reply was drafted rather than risk a wrong answer.
+                    unresolvedAspects:
+                      - No knowledge base coverage for refunds on cancelled subscriptions.
+                    recommendation: ESCALATE_TO_HUMAN
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`DRAFT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /drafts/{id}/action:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [9912] }
+    post:
+      tags: [Triage & AI]
+      operationId: recordDraftAction
+      summary: Record what the agent did with the draft
+      description: |
+        **This is the quality-measurement endpoint, and it must be called even on discard.**
+        Without the discards the acceptance rate is measured only over the drafts that were
+        good, which is not a measurement.
+
+        `editDistance` is computed server-side (Levenshtein, `assembledText` vs `finalText`)
+        and is **never trusted from the client**.
+
+        TODO: schema. Body `{ action: SENT_AS_IS | EDITED | DISCARDED, finalText }`.
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              example:
+                draftId: 9912
+                action: EDITED
+                editDistance: 47
+                createdAt: '2026-09-20T11:14:02Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: '`ACTION_ALREADY_RECORDED` — one terminal action per draft (`uq_draft_action`).'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`finalText` missing for `EDITED`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # SLA
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /tickets/{id}/sla:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [SLA]
+      operationId: getSla
+      summary: Both clocks, with their full segment history
+      description: |
+        **The `segments` array is the whole design, exposed.** `elapsedBusinessMinutes` is a
+        `SUM()` over `RUNNING` segments — there is no stored counter anywhere, so there is no
+        counter to drift, and pause/resume is an append, never an update.
+
+        `nextDeadlineAt` is `null` while paused, which is exactly why the poller
+        (`WHERE state = 'RUNNING' AND next_deadline_at <= NOW()`) skips it. The poller is
+        `O(due)`, not `O(open)`.
+
+        **`prediction.basis` names the statistic and the sample size**, so the number is
+        inspectable rather than magical. **This is not an LLM output** — it is a p75 window
+        function over 90 days of history. A percentile is faster, cheaper, more accurate and
+        explainable; using a model here would be worse on every axis.
+      responses:
+        '200':
+          description: Both clocks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SlaResponse' }
+              example:
+                ticketId: 88213
+                calendar:
+                  timezone: Asia/Kolkata
+                  workingDays: [1, 2, 3, 4, 5]
+                  dayStart: '09:00'
+                  dayEnd: '18:00'
+                clocks:
+                  - kind: FIRST_RESPONSE
+                    state: MET
+                    policyVersion: v3
+                    targetBusinessMinutes: 240
+                    elapsedBusinessMinutes: 102
+                    metAt: '2026-09-20T11:04:19Z'
+                    segments:
+                      - { state: RUNNING, startedAt: '2026-09-20T09:22:09Z', endedAt: '2026-09-20T11:04:19Z', businessMinutes: 102, pauseReason: null }
+                    escalationsFired: []
+                  - kind: RESOLUTION
+                    state: PAUSED
+                    policyVersion: v3
+                    targetBusinessMinutes: 960
+                    elapsedBusinessMinutes: 128
+                    remainingBusinessMinutes: 832
+                    nextDeadlineAt: null
+                    nextRung: 50
+                    segments:
+                      - { state: RUNNING, startedAt: '2026-09-20T09:22:09Z', endedAt: '2026-09-20T11:30:00Z', businessMinutes: 128, pauseReason: null }
+                      - { state: PAUSED,  startedAt: '2026-09-20T11:30:00Z', endedAt: null, businessMinutes: 0, pauseReason: WAITING_ON_CUSTOMER }
+                    escalationsFired: []
+                    prediction:
+                      predictedResolutionBusinessMinutes: 410
+                      basis: p75 over 90 days for (PAYMENT, P2, Payments team), n=214
+                      atRisk: false
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+  /tickets/{id}/sla/pause:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [SLA]
+      operationId: pauseSla
+      summary: Pause a clock — idempotent
+      description: |
+        Closes the open `RUNNING` segment, inserts a new `PAUSED` segment, sets
+        `state='PAUSED'` and `next_deadline_at=NULL`, all in one transaction.
+
+        **Pausing an already-paused clock returns `200` with the existing state, not an
+        error.** The operation is naturally idempotent and the client should not have to check
+        first. The partial unique index `uq_segment_open` means two concurrent pause requests
+        cannot both insert an open segment; the loser gets a constraint violation which the
+        service maps to that same `200` replay, because the desired end state was reached
+        either way.
+
+        TODO: schema. Body `{ reason, kinds }`, `kinds` defaulting to `[RESOLUTION]`.
+      responses:
+        '200':
+          description: Paused (or already paused).
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`SLA_ALREADY_TERMINAL` — cannot pause a MET or BREACHED clock.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`INVALID_PAUSE_REASON`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{id}/sla/resume:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [SLA]
+      operationId: resumeSla
+      summary: Resume a paused clock — idempotent
+      description: 'TODO: schema. Body `{ kinds }`. Recomputes `next_deadline_at` from remaining business minutes at the moment of resumption.'
+      responses:
+        '200':
+          description: Resumed (or already running).
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+        '409':
+          description: '`SLA_ALREADY_TERMINAL`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /dev/tickets/{id}/sla/fast-forward:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [SLA]
+      operationId: fastForwardSla
+      summary: Age a ticket's clocks — local profile only
+      description: |
+        **A demo affordance, not part of the product surface.** The escalation ladder is
+        the most interesting behaviour in the SLA engine and the least demonstrable:
+        showing a rung fire honestly means waiting out half of a business-hours target.
+        This moves a ticket's clocks into the past so the next poll does what an hour of
+        waiting would have done.
+
+        **It rewrites the clock segments, not only the deadline.** The poller re-checks
+        elapsed against the rung under the row lock before firing — the guard that stops a
+        pause landing between claim and process from firing a rung the clock has not
+        reached — so shifting the deadline alone would be rescheduled rather than fired.
+
+        `@Profile("local")`: the bean does not exist under `prod` or `test`, the same guard
+        the seed loader uses. `ADMIN` in addition, and it logs at `WARN`, because an
+        endpoint that rewrites audit history should never be quiet about it.
+      parameters:
+        - name: minutes
+          in: query
+          required: false
+          schema: { type: integer, default: 60 }
+          description: |
+            How far back to move them. 40 puts a P2 first-response clock (60-minute
+            target) past its 50% rung; 500 puts a resolution clock past all four.
+      responses:
+        '200':
+          description: How much was moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticketId: { type: integer, format: int64 }
+                  movedBackMinutes: { type: integer, format: int64 }
+                  segmentsShifted: { type: integer }
+                  deadlinesShifted: { type: integer }
+                  note: { type: string }
+              example:
+                ticketId: 88213
+                movedBackMinutes: 40
+                segmentsShifted: 2
+                deadlinesShifted: 2
+                note: "The next poll (<=10s) will fire whatever rungs this crossed."
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
+  /sla/at-risk:
+    get:
+      tags: [SLA]
+      operationId: listAtRisk
+      summary: Predicted breaches, ranked by risk
+      description: |
+        Ranked by `riskScore`, which compares the **predicted** resolution time against the
+        **remaining** budget. A ticket with 34 minutes left and a p75 of 180 is at risk even
+        though it has not breached anything yet — which is the point of predicting rather than
+        reporting.
+      parameters:
+        - name: teamId
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: withinBusinessMinutes
+          in: query
+          schema: { type: integer, default: 120 }
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of at-risk tickets.
+          content:
+            application/json:
+              example:
+                data:
+                  - ticketId: 88190
+                    reference: TKT-10405
+                    subject: Cannot log in after password reset
+                    priority: P1
+                    assignee: { id: 1207, fullName: Neha Kulkarni }
+                    clockKind: RESOLUTION
+                    remainingBusinessMinutes: 34
+                    predictedResolutionBusinessMinutes: 180
+                    riskScore: 0.94
+                    reason: Predicted resolution (180 min, p75 for this class) exceeds remaining budget (34 min)
+                    nextDeadlineAt: '2026-09-20T12:06:00Z'
+                pagination: { size: 25, nextCursor: null, hasNext: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # INCIDENTS
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /incidents:
+    get:
+      tags: [Incidents]
+      operationId: listIncidents
+      summary: The incident board — proposed, confirmed and resolved
+      description: |
+        `PROPOSED` incidents are what the correlation gate produced and no human has ruled on
+        yet. They are shown separately because **confirming one is a judgement call the
+        system deliberately does not make on its own**, and because every confirm or reject
+        writes a label into the evaluation set.
+      parameters:
+        - name: status
+          in: query
+          description: Repeatable.
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/IncidentStatus' }
+          style: form
+          explode: true
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of incidents.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/IncidentSummary' }
+              example:
+                data:
+                  - id: 412
+                    reference: INC-204
+                    title: UPI and card payment failures at checkout
+                    status: CONFIRMED
+                    linkedTicketCount: 38
+                    timeToDetectSeconds: 37
+                    detection:
+                      method: CLUSTER
+                      clusterSizeAtDetection: 38
+                      arrivalRateMultiple: 12.6
+                      baselineNote: Baseline 3 tickets for Friday 14:00, 4-week average
+                      gateThresholds: { minClusterSize: 5, minRateMultiple: 3.0, windowMinutes: 30 }
+                      firstTicketAt: '2026-09-20T14:02:11Z'
+                      detectedAt: '2026-09-20T14:02:48Z'
+                      timeToDetectSeconds: 37
+                  - id: 413
+                    reference: INC-205
+                    title: Login failures after password reset
+                    status: PROPOSED
+                    linkedTicketCount: 22
+                    timeToDetectSeconds: 61
+                    detection:
+                      method: CLUSTER
+                      clusterSizeAtDetection: 22
+                      arrivalRateMultiple: 5.4
+                      baselineNote: Baseline 4 tickets for Sunday 16:30, 4-week average
+                      gateThresholds: { minClusterSize: 5, minRateMultiple: 3.0, windowMinutes: 30 }
+                      firstTicketAt: '2026-09-20T16:40:00Z'
+                      detectedAt: '2026-09-20T16:41:01Z'
+                      timeToDetectSeconds: 61
+                pagination: { size: 25, nextCursor: null, hasNext: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /incidents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    get:
+      tags: [Incidents]
+      operationId: getIncident
+      summary: Incident detail, linked tickets, updates and detection evidence
+      description: |
+        **The `detection` object exposes the deterministic gate's evidence.**
+        `arrivalRateMultiple: 12.6` against `minRateMultiple: 3.0` is the record of *why* this
+        was proposed — and it makes clear that a statistical check, not a model, made that
+        call.
+
+        **`titleGeneratedBy` is a separate field precisely to show that the model's
+        contribution was the title and nothing else.** When it is `null`, the title was
+        templated because the LLM was unavailable — and the incident was still detected,
+        because detection never depended on the model.
+
+        `timeToDetectSeconds: 37` is a headline metric and it comes straight out of the
+        schema rather than a stopwatch.
+
+        `detachedTickets` keeps the soft-detached links visible — a ticket that fell out of
+        the storm is still part of the record — separately from the currently-live
+        `linkedTickets`.
+      responses:
+        '200':
+          description: Incident detail.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentDetail' }
+              example:
+                id: 412
+                reference: INC-204
+                title: UPI and card payment failures at checkout
+                summary: Multiple customers report payments debited without order confirmation, starting 14:02 IST.
+                status: CONFIRMED
+                detection:
+                  method: CLUSTER
+                  clusterSizeAtDetection: 38
+                  arrivalRateMultiple: 12.6
+                  baselineNote: Baseline 3 tickets for Friday 14:00, 4-week average
+                  gateThresholds: { minClusterSize: 5, minRateMultiple: 3.0, windowMinutes: 30 }
+                  firstTicketAt: '2026-09-20T14:02:11Z'
+                  detectedAt: '2026-09-20T14:02:48Z'
+                  timeToDetectSeconds: 37
+                titleGeneratedBy: gpt-4.1-mini
+                confirmedBy: { id: 1198, fullName: Sana Qureshi }
+                confirmedAt: '2026-09-20T14:04:02Z'
+                rejectedReason: null
+                linkedTicketCount: 38
+                linkedTickets:
+                  - ticketId: 88301
+                    reference: TKT-10461
+                    subject: card declined at checkout
+                    linkConfidence: 0.91
+                    linkedAt: '2026-09-20T14:02:48Z'
+                    detachedAt: null
+                detachedTickets: []
+                updates:
+                  - id: 77
+                    body: We have identified an issue with our payment gateway and are working with the provider.
+                    visibility: PUBLIC
+                    authorName: Sana Qureshi
+                    publishedAt: '2026-09-20T14:09:00Z'
+                    delivery: { total: 38, sent: 38, pending: 0, failed: 0 }
+                etag: W/"4"
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /incidents/{id}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: confirmIncident
+      summary: PROPOSED → CONFIRMED; also writes an evaluation label
+      description: |
+        **`firstResponseClocksUnaffected` is a deliberate product decision, surfaced in the
+        response.** When a ticket joins an incident the *resolution* clock pauses — resolution
+        now depends on the incident, not the agent. The *first-response* clock keeps running,
+        because **the customer still deserves an acknowledgement even during an outage.**
+        There is no universally correct answer here; the response makes the choice visible
+        rather than hiding it.
+
+        Every confirm and every reject writes an `eval_case` row, which is how the correlation
+        gate acquires ground truth from ordinary use rather than from a labelling session.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmIncidentRequest' }
+            examples:
+              default:
+                summary: Omit the body entirely — clocks pause by default
+                value: {}
+              keepClocksRunning:
+                summary: Confirm without pausing linked tickets' resolution clocks
+                value: { pauseResolutionClocks: false }
+      responses:
+        '200':
+          description: Confirmed, with the effects enumerated.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfirmIncidentResponse' }
+              example:
+                id: 412
+                status: CONFIRMED
+                effects:
+                  ticketsLinked: 38
+                  resolutionClocksPaused: 38
+                  firstResponseClocksUnaffected: 38
+                  evalLabelRecorded: true
+                etag: W/"5"
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — only a PROPOSED incident can be confirmed. Or `VERSION_CONFLICT`, when `If-Match` is stale.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/invalid-incident-state
+                title: Invalid incident state
+                status: 409
+                errorCode: INVALID_INCIDENT_STATE
+                detail: Incident 412 is CONFIRMED and cannot be confirmed again.
+                instance: /api/v1/incidents/412/confirm
+                timestamp: '2026-09-20T14:04:02Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /incidents/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: rejectIncident
+      summary: Reject a proposed incident, with a reason
+      description: |
+        Unlinks every ticket, resumes their resolution clocks, and writes a negative eval
+        label. `reason` is required and free text — it is the record of *why* a human
+        overruled the gate, which is what makes a false-positive rate measurable later.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectIncidentRequest' }
+            example:
+              reason: These are unrelated tickets from a scheduled maintenance window, not a real correlated outage.
+      responses:
+        '200':
+          description: Rejected. No body.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — only a PROPOSED incident can be rejected. Or `VERSION_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /incidents/{id}/tickets:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: linkTicket
+      summary: Manually link a ticket to an incident
+      description: |
+        Also the path by which a `MANUAL` incident acquires its first ticket — there is no
+        "create an empty incident" operation.
+
+        `uq_incident_ticket_live` permits exactly one live link per ticket; a previously
+        detached link does not block a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LinkTicketRequest' }
+            example:
+              ticketId: 88301
+      responses:
+        '201':
+          description: Linked. No body.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND` or `TICKET_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`TICKET_ALREADY_LINKED` — the ticket has a live link to another incident.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /incidents/{id}/tickets/{ticketId}:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+      - name: ticketId
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [88301] }
+    delete:
+      tags: [Incidents]
+      operationId: detachTicket
+      summary: Detach a ticket from an incident
+      description: |
+        A **soft** detach: `detached_at` is set, the row is kept. The link history is part of
+        the audit trail and part of the evaluation set — deleting it would destroy the record
+        of what the correlator actually did.
+      responses:
+        '204':
+          description: Detached. The ticket's resolution clock resumes.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`LINK_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /incidents/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: resolveIncident
+      summary: Resolve the incident and optionally its linked tickets
+      description: |
+        Resumes every paused resolution clock. `resolveLinkedTickets` defaults to `true`,
+        which also moves every still-open linked ticket to `RESOLVED`; ticket resolution
+        failures do not fail the incident resolve — they come back in `skipped`.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveIncidentRequest' }
+            example:
+              resolutionNote: Payment gateway provider rolled back the bad deploy at 14:32 IST. All retries succeeding since.
+              resolveLinkedTickets: true
+      responses:
+        '200':
+          description: Resolved, with any tickets that could not be auto-resolved named in `skipped`.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolveIncidentResponse' }
+              example:
+                id: 412
+                status: RESOLVED
+                resolvedTicketCount: 37
+                skipped: [88322]
+                etag: W/"6"
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — a `REJECTED` or already-`RESOLVED` incident cannot be resolved again. Or `VERSION_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
+  /incidents/{id}/updates:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: publishIncidentUpdate
+      summary: Publish an update; fans out to every linked ticket
+      description: |
+        `202` because the fan-out is **queued**, not complete. The `links.deliveries` link is
+        the status resource.
+
+        **Fan-out is N independent, individually-retryable deliveries, not one broadcast.**
+        Delivery 23 failing means ticket 88322 retries and the other 37 customers are not
+        re-notified. `uq_delivery (incident_update_id, ticket_id)` guarantees that a
+        redelivered outbox event cannot double-message a customer.
+
+        `visibility` defaults to `INTERNAL` — a message is team-facing until someone
+        deliberately marks it `PUBLIC` for fan-out to customers.
+
+        `Idempotency-Key` is **required** here because this sends messages to real people.
+        `force: true` bypasses the `TOO_MANY_LINKED_TICKETS` guard on an incident linked to
+        more than 500 tickets, so an accidental fan-out to thousands of customers is not the
+        default.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublishUpdateRequest' }
+            examples:
+              publicUpdate:
+                summary: Customer-facing status update
+                value:
+                  body: We have identified an issue with our payment gateway and are working with the provider.
+                  visibility: PUBLIC
+              internalNote:
+                summary: Team-only note — visibility omitted, defaults to INTERNAL
+                value:
+                  body: Provider confirmed a bad deploy on their end; rollback in progress.
+      responses:
+        '202':
+          description: Queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublishUpdateResponse' }
+              example:
+                updateId: 77
+                incidentId: 412
+                visibility: PUBLIC
+                fanout: { total: 38, status: QUEUED }
+                links: { deliveries: /api/v1/incidents/412/updates/77/deliveries }
+                publishedAt: '2026-09-20T14:09:00Z'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`TOO_MANY_LINKED_TICKETS` — more than 500 linked tickets and `force` was not set.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/too-many-linked-tickets
+                title: Too many linked tickets
+                status: 422
+                errorCode: TOO_MANY_LINKED_TICKETS
+                detail: Incident 412 has 612 linked tickets. Pass force:true to fan out anyway.
+                instance: /api/v1/incidents/412/updates
+                timestamp: '2026-09-20T14:09:00Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+
+  /incidents/{id}/updates/{updateId}/deliveries:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+      - name: updateId
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [77] }
+    get:
+      tags: [Incidents]
+      operationId: getDeliveries
+      summary: Per-ticket fan-out status
+      description: |
+        **Per-ticket delivery rows are what make the publish endpoint honest.** A summary
+        counter would say "37 of 38" and leave you guessing which one; `failures` names the
+        ticket, the attempt count and the last error.
+      responses:
+        '200':
+          description: Delivery status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryStatusResponse' }
+              example:
+                updateId: 77
+                summary: { total: 38, sent: 37, pending: 0, failed: 1 }
+                failures:
+                  - ticketId: 88322
+                    attempts: 3
+                    lastError: 'notification insert failed: deadlock detected'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND` or `INCIDENT_UPDATE_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # KNOWLEDGE
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /knowledge/documents:
+    post:
+      tags: [Knowledge]
+      operationId: createDocument
+      summary: Create a knowledge document; chunking and embedding are async
+      description: 'TODO: schema. Body `{ title, content, source, tier }`. Returns `202` with an index job reference.'
+      responses:
+        '202':
+          description: Queued for chunking and embedding.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Knowledge]
+      operationId: listDocuments
+      summary: List knowledge documents — offset-paginated
+      description: |
+        **Offset pagination here, deliberately**, against cursor pagination on the queues.
+        This is a small, slow-changing, admin-facing set where a page count is genuinely
+        useful and drift is not a concern. Spring `Pageable` maps straight onto it.
+
+        TODO: schema.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: source
+          in: query
+          schema: { $ref: '#/components/schemas/KnowledgeSource' }
+      responses:
+        '200':
+          description: A page of documents.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OffsetPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /knowledge/documents/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [1204] }
+    get:
+      tags: [Knowledge]
+      operationId: getDocument
+      summary: Document detail with its chunks
+      description: 'TODO: schema.'
+      responses:
+        '200':
+          description: Document detail.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: '`DOCUMENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [Knowledge]
+      operationId: deleteDocument
+      summary: Soft-delete and deindex
+      description: |
+        Soft delete. The chunks are removed from retrieval immediately, but the rows survive
+        so that **drafts already citing them can still resolve their citations** — a citation
+        that dangles is worse than a document that lingers.
+      responses:
+        '204':
+          description: Deleted and deindexed.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /knowledge/reindex:
+    post:
+      tags: [Knowledge]
+      operationId: reindex
+      summary: Re-embed changed documents
+      description: |
+        **`documentsSkipped` with its reason is deliberate.** Reindex cost is proportional to
+        *changed* documents, because `content_sha256` lets the indexer skip the rest.
+        `force: true` exists but reports its estimated cost up front, since a forced full
+        reindex on a large corpus is the single easiest way to burn the monthly AI budget by
+        accident.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: Re-embed even unchanged documents.
+            example: { force: false }
+      responses:
+        '202':
+          description: Reindex queued, with a cost estimate.
+          content:
+            application/json:
+              example:
+                jobId: reindex-2026-09-20T14:40:00Z
+                documentsQueued: 12
+                documentsSkipped: 48
+                skipReason: content_sha256 unchanged
+                estimatedCostMicros: 14200
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /knowledge/search:
+    get:
+      tags: [Knowledge]
+      operationId: searchKnowledge
+      summary: Hybrid lexical + vector retrieval, and the retrieval debugger
+      description: |
+        **The score breakdown under `explain=true` is the point of this endpoint.** In the
+        example below, chunk 33401 ranked **1st lexically but only 3rd by vector**, and 33409
+        was the reverse. Neither retrieval method alone would have surfaced both at the top —
+        which is the argument for hybrid search, visible as data rather than asserted.
+
+        Fusion is **Reciprocal Rank Fusion**, which combines *ranks*, not scores, because
+        `ts_rank_cd` and cosine distance are on incomparable scales and normalising them
+        would be inventing a comparison that does not exist.
+
+        `kbVersion` is in the response because it is part of the retrieval cache key — any KB
+        edit makes previously cached results unreachable automatically, with no explicit
+        eviction.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500, examples: ['upi payment debited no order'] }
+        - name: k
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+        - name: source
+          in: query
+          schema: { $ref: '#/components/schemas/KnowledgeSource' }
+        - name: explain
+          in: query
+          description: Include the per-retriever rank and score breakdown.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Ranked chunks.
+          content:
+            application/json:
+              example:
+                query: upi payment debited no order
+                kbVersion: 41
+                strategy: HYBRID_RRF
+                timings: { lexicalMs: 8, vectorMs: 14, fusionMs: 1, totalMs: 23 }
+                results:
+                  - chunkId: 33401
+                    documentId: 1204
+                    documentTitle: UPI payment failures
+                    source: RUNBOOK
+                    tier: AUTHORITATIVE
+                    text: Payments debited without a corresponding order are reversed by the PSP within 5–7 business days...
+                    charStart: 412
+                    charEnd: 578
+                    scores:
+                      lexicalRank: 1
+                      lexicalScore: 0.412
+                      vectorRank: 3
+                      vectorScore: 0.871
+                      rrfScore: 0.0325
+                      tierBoost: 1.15
+                      finalScore: 0.0374
+                  - chunkId: 33409
+                    documentId: 1290
+                    documentTitle: Manual reversal process
+                    source: ARTICLE
+                    tier: AUTHORITATIVE
+                    scores:
+                      lexicalRank: 7
+                      lexicalScore: 0.201
+                      vectorRank: 1
+                      vectorScore: 0.903
+                      rrfScore: 0.0303
+                      tierBoost: 1.15
+                      finalScore: 0.0348
+                cacheHit: false
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # ATTACHMENTS  (added in Phase 2 Task 2 — see docs/design-trace.md GAP 1)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /attachments:
+    post:
+      tags: [Attachments]
+      operationId: reserveAttachment
+      summary: Reserve an attachment and get a presigned upload URL
+      description: |
+        Step one of a two-step upload. Two security properties, both non-negotiable:
+
+        - **`storageKey` is a generated UUID, never the user's filename.** A filename-derived
+          path invites traversal; a guessable one invites IDOR.
+        - **The declared `mimeType` is not trusted.** `/complete` re-reads the object and
+          verifies the **actual magic bytes**; a `.exe` renamed `.png` is rejected there, not
+          here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReserveAttachmentRequest' }
+            example:
+              filename: upi-receipt.png
+              mimeType: image/png
+              byteSize: 284113
+      responses:
+        '201':
+          description: Reserved. `PUT` the bytes to `uploadUrl`, then call `/complete`.
+          content:
+            application/json:
+              example:
+                id: 9021
+                uploadUrl: https://minio.local/resolveai-attachments/a3f19c2e-7b41-4d0a-9e88-1c2f3d4e5a6b?X-Amz-Expires=300
+                storageKey: a3f19c2e-7b41-4d0a-9e88-1c2f3d4e5a6b
+                expiresInSeconds: 300
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413':
+          description: '`ATTACHMENT_TOO_LARGE` — over 10 MiB.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '415':
+          description: '`UNSUPPORTED_MEDIA_TYPE` — extension is not on the allow-list.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /attachments/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [9021] }
+    post:
+      tags: [Attachments]
+      operationId: completeAttachment
+      summary: Confirm the upload; the server verifies size and magic bytes
+      description: |
+        No body. The server `HEAD`s the object, verifies size and magic bytes, computes
+        `content_sha256` and marks the row usable. **Only then may the id appear in
+        `attachmentIds`** on a ticket or message.
+      responses:
+        '200':
+          description: Verified and usable.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: '`ATTACHMENT_NOT_UPLOADED` — nothing at that storage key.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: '`ATTACHMENT_TOO_LARGE` — actual size exceeds the declared size.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '415':
+          description: '`CONTENT_TYPE_MISMATCH` — magic bytes disagree with the declared type.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /attachments/{id}/url:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [9021] }
+    get:
+      tags: [Attachments]
+      operationId: getAttachmentUrl
+      summary: Short-TTL presigned download URL
+      description: 'TODO: schema. Ownership-checked; a customer may only fetch attachments on their own tickets. 60-second TTL.'
+      responses:
+        '200':
+          description: Presigned URL.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: '`ATTACHMENT_NOT_FOUND` — including when it belongs to someone else.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # NOTIFICATIONS  (added in Phase 2 Task 2 — see docs/design-trace.md GAP 2)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: Own notifications, cursor-paginated
+      description: |
+        **Scoped to `recipient_id = me`, always.** A notification is never visible to another
+        user, including an admin. Served by `idx_notification_unread`.
+
+        This endpoint exists because the design trace found `notification` had a writer — the
+        SLA poller, at every escalation rung — and **no reader at all**, while the UI showed
+        an unread bell in seven places. The escalation ladder dutifully notified nobody.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: size
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/NotificationKind' }
+      responses:
+        '200':
+          description: A page of notifications.
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 8812
+                    kind: SLA_ESCALATION
+                    title: TKT-10405 is at 75% of its resolution SLA
+                    body: 34 business minutes remaining. Assigned to Neha Kulkarni.
+                    linkUrl: /tickets/88190
+                    readAt: null
+                    createdAt: '2026-09-20T11:32:00Z'
+                pagination: { size: 20, nextCursor: 'eyJjIjoiMjAyNi0wOS0yMFQxMTozMjowMFoiLCJpIjo4ODEyfQ', hasNext: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadCount
+      summary: Badge count — cheap, polled every 30 seconds
+      description: |
+        Separate from the list **because the bell polls it and must not pay for row
+        fetches**. Backed by the partial index, so its cost is proportional to **unread** rows
+        rather than total rows.
+      responses:
+        '200':
+          description: The count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unreadCount: { type: integer }
+              example: { unreadCount: 3 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/read:
+    post:
+      tags: [Notifications]
+      operationId: markNotificationsRead
+      summary: Mark listed ids, or all, as read
+      description: '**Idempotent** — re-marking an already-read notification is a no-op, not an error.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkReadRequest' }
+            examples:
+              specific: { summary: Specific ids, value: { ids: [8812, 8813] } }
+              all:      { summary: Everything, value: { all: true } }
+      responses:
+        '204':
+          description: Marked.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # AGENTS  (added in Phase 2 Task 2 — see docs/design-trace.md GAP 3)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /agents/me/availability:
+    put:
+      tags: [Admin]
+      operationId: setOwnAvailability
+      summary: Agent sets their own availability and shift
+      description: |
+        **An agent may set only their own availability — `403` otherwise, even for a
+        `TEAM_LEAD`.**
+
+        Going unavailable does **not** reassign existing tickets; it removes the agent from
+        future `claimLeastLoadedAgent` selection only. Reassignment stays a deliberate human
+        action, because silently moving someone's in-flight work is how a queue loses its
+        audit trail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AvailabilityRequest' }
+            example:
+              isAvailable: true
+              shiftStart: '09:00'
+              shiftEnd: '18:00'
+      responses:
+        '200':
+          description: Updated.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /agents:
+    get:
+      tags: [Admin]
+      operationId: listStaff
+      summary: Support staff and their current load
+      description: |
+        AGENT+ only. Active agents and team leads, with open-ticket count and capacity for
+        those who have an agent profile - the "Assign to…" menu on a ticket and the names of
+        the leads who can confirm a proposed incident. No emails.
+
+        Only entries with a non-null `openCount` can be assigned tickets (assignment needs an
+        agent profile).
+      responses:
+        '200':
+          description: Staff, team leads after agents, each sorted by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StaffMember' }
+              example:
+                - { id: 12, fullName: Arjun Mehta, role: AGENT, teamName: Payments, openCount: 4, maxConcurrent: 8, available: true }
+                - { id: 9, fullName: Priya Nair, role: TEAM_LEAD, teamName: Payments, openCount: null, maxConcurrent: null, available: null }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # ADMIN
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /admin/sla-policies:
+    get:
+      tags: [Admin]
+      operationId: listSlaPolicies
+      summary: Effective-dated SLA policies
+      description: 'TODO: schema. Returns live and superseded rows, so the history of a policy is visible.'
+      responses:
+        '200':
+          description: Policies.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Admin]
+      operationId: updateSlaPolicy
+      summary: Supersede a policy with a new effective-dated row
+      description: |
+        **Creates a new effective-dated row — it never mutates the existing one.**
+
+        The `note` in the response states the behaviour that would otherwise surprise an
+        admin: existing `sla_record` rows snapshot `target_minutes` and `policy_version` at
+        creation, so **tightening an SLA does not retroactively breach tickets already in
+        flight**. That is a correctness property of effective dating, and telling the admin
+        about it prevents a support ticket about your support system.
+
+        Overlap is prevented by `uq_sla_policy_live`, not by a service-layer check.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SlaPolicyRequest' }
+            example:
+              priority: P1
+              planTier: ENTERPRISE
+              firstResponseMinutes: 30
+              resolutionMinutes: 240
+              escalationRungs: [50, 75, 90, 100]
+              effectiveFrom: '2026-10-01T00:00:00Z'
+      responses:
+        '200':
+          description: Superseded, with both rows reported.
+          content:
+            application/json:
+              example:
+                created: { id: 91, versionLabel: v4, effectiveFrom: '2026-10-01T00:00:00Z', effectiveTo: null }
+                superseded: { id: 74, versionLabel: v3, effectiveTo: '2026-10-01T00:00:00Z' }
+                note: Existing SLA records keep policy v3. Only tickets created after the effective date use v4.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`OVERLAPPING_POLICY` — enforced by `uq_sla_policy_live`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`EFFECTIVE_DATE_IN_PAST`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /admin/calendar:
+    get:
+      tags: [Admin]
+      operationId: getCalendar
+      summary: Working hours, timezone and holidays
+      description: |
+        **Holidays are part of this payload, not a separate resource** — business-hours
+        arithmetic needs both together, and splitting them lets a client save one without the
+        other and compute the wrong deadline. (The design trace found `business_holiday` had
+        no specified writer at all; this is where it gained one.)
+
+        TODO: schema.
+      responses:
+        '200':
+          description: Calendar and holidays.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Admin]
+      operationId: updateCalendar
+      summary: Update working hours, timezone and the holiday list
+      description: 'TODO: schema. Body `{ timezone, workingDays, dayStart, dayEnd, holidays[] }`. Does not recompute deadlines on already-running clocks.'
+      responses:
+        '200':
+          description: Updated.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/ai-policy:
+    get:
+      tags: [Admin]
+      operationId: getAiPolicy
+      summary: External-model permission, monthly budget, retention
+      description: |
+        The gate every model call is checked against. Read before **every** call and
+        cached in Redis for five minutes, evicted on update — so switching external
+        models off takes effect immediately rather than within the TTL.
+
+        **A tenant with no policy row is treated as AI-disabled**, never as permissive
+        defaults. A missing row usually means a tenant provisioned by a path that forgot
+        to create one, and the two ways of guessing wrong are not symmetrical: guess
+        "disabled" and somebody files a bug that triage is not running; guess "allowed"
+        and a customer's messages have already gone to a third party they never agreed
+        to. This endpoint creates the row with restrictive defaults rather than 404ing,
+        so an admin always sees the five settings that govern them.
+
+        `currentMonthSpendMicros` is read-only here — it is moved by usage, never by an
+        admin, because an editable spend counter is a way to make the bill say anything.
+      responses:
+        '200':
+          description: The tenant AI policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiPolicyView' }
+              example:
+                tenantId: 3
+                externalModelAllowed: true
+                allowedProviders: [openai]
+                piiRedactionRequired: true
+                monthlyBudgetMicros: 5000000
+                currentMonthSpendMicros: 412873
+                budgetRemainingMicros: 4587127
+                retentionDays: 365
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Admin]
+      operationId: updateAiPolicy
+      summary: Update the tenant AI policy
+      description: |
+        Setting `externalModelAllowed: false` with no local model configured makes every
+        draft request return `503 AI_DISABLED_BY_POLICY`. That is the correct outcome — the
+        policy is a hard gate, not a preference — and the response warns about it rather than
+        silently degrading.
+
+        **A full `PUT`, not a `PATCH`.** Five fields, read together before every model
+        call; a partial update of a safety setting is how one thing gets changed and
+        another silently kept. Sending the whole object means the admin has seen all five.
+
+        **No tenant id in the path**: it comes from the authenticated caller, so an admin
+        can only ever change their own tenant's policy. A `/admin/tenants/{id}/ai-policy`
+        shape would need an authorization check that this one cannot forget.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAiPolicyRequest' }
+            example:
+              externalModelAllowed: true
+              allowedProviders: [openai]
+              piiRedactionRequired: true
+              monthlyBudgetMicros: 5000000
+              retentionDays: 365
+      responses:
+        '200':
+          description: Updated. The cache entry is evicted, so the next call sees this.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiPolicyView' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/ai/usage:
+    get:
+      tags: [Admin]
+      operationId: getAiUsage
+      summary: This month's AI tokens and cost, by feature, prompt version and model
+      description: |
+        Month to date for the caller's tenant, against its monthly budget. Aggregated from
+        what every triage (`ai_analysis`) and every draft (`draft`, entailment calls
+        included) already records — no separate instrumentation. `suppressionRate` is set
+        on drafting rows only. `from` / `to` / `groupBy` from the original design are
+        **not implemented**: month to date is what the budget is measured against.
+      responses:
+        '200':
+          description: Usage and budget, month to date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiUsageResponse' }
+              example:
+                period: { from: '2026-09-01', to: '2026-09-25' }
+                budget: { monthlyMicros: 5000000, spentMicros: 198312, remainingPct: 96.0, status: OK }
+                totals: { calls: 136, tokensIn: 153025, tokensOut: 12462, costMicros: 198312 }
+                breakdown:
+                  - { feature: Triage, promptVersion: 'triage@1', model: gpt-4.1-mini, calls: 116, tokensIn: 128292, tokensOut: 9817, costMicros: 157743, avgLatencyMs: 1512 }
+                  - { feature: Drafting, promptVersion: 'draft@2', model: gpt-4.1, calls: 15, tokensIn: 20888, tokensOut: 2010, costMicros: 32048, avgLatencyMs: 1942, suppressionRate: 0.067 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/eval/runs:
+    get:
+      tags: [Admin]
+      operationId: listEvalRuns
+      summary: Evaluation accuracy across prompt versions
+      description: |
+        **Reporting `claimLevelGroundedness` and `responseLevelGroundedness` side by side is
+        the point.** The gap between them *is* the finding: response-level averaging hides
+        unsupported claims inside otherwise-good answers, which is exactly the failure mode
+        where a metric reads 0.92 while a claim-level audit finds 30% hallucination.
+
+        The `REFUSAL` suite gate requires `refusalRate: 1.0` exactly. A confidently wrong
+        answer is worse than no answer, so 19 of 20 is a failure, not a 95%.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: suite
+          in: query
+          schema: { type: string, enum: [TRIAGE, GROUNDING, REFUSAL, CORRELATION] }
+      responses:
+        '200':
+          description: Evaluation runs.
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 88
+                    suite: GROUNDING
+                    promptVersion: 'draft@4'
+                    model: gpt-4.1-mini
+                    gitSha: a3f19c2
+                    passed: true
+                    metrics:
+                      claimLevelGroundedness: 0.94
+                      responseLevelGroundedness: 0.99
+                      citationPrecision: 0.91
+                      claimsEvaluated: 412
+                    baseline: { claimLevelGroundedness: 0.91 }
+                    delta: { claimLevelGroundedness: '+0.03' }
+                    startedAt: '2026-09-19T22:10:00Z'
+                    finishedAt: '2026-09-19T22:18:41Z'
+                  - id: 87
+                    suite: REFUSAL
+                    promptVersion: 'draft@4'
+                    passed: true
+                    metrics: { refusalRate: 1.0, casesEvaluated: 20 }
+                    note: Gate requires 1.0 — a confidently wrong answer is worse than no answer.
+                pagination: { size: 25, nextCursor: null, hasNext: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      tags: [Admin]
+      operationId: startEvalRun
+      summary: Run the classification suite in the background
+      description: |
+        Runs the 60 labelled classification cases against the active triage prompt, charged
+        to the tenant's AI budget (about ten cents). Returns at once; the run appears in
+        `GET /admin/eval/runs` when it finishes, minutes later. **One run at a time** — a
+        second request while one is in flight is a `409`, so a double-click never pays twice.
+      responses:
+        '202':
+          description: Run started.
+          content:
+            application/json:
+              example: { status: STARTED, detail: 'Running the classification suite. Results appear here in a few minutes.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`CONFLICT` — an evaluation run is already in progress.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /admin/eval/runs/status:
+    get:
+      tags: [Admin]
+      operationId: getEvalRunStatus
+      summary: Whether an evaluation run is in progress
+      responses:
+        '200':
+          description: Run status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [running]
+                properties:
+                  running: { type: boolean }
+              example: { running: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/audit:
+    get:
+      tags: [Admin]
+      operationId: listAudit
+      summary: Filterable audit trail
+      description: 'TODO: schema. Cursor-paginated over `ticket_event`, which is append-only and enforced by a trigger, not by convention.'
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Size'
+        - name: actorId
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: eventType
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Audit events.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      summary: Users and their teams — offset-paginated
+      description: 'TODO: schema.'
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/Role' }
+      responses:
+        '200':
+          description: A page of users.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OffsetPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/teams:
+    get:
+      tags: [Admin]
+      operationId: listTeams
+      summary: Teams with their skills and member counts
+      description: 'TODO: schema. AGENT+ may read; only ADMIN may write.'
+      responses:
+        '200':
+          description: Teams.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Admin]
+      operationId: createTeam
+      summary: Create a team
+      description: 'TODO: schema. Body `{ name, skills[], isDefault }`.'
+      responses:
+        '201':
+          description: Created.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/teams/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [7] }
+    put:
+      tags: [Admin]
+      operationId: updateTeam
+      summary: Update name, skills and default flag
+      description: |
+        `team.skills[]` drives routing, and before Phase 2 it could only be changed by editing
+        the database.
+
+        **At most one team per tenant may be `isDefault`** — enforced by `idx_team_default`
+        plus a service check that clears the previous default in the same transaction. A
+        tenant with **no** default team leaves unroutable tickets unassigned rather than
+        erroring, so clearing the last default is permitted and warned about, not rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTeamRequest' }
+            example:
+              name: Payments
+              skills: [PAYMENT, BILLING]
+              isDefault: false
+      responses:
+        '200':
+          description: Updated. May carry a warning when the last default was cleared.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/agents/{userId}/capacity:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [1204] }
+    put:
+      tags: [Admin]
+      operationId: setAgentCapacity
+      summary: Set an agent's max concurrent ticket count
+      description: 'TODO: schema. Body `{ maxConcurrent }`. Lowering it below the agent''s current `openCount` is allowed — it stops new assignment, it does not take work away.'
+      responses:
+        '200':
+          description: Updated.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/outbox/dead:
+    get:
+      tags: [Admin]
+      operationId: listDeadOutboxEvents
+      summary: The outbox dead-letter queue
+      description: |
+        Events that exhausted their retries. **This is the only endpoint that reads
+        `outbox_event`** — the table is internal mechanics everywhere else.
+
+        A DLQ that nobody can see is a DLQ that silently swallows work, which is the failure
+        mode the transactional outbox exists to prevent in the first place.
+
+        TODO: schema.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Dead events with their last error.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/outbox/{id}/retry:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, examples: [55210] }
+    post:
+      tags: [Admin]
+      operationId: retryOutboxEvent
+      summary: Re-drive a dead event
+      description: |
+        Resets `attempts` and `next_attempt_at`, returning the event to the poller. Safe to
+        call twice: every consumer is idempotent by construction — fan-out by `uq_delivery`,
+        escalation by `uq_escalation_rung` — so a redelivery cannot double-message a customer
+        or double-fire a rung.
+      responses:
+        '202':
+          description: Re-queued.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`EVENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COMPONENTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # DEMO & ANALYTICS (onboarding audit)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /demo:
+    get:
+      tags: [Demo]
+      operationId: getDemoInfo
+      summary: Whether this deployment has a demo, and which roles it offers
+      description: |
+        `enabled` is false while the demo tenant is still being created on first start.
+        `ADMIN` is only offered when `resolveai.demo.allow-admin=true` (off on the public
+        demo: an admin can raise the AI budget).
+      security: []
+      responses:
+        '200':
+          description: Demo availability.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoInfo' }
+              example: { enabled: true, tenantSlug: demo, roles: [AGENT, TEAM_LEAD, CUSTOMER] }
+        '404':
+          description: This deployment has no demo mode.
+
+  /demo/login:
+    post:
+      tags: [Demo]
+      operationId: demoLogin
+      summary: Sign in to the demo tenant as its seeded user for a role — no password
+      description: |
+        Same token pair, refresh family and audit line as `POST /auth/login`, for the demo
+        tenant's first active user with that role. Rate-limited to 20 per 10 minutes per
+        client address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DemoLoginRequest' }
+            example: { role: AGENT }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403':
+          description: '`FORBIDDEN` — the demo does not offer that role.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: '`TENANT_NOT_FOUND` while the demo tenant is being created, or no demo mode.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: '`RATE_LIMITED` — too many demo sign-ins from this address.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /demo/showcase:
+    get:
+      tags: [Demo]
+      operationId: getDemoShowcase
+      summary: One live example of each mechanism, for the first-run tour
+      description: |
+        A ticket whose SLA clock is paused on the customer, a ticket with a shown (cited)
+        draft, and the newest live incident. Each is `null` when none exists yet. AGENT and
+        above, demo tenant only.
+      responses:
+        '200':
+          description: Showcase items.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoShowcase' }
+              example:
+                pausedTicket: { id: 38, reference: TKT-1037, title: UPI payment stuck on processing for an hour }
+                draftTicket: { id: 37, reference: TKT-1036, title: Charged twice for one invoice payment }
+                incident: { id: 18, reference: INC-1001, title: Card payment failures at checkout with error 502 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /demo/storm:
+    get:
+      tags: [Demo]
+      operationId: getDemoStormStatus
+      summary: Whether the outage simulator is running or cooling down
+      responses:
+        '200':
+          description: Simulator status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoStormStatus' }
+              example: { running: false, lastStartedAt: '2026-09-25T13:47:08Z', availableAt: '2026-09-25T13:57:08Z', ticketCount: 38 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Demo]
+      operationId: startDemoStorm
+      summary: Simulate a payment outage — `demo/storm.sh` as an endpoint
+      description: |
+        Posts the 38 tickets of `demo/storm.json` as the demo's customers over ~20 seconds;
+        the ordinary correlation sweep (every minute) then proposes an incident through the
+        real statistical gate. TEAM_LEAD and above, demo tenant only. One run at a time, then
+        a cooldown (`resolveai.demo.storm-cooldown-minutes`, default 10).
+      responses:
+        '202':
+          description: Simulation started.
+          content:
+            application/json:
+              example: { status: STARTED, detail: 'Posting 38 tickets over about 20 seconds. The correlation sweep runs every minute.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`CONFLICT` — a simulation is already running.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: '`RATE_LIMITED` — cooling down; `detail` says when it can run again.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /events:
+    post:
+      tags: [Analytics]
+      operationId: recordProductEvents
+      summary: Record onboarding-funnel events
+      description: |
+        Public, because the top of the funnel is the login page. Up to 25 events per call.
+        Unknown event names are dropped; property values must be numbers, booleans or short
+        strings (cut at 80 characters) — no free text. Tenant, user and role come only from
+        the access token, when there is one. Always `202`, even when events are dropped or
+        the caller is rate-limited: analytics must never break the app.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductEventBatch' }
+            example:
+              events:
+                - { name: demo_login_clicked, path: /login, sessionId: 3f9c2d0e-6b1a-4c5e-9a57-2d8e1f4b7c21, props: { role: AGENT } }
+      responses:
+        '202':
+          description: Accepted (recorded, or silently dropped).
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/analytics/funnel:
+    get:
+      tags: [Analytics]
+      operationId: getOnboardingFunnel
+      summary: The onboarding funnel, last 30 days
+      description: |
+        Distinct sessions reaching each step, demo sign-ins by role, and draft outcomes.
+        Pre-login events have no tenant, so they are counted alongside the caller's own
+        tenant's. ADMIN.
+      responses:
+        '200':
+          description: Funnel.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingFunnel' }
+              example:
+                windowDays: 30
+                sessionsReaching: { auth_page_viewed: 2, login_succeeded: 1, first_page_loaded: 1, ticket_opened: 1, draft_requested: 1, draft_used: 1, incident_viewed: 0, customer_ticket_created: 1 }
+                demoLoginsByRole: [{ role: AGENT, clicks: 1 }]
+                draftResults: [{ status: SHOWN, n: 3 }, { status: SUPPRESSED_LOW_COVERAGE, n: 2 }]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `Authorization: Bearer <accessToken>` from `POST /auth/login` or `/auth/refresh`.
+        Access tokens live 900 seconds.
+
+        **Tokens are never accepted as a query parameter.** They end up in access logs,
+        browser history and `Referer` headers, none of which are under this application's
+        control.
+
+  parameters:
+
+    TicketId:
+      name: id
+      in: path
+      required: true
+      description: Ticket id. Not the `TKT-…` reference, which is the tenant-facing label.
+      schema: { type: integer, format: int64, examples: [88213] }
+
+    IncidentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, examples: [412] }
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        Opaque cursor from the previous page's `pagination.nextCursor`. Base64 of
+        `{"c":"<created_at>","i":<id>}`. Omit for the first page.
+      schema: { type: string, examples: ['eyJjIjoiMjAyNi0wOS0yMFQwOToyMjowNVoiLCJpIjo4ODIxM30'] }
+
+    Size:
+      name: size
+      in: query
+      required: false
+      description: Page size. Clamped server-side rather than rejected.
+      schema: { type: integer, default: 25, minimum: 1, maximum: 100 }
+
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Zero-based page index. Offset pagination, used only on slow-moving admin lists.
+      schema: { type: integer, default: 0, minimum: 0 }
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Client-generated key, 16–128 characters of `[A-Za-z0-9_-]` — the character class is
+        constrained because the value becomes a Redis key.
+
+        Same key + same body replays the original response verbatim. Same key + different body
+        is `422`, never a silent replay of the wrong response.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{16,128}$', examples: ['f47ac10b-58cc-4372-a567-0e02b2c3d479'] }
+
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        The `ETag` from the last read of this resource. Required on every ticket and incident
+        mutation; a stale value is `409 VERSION_CONFLICT`.
+      schema: { type: string, examples: ['W/"7"'] }
+
+  headers:
+    ETag:
+      description: Weak ETag carrying the entity `version`. Send it back as `If-Match`.
+      schema: { type: string, examples: ['W/"7"'] }
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, examples: [30] }
+
+  responses:
+
+    Unauthorized:
+      description: '`UNAUTHORIZED` — missing, malformed or expired access token.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    Forbidden:
+      description: |
+        `FORBIDDEN` — authenticated, the resource is in your scope, but **this action** is not
+        permitted. Never used for a resource you cannot see; that is `404`.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    TicketNotFound:
+      description: |
+        `TICKET_NOT_FOUND`. Also returned when the ticket belongs to another tenant, or to
+        another customer — **`404`, never `403`.** A `403` would confirm the ticket exists,
+        turning every id into a probe.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    VersionConflict:
+      description: '`VERSION_CONFLICT` — the `If-Match` ETag is stale. Reload and retry.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://resolveai.dev/errors/version-conflict
+            title: Version conflict
+            status: 409
+            errorCode: VERSION_CONFLICT
+            detail: Ticket 88213 was modified by another user. Reload and retry.
+            instance: /api/v1/tickets/88213/assign
+            timestamp: '2026-09-20T11:42:07Z'
+            traceId: 0af7651916cd43dd8448eb211c80319c
+
+    PreconditionRequired:
+      description: '`PRECONDITION_REQUIRED` — `If-Match` was absent or unparseable on a mutation that requires it.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://resolveai.dev/errors/precondition-required
+            title: Precondition required
+            status: 428
+            errorCode: PRECONDITION_REQUIRED
+            detail: This request must be conditional. Send the current ETag as If-Match.
+            instance: /api/v1/incidents/412/confirm
+            timestamp: '2026-09-20T14:04:02Z'
+            traceId: 0af7651916cd43dd8448eb211c80319c
+
+    ValidationError:
+      description: '`VALIDATION_ERROR` — one entry in `errors` per rejected field.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+          example:
+            type: https://resolveai.dev/errors/validation
+            title: Validation failed
+            status: 400
+            errorCode: VALIDATION_ERROR
+            instance: /api/v1/tickets
+            timestamp: '2026-09-20T09:22:05Z'
+            traceId: 0af7651916cd43dd8448eb211c80319c
+            errors:
+              - { field: subject, code: NotBlank, message: Subject is required }
+              - { field: body, code: Size, message: Body must be 1–20000 characters, rejectedValue: '<27431 chars>' }
+
+    RateLimited:
+      description: '`RATE_LIMITED`. `Retry-After` says when. Retrying is correct here, unlike after a `402`.'
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    AiPolicyView:
+      type: object
+      description: |
+        A tenant's AI settings. Everything here is read before a model call; nothing here
+        is advisory.
+      properties:
+        tenantId:                { type: integer, format: int64 }
+        externalModelAllowed:    { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+          description: |
+            An allow-list. **Empty means "any configured provider"**, which is different
+            from "none" — that is what `externalModelAllowed: false` is for.
+        piiRedactionRequired:    { type: boolean }
+        monthlyBudgetMicros:     { type: integer, format: int64 }
+        currentMonthSpendMicros:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Moved by usage only. Micros, never a decimal — money in a double
+            accumulates rounding error across a month of per-call increments.
+        budgetRemainingMicros:
+          type: integer
+          format: int64
+          readOnly: true
+          description: |
+            Can go slightly negative. Two concurrent calls can both pass the pre-call
+            budget check and jointly overshoot by up to one call's cost — a deliberate,
+            bounded race, accepted because closing it means serialising every model call
+            behind a lock. The recorded *total* is exact regardless: spend is an atomic
+            SQL increment, not a read-modify-write.
+        retentionDays:           { type: integer }
+
+    UpdateAiPolicyRequest:
+      type: object
+      required: [externalModelAllowed, piiRedactionRequired, monthlyBudgetMicros, retentionDays]
+      properties:
+        externalModelAllowed:  { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+        piiRedactionRequired:  { type: boolean }
+        monthlyBudgetMicros:   { type: integer, format: int64, minimum: 0 }
+        retentionDays:         { type: integer, minimum: 1 }
+
+
+    # ── errors ────────────────────────────────────────────────────────────────
+
+    DemoInfo:
+      type: object
+      required: [enabled, tenantSlug, roles]
+      properties:
+        enabled: { type: boolean }
+        tenantSlug: { type: string }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+
+    DemoLoginRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+
+    DemoShowcaseItem:
+      type: [object, 'null']
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string }
+        title: { type: string }
+
+    DemoShowcase:
+      type: object
+      properties:
+        pausedTicket: { $ref: '#/components/schemas/DemoShowcaseItem' }
+        draftTicket: { $ref: '#/components/schemas/DemoShowcaseItem' }
+        incident: { $ref: '#/components/schemas/DemoShowcaseItem' }
+
+    DemoStormStatus:
+      type: object
+      properties:
+        running: { type: boolean }
+        lastStartedAt: { type: [string, 'null'], format: date-time }
+        availableAt: { type: [string, 'null'], format: date-time }
+        ticketCount: { type: integer }
+
+    ProductEvent:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          enum: [auth_page_viewed, demo_login_clicked, auth_failed, login_succeeded,
+                 register_submitted, register_failed, first_page_loaded, ticket_opened,
+                 draft_requested, draft_result, draft_used, reply_sent_from_draft,
+                 incident_viewed, storm_started, customer_ticket_created,
+                 tour_item_completed, tour_dismissed, eval_run_started]
+        path: { type: string, maxLength: 200 }
+        sessionId: { type: string, maxLength: 64 }
+        props:
+          type: object
+          description: At most 12 keys; values are numbers, booleans or strings of up to 80 characters.
+          additionalProperties:
+            type: [string, number, boolean]
+
+    ProductEventBatch:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          maxItems: 25
+          items: { $ref: '#/components/schemas/ProductEvent' }
+
+    OnboardingFunnel:
+      type: object
+      properties:
+        windowDays: { type: integer }
+        sessionsReaching:
+          type: object
+          additionalProperties: { type: integer }
+        demoLoginsByRole:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string }
+              clicks: { type: integer }
+        draftResults:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { type: string }
+              n: { type: integer }
+
+    AiUsageResponse:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        budget:
+          type: [object, 'null']
+          properties:
+            monthlyMicros: { type: integer, format: int64 }
+            spentMicros: { type: integer, format: int64 }
+            remainingPct: { type: number }
+            status: { type: string, enum: [OK, LOW, EXHAUSTED] }
+        totals:
+          type: object
+          properties:
+            calls: { type: integer, format: int64 }
+            tokensIn: { type: integer, format: int64 }
+            tokensOut: { type: integer, format: int64 }
+            costMicros: { type: integer, format: int64 }
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              feature: { type: string, enum: [Triage, Drafting] }
+              promptVersion: { type: string }
+              model: { type: string }
+              calls: { type: integer, format: int64 }
+              tokensIn: { type: integer, format: int64 }
+              tokensOut: { type: integer, format: int64 }
+              costMicros: { type: integer, format: int64 }
+              avgLatencyMs: { type: integer, format: int64 }
+              suppressionRate: { type: [number, 'null'] }
+
+    ResponseTarget:
+      type: [object, 'null']
+      description: |
+        The customer's first-response promise — only the promise: no segments, escalation
+        rungs or breach prediction. `null` until triage has decided the priority.
+      properties:
+        state: { $ref: '#/components/schemas/SlaState' }
+        targetBusinessMinutes: { type: integer }
+        timezone: { type: string }
+        workingDays: { type: array, items: { type: integer, minimum: 1, maximum: 7 } }
+        dayStart: { type: string, examples: ['09:00'] }
+        dayEnd: { type: string, examples: ['18:00'] }
+
+    TicketCustomerDetail:
+      allOf:
+        - $ref: '#/components/schemas/TicketBase'
+        - type: object
+          description: |
+            What a `CUSTOMER` receives for their own ticket: PUBLIC messages only, and the
+            first-response promise instead of the internal SLA detail.
+          properties:
+            body: { type: string }
+            reopenCount: { type: integer }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/MessageResponse' }
+            responseTarget: { $ref: '#/components/schemas/ResponseTarget' }
+            etag: { type: string }
+
+    Problem:
+      type: object
+      description: |
+        RFC 7807. **`errorCode` is the machine-readable contract** — clients switch on it,
+        never on `detail`, which is human prose and may change without a version bump.
+
+        **`traceId` is the OpenTelemetry trace id**, so a user reporting an error hands you a
+        string that finds the exact request across the async worker boundary.
+      required: [type, title, status, errorCode, instance, timestamp]
+      properties:
+        type: { type: string, format: uri, examples: ['https://resolveai.dev/errors/version-conflict'] }
+        title: { type: string, examples: ['Version conflict'] }
+        status: { type: integer, examples: [409] }
+        errorCode: { type: string, examples: [VERSION_CONFLICT] }
+        detail: { type: string, description: Human prose. Never parsed by a client. }
+        instance: { type: string, examples: ['/api/v1/tickets/88213/assign'] }
+        timestamp: { type: string, format: date-time }
+        traceId: { type: string, examples: ['0af7651916cd43dd8448eb211c80319c'] }
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  code: { type: string, description: The Bean Validation annotation that failed. }
+                  message: { type: string }
+                  rejectedValue:
+                    type: string
+                    description: |
+                      **Truncated and redacted.** Never echo a 27 KB body, or anything that
+                      might contain PII, back into an error response or a log.
+
+    IllegalTransitionProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            allowedTransitions:
+              type: array
+              description: The permitted targets from the current state, so a client can recover without hard-coding the state machine.
+              items: { $ref: '#/components/schemas/TicketStatus' }
+
+    # ── pagination ────────────────────────────────────────────────────────────
+
+    CursorPage:
+      type: object
+      description: |
+        Cursor pagination, used on live queues. **No `totalElements`** — counting a filtered
+        set on every page is expensive and nobody uses the number.
+      properties:
+        data: { type: array, items: {} }
+        pagination:
+          type: object
+          required: [size, hasNext]
+          properties:
+            size: { type: integer, examples: [25] }
+            nextCursor:
+              type: [string, 'null']
+              description: Pass back as `cursor`. `null` on the last page.
+            hasNext: { type: boolean }
+
+    OffsetPage:
+      type: object
+      description: |
+        Offset pagination, used only on small, slow-changing, admin-facing sets where a page
+        count is genuinely useful and drift is not a concern.
+      properties:
+        data: { type: array, items: {} }
+        pagination:
+          type: object
+          properties:
+            page: { type: integer, examples: [1] }
+            size: { type: integer, examples: [20] }
+            totalElements: { type: integer, examples: [143] }
+            totalPages: { type: integer, examples: [8] }
+            hasNext: { type: boolean }
+            hasPrevious: { type: boolean }
+
+    # ── enums ─────────────────────────────────────────────────────────────────
+
+    Role:
+      type: string
+      enum: [CUSTOMER, AGENT, TEAM_LEAD, ADMIN]
+
+    Priority:
+      type: string
+      description: '`UNTRIAGED` until the triage worker and the priority policy have run.'
+      enum: [UNTRIAGED, P1, P2, P3, P4]
+
+    TicketStatus:
+      type: string
+      enum: [OPEN, TRIAGED, ASSIGNED, IN_PROGRESS, WAITING_ON_CUSTOMER, PENDING_THIRD_PARTY, RESOLVED, CLOSED]
+
+    Category:
+      type: string
+      enum: [PAYMENT, BILLING, AUTH, API, DATA, PERFORMANCE, INTEGRATION, OTHER]
+
+    PlanTier:
+      type: string
+      enum: [FREE, PRO, ENTERPRISE]
+
+    Visibility:
+      type: string
+      enum: [PUBLIC, INTERNAL]
+
+    SlaKind:
+      type: string
+      enum: [FIRST_RESPONSE, RESOLUTION]
+
+    SlaState:
+      type: string
+      enum: [RUNNING, PAUSED, MET, BREACHED, CANCELLED]
+
+    PauseReason:
+      type: string
+      enum: [WAITING_ON_CUSTOMER, PENDING_THIRD_PARTY, INCIDENT_LINKED, OUT_OF_HOURS]
+
+    IncidentStatus:
+      type: string
+      description: '`MITIGATED` sits between `CONFIRMED` and `RESOLVED`: a manual annotation that the cause is understood and traffic is recovering, before every linked ticket is individually closed.'
+      enum: [PROPOSED, CONFIRMED, REJECTED, MITIGATED, RESOLVED]
+
+    AnalysisStatus:
+      type: string
+      description: '`UNAVAILABLE` is a legitimate terminal state and is returned with `200`, not an error status.'
+      enum: [PENDING, PROCESSING, READY, UNAVAILABLE]
+
+    DraftStatus:
+      type: string
+      enum: [PENDING, SHOWN, SUPPRESSED_LOW_COVERAGE, FAILED]
+
+    ClaimVerdict:
+      type: string
+      description: |
+        `FAILED_NUMERIC_CHECK` is produced by the **numeric pre-filter**, before any
+        entailment call — it costs zero tokens and catches the most common and most damaging
+        hallucination, an invented amount or date.
+      enum: [SUPPORTED, NOT_SUPPORTED, FAILED_NUMERIC_CHECK, CONTRADICTED]
+
+    KnowledgeSource:
+      type: string
+      enum: [RUNBOOK, ARTICLE, FAQ, RESOLVED_TICKET]
+
+    NotificationKind:
+      type: string
+      enum: [SLA_ESCALATION, SLA_BREACH, ASSIGNED, INCIDENT_UPDATE, MENTION]
+
+    # ── shared value objects ──────────────────────────────────────────────────
+
+    UserRef:
+      type: object
+      properties:
+        id: { type: integer, format: int64, examples: [1204] }
+        fullName: { type: string, examples: ['Arjun Mehta'] }
+
+    TeamRef:
+      type: object
+      properties:
+        id: { type: integer, format: int64, examples: [7] }
+        name: { type: string, examples: [Payments] }
+
+    # ── auth ──────────────────────────────────────────────────────────────────
+
+    RegisterRequest:
+      type: object
+      required: [tenantSlug, email, password, fullName]
+      properties:
+        tenantSlug: { type: string, minLength: 2, maxLength: 60, examples: [acme] }
+        email: { type: string, format: email, maxLength: 255, description: Normalised to lowercase. Unique per tenant among non-deleted users. }
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+          description: |
+            Minimum **10** characters — not 8; this is 2026. At least one letter and one
+            digit, checked against a top-1000 common-password list. The 128 cap is for sanity;
+            BCrypt truncates at 72 bytes regardless.
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+
+    LoginRequest:
+      type: object
+      required: [tenantSlug, email, password]
+      properties:
+        tenantSlug: { type: string, examples: [acme] }
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken: { type: string, description: JWT. Lives 900 seconds. }
+        refreshToken: { type: string, description: Rotated on every use. The presented one is consumed. }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, examples: [900] }
+        user: { $ref: '#/components/schemas/UserResponse' }
+
+    UserResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        teamId: { type: [integer, 'null'], format: int64 }
+        tenantId: { type: integer, format: int64 }
+        tenantSlug: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    CurrentUserResponse:
+      allOf:
+        - $ref: '#/components/schemas/UserResponse'
+        - type: object
+          properties:
+            teamName: { type: [string, 'null'] }
+            planTier: { $ref: '#/components/schemas/PlanTier' }
+            permissions:
+              type: array
+              items: { type: string }
+              description: |
+                **For hiding buttons, never for enforcing anything.** The server remains the
+                only authority; this array exists so the frontend does not re-derive
+                authorization from the role string and drift out of sync with it.
+            agentProfile:
+              type: [object, 'null']
+              properties:
+                maxConcurrent: { type: integer }
+                openCount: { type: integer }
+                isAvailable: { type: boolean }
+
+    # ── tickets ───────────────────────────────────────────────────────────────
+
+    CreateTicketRequest:
+      type: object
+      required: [subject, body]
+      properties:
+        subject: { type: string, minLength: 1, maxLength: 200, description: Trimmed; whitespace-only is rejected. }
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: |
+            **The upper bound is a security control**, not tidiness. Every ticket triggers an
+            LLM call, so an uncapped body is a token-cost denial of service.
+        attachmentIds:
+          type: array
+          maxItems: 5
+          items: { type: integer, format: int64 }
+          description: Each must exist, be owned by the caller, be `/complete`d, and be unattached.
+        onBehalfOf:
+          type: integer
+          format: int64
+          description: AGENT+ only. A CUSTOMER sending this gets `403`.
+
+    TicketCreatedResponse:
+      type: object
+      description: |
+        `priority`, `category`, `assignee` and `team` are null **and will change without any
+        further client action** — which is what `202` communicates and `201` would not.
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string, examples: [TKT-10428] }
+        subject: { type: string }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        priority: { $ref: '#/components/schemas/Priority' }
+        category: { type: [string, 'null'] }
+        analysisStatus: { $ref: '#/components/schemas/AnalysisStatus' }
+        requester: { $ref: '#/components/schemas/UserRef' }
+        assignee: { type: [object, 'null'] }
+        team: { type: [object, 'null'] }
+        createdAt: { type: string, format: date-time }
+        links:
+          type: object
+          properties:
+            self: { type: string }
+            analysis: { type: string }
+
+    SlaSummary:
+      type: object
+      description: The compact form carried on list rows. The full segment history is on `GET /tickets/{id}/sla`.
+      properties:
+        state: { $ref: '#/components/schemas/SlaState' }
+        remainingBusinessMinutes: { type: [integer, 'null'] }
+        atRisk: { type: boolean }
+
+    TicketBase:
+      type: object
+      description: |
+        The fields common to the list row and the detail view. Factored out because the two
+        differ on exactly one field — `sla` is the compact summary on a list row and the full
+        clock with its segment history on detail — and composing them with `allOf` over a
+        shared base keeps that difference explicit instead of overriding a parent.
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string }
+        subject: { type: string }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        priority: { $ref: '#/components/schemas/Priority' }
+        category: { type: [string, 'null'] }
+        requester: { $ref: '#/components/schemas/UserRef' }
+        assignee: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }] }
+        team: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/TeamRef' }] }
+        incidentRef: { type: [string, 'null'], examples: [INC-204] }
+        messageCount:
+          type: integer
+          description: For a CUSTOMER caller, PUBLIC messages only - the count never reveals that internal notes exist.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    StaffMember:
+      type: object
+      required: [id, fullName, role]
+      properties:
+        id: { type: integer, format: int64 }
+        fullName: { type: string }
+        role: { type: string, enum: [AGENT, TEAM_LEAD] }
+        teamName: { type: [string, 'null'] }
+        openCount: { type: [integer, 'null'], description: 'null when the user has no agent profile' }
+        maxConcurrent: { type: [integer, 'null'] }
+        available: { type: [boolean, 'null'] }
+
+    TicketSummary:
+      allOf:
+        - $ref: '#/components/schemas/TicketBase'
+        - type: object
+          properties:
+            lastPublicReply:
+              type: [object, 'null']
+              description: |
+                The newest customer-visible message, so a list can say "Support replied 2h
+                ago" instead of a bare count. `null` until the thread has a public reply
+                (the opening description is on the ticket, not a message).
+              properties:
+                at: { type: string, format: date-time }
+                fromSupport: { type: boolean, description: 'true when an agent, lead or admin wrote it' }
+            sla:
+              type: object
+              description: Compact form. The full segment history is on `GET /tickets/{id}/sla`.
+              properties:
+                firstResponse: { $ref: '#/components/schemas/SlaSummary' }
+                resolution: { $ref: '#/components/schemas/SlaSummary' }
+
+    TicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/TicketBase'
+        - type: object
+          description: |
+            **A `CUSTOMER` receives a different type entirely** (`TicketCustomerResponse`),
+            without `priorityRationale`, `analysisStatus`, `latestDraftId`, INTERNAL messages
+            or the internal SLA detail. Role-based visibility is a separate DTO, not
+            conditional null-setting — which makes a leak a compile error rather than a
+            forgotten branch.
+          properties:
+            body: { type: string }
+            sla:
+              type: object
+              description: The full clock shape, against the compact `SlaSummary` on list rows.
+              properties:
+                firstResponse: { $ref: '#/components/schemas/SlaClock' }
+                resolution: { $ref: '#/components/schemas/SlaClock' }
+            priorityRationale:
+              type: object
+              properties:
+                policyVersion: { type: string }
+                computed: { $ref: '#/components/schemas/Priority' }
+                because: { type: array, items: { type: string } }
+            reopenCount: { type: integer }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/MessageResponse' }
+            incident: { type: [object, 'null'] }
+            analysisStatus: { $ref: '#/components/schemas/AnalysisStatus' }
+            latestDraftId: { type: [integer, 'null'], format: int64 }
+            _etag: { type: string, examples: ['W/"7"'] }
+
+    AddMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 20000 }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        attachmentIds: { type: array, maxItems: 5, items: { type: integer, format: int64 } }
+        fromDraftId:
+          type: integer
+          format: int64
+          description: |
+            Links this message to the AI draft it came from. Must belong to this ticket and be
+            `SHOWN`. This is what makes draft acceptance measurable rather than anecdotal.
+
+    MessageResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        ticketId: { type: integer, format: int64 }
+        authorId: { type: integer, format: int64 }
+        authorName: { type: string }
+        authorRole: { $ref: '#/components/schemas/Role' }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        body: { type: string }
+        isFirstResponse: { type: boolean }
+        fromDraftId: { type: [integer, 'null'], format: int64 }
+        attachments: { type: array, items: { type: object } }
+        slaEffect:
+          type: [object, 'null']
+          description: |
+            Present when this message moved a clock. **Written in the same transaction as the
+            message**, which is what closes the race against the SLA poller: an agent replying
+            at the instant a breach would fire cannot produce both a first response and a
+            breach.
+          properties:
+            firstResponse: { $ref: '#/components/schemas/SlaState' }
+            metAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    AssignRequest:
+      type: object
+      properties:
+        assigneeId:
+          type: integer
+          format: int64
+          description: Omit to self-assign.
+        force:
+          type: boolean
+          default: false
+          description: TEAM_LEAD+ only. Reassign a ticket that already has an assignee.
+
+    ChangeStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        reason:
+          type: string
+          description: Required for `WAITING_ON_CUSTOMER` and `PENDING_THIRD_PARTY` — the two transitions that pause a customer's SLA clock, and therefore the two that need a justification on the record.
+
+    StatusChangeResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        slaEffect: { type: object }
+        _etag: { type: string }
+
+    # ── AI ────────────────────────────────────────────────────────────────────
+
+    TriageSignals:
+      type: object
+      description: |
+        **Observations, not decisions.** There is deliberately no `priority` field here: the
+        model reports what it sees and a versioned rule set decides what that means. That
+        split is what makes a wrong priority attributable to either the model or the policy.
+      properties:
+        category: { $ref: '#/components/schemas/Category' }
+        reportedImpact: { type: string, enum: [SINGLE_USER, MULTIPLE_USERS, ALL_USERS, UNKNOWN] }
+        serviceDownClaimed: { type: boolean }
+        dataLossClaimed: { type: boolean }
+        paymentAffected: { type: boolean }
+        linguisticUrgency: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        extractedEntities:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Values may be **PII placeholders** such as `«ORDER_1»` — the real value was
+            redacted before the text left for the model, so the model never saw it.
+            Rehydration happens only when rendering for an authorised human.
+
+    AnalysisResponse:
+      type: object
+      properties:
+        ticketId: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/AnalysisStatus' }
+        enqueuedAt: { type: string, format: date-time }
+        retryAfterSeconds: { type: integer }
+        signals: { $ref: '#/components/schemas/TriageSignals' }
+        modelConfidence: { type: number, minimum: 0, maximum: 1 }
+        promptVersion: { type: string, examples: ['triage@7'] }
+        modelId: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        costMicros: { type: integer, description: 'Cost in millionths of a rupee. Integers, never floats, for money.' }
+        latencyMs: { type: integer }
+        completedAt: { type: string, format: date-time }
+        reason: { type: string, description: Present when `UNAVAILABLE`. }
+        attempts: { type: integer }
+        lastError: { type: string }
+        manualTriageRequired: { type: boolean }
+
+    PriorityRationale:
+      type: object
+      properties:
+        ticketId: { type: integer, format: int64 }
+        computedPriority: { $ref: '#/components/schemas/Priority' }
+        policyVersion: { type: string }
+        decidedAt: { type: string, format: date-time }
+        inputs:
+          type: object
+          description: '**`fromModel` and `fromSystem` are separate objects on purpose** — that separation is the whole diagnostic value of this endpoint.'
+          properties:
+            fromModel:
+              allOf:
+                - $ref: '#/components/schemas/TriageSignals'
+                - type: object
+                  properties:
+                    confidence:
+                      type: number
+                      description: |
+                        The model's self-reported confidence. Carried here beside the signals
+                        it produced, and deliberately **not** part of `TriageSignals` itself —
+                        it is a property of the call, not an observation about the ticket.
+            fromSystem:
+              type: object
+              properties:
+                planTier: { $ref: '#/components/schemas/PlanTier' }
+                linkedIncident: { type: [string, 'null'] }
+                reopenCount: { type: integer }
+                contractualOverride: { type: [string, 'null'] }
+        rules:
+          type: array
+          description: Every rule the policy evaluated, **including the ones that did not match** — a rule that silently did not fire is indistinguishable from a rule that does not exist.
+          items:
+            type: object
+            properties:
+              rule: { type: string }
+              matched: { type: boolean }
+              effect: { type: string }
+              note: { type: string }
+        humanReadable: { type: string }
+        overridable: { type: boolean }
+
+    RequestDraftRequest:
+      type: object
+      properties:
+        instruction: { type: string, maxLength: 500 }
+
+    DraftQueuedResponse:
+      type: object
+      properties:
+        draftId: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/DraftStatus' }
+        links: { type: object, properties: { self: { type: string } } }
+        estimatedSeconds: { type: integer }
+
+    Citation:
+      type: object
+      description: '`charStart`/`charEnd` locate the claim inside the chunk, so the UI can highlight the exact span rather than the whole document.'
+      properties:
+        chunkId: { type: integer, format: int64 }
+        documentId: { type: integer, format: int64 }
+        documentTitle: { type: string }
+        source: { $ref: '#/components/schemas/KnowledgeSource' }
+        charStart: { type: integer }
+        charEnd: { type: integer }
+        snippet: { type: string }
+
+    DraftClaim:
+      type: object
+      description: |
+        **Rejected claims are returned, not hidden.** The agent can see that the model tried
+        to invent a refund amount and why it was dropped. Hiding rejections would make the
+        verification mechanism invisible, and an invisible safety mechanism is an untrusted
+        one.
+      properties:
+        ordinal: { type: integer }
+        text: { type: string }
+        verdict: { $ref: '#/components/schemas/ClaimVerdict' }
+        kept: { type: boolean, description: Whether this claim survived into `assembledText`. }
+        rejectionReason: { type: string }
+        citations: { type: array, items: { $ref: '#/components/schemas/Citation' } }
+
+    DraftResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        ticketId: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/DraftStatus' }
+        coverage: { type: number, minimum: 0, maximum: 1, description: Supported claims ÷ total claims. Below 0.80 the draft is suppressed. }
+        claims: { type: array, items: { $ref: '#/components/schemas/DraftClaim' } }
+        assembledText:
+          type: [string, 'null']
+          description: '**`null` when suppressed — not a hedged draft.** A confidently wrong answer is worse than no answer.'
+        suppressionReason: { type: string }
+        recommendation: { type: string, examples: [ESCALATE_TO_HUMAN] }
+        unresolvedAspects:
+          type: array
+          items: { type: string }
+          description: What the knowledge base did **not** answer. The agent's real question is not "what does the KB say" but "what will I have to figure out myself?"
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId: { type: integer, format: int64 }
+              title: { type: string }
+              source: { $ref: '#/components/schemas/KnowledgeSource' }
+              tier: { type: string, enum: [AUTHORITATIVE, SUPPORTING], description: A runbook and "someone did this once" should not be weighed the same. }
+        promptVersion: { type: string }
+        modelId: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        costMicros: { type: integer }
+        latencyMs: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    # ── SLA ───────────────────────────────────────────────────────────────────
+
+    SlaSegment:
+      type: object
+      description: |
+        **Append-only.** A pause closes the open segment and inserts a new one; nothing is
+        ever updated in place, so there is no counter to drift and the history is the
+        calculation rather than a log of it.
+      properties:
+        state: { $ref: '#/components/schemas/SlaState' }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+        businessMinutes: { type: integer }
+        pauseReason:
+          oneOf:
+            - { type: 'null' }
+            - $ref: '#/components/schemas/PauseReason'
+
+    SlaClock:
+      type: object
+      properties:
+        kind: { $ref: '#/components/schemas/SlaKind' }
+        state: { $ref: '#/components/schemas/SlaState' }
+        policyVersion: { type: string, description: 'Snapshotted at creation, so tightening a policy does not retroactively breach in-flight tickets.' }
+        targetBusinessMinutes: { type: integer }
+        elapsedBusinessMinutes: { type: integer, description: A `SUM()` over RUNNING segments. Not a stored column. }
+        remainingBusinessMinutes: { type: integer }
+        metAt: { type: [string, 'null'], format: date-time }
+        nextDeadlineAt:
+          type: [string, 'null']
+          format: date-time
+          description: '**`null` while paused**, which is exactly why the poller — `WHERE state = ''RUNNING'' AND next_deadline_at <= NOW()` — skips it. The poller is O(due), not O(open).'
+        nextRung: { type: [integer, 'null'], description: 'The next escalation percentage: 50, 75, 90 or 100.' }
+        escalationsFired: { type: array, items: { type: integer } }
+        atRisk: { type: boolean }
+        segments: { type: array, items: { $ref: '#/components/schemas/SlaSegment' } }
+        prediction:
+          type: object
+          description: '**Not an LLM output** — a p75 window function over 90 days of history. Faster, cheaper, more accurate and explainable than asking a model.'
+          properties:
+            predictedResolutionBusinessMinutes: { type: integer }
+            basis: { type: string, description: 'Names the statistic and the sample size, so the number is inspectable rather than magical.' }
+            atRisk: { type: boolean }
+
+    SlaResponse:
+      type: object
+      properties:
+        ticketId: { type: integer, format: int64 }
+        calendar:
+          type: object
+          properties:
+            timezone: { type: string, examples: [Asia/Kolkata] }
+            workingDays: { type: array, items: { type: integer }, description: 'ISO-8601 day numbers: Monday is 1.' }
+            dayStart: { type: string, examples: ['09:00'] }
+            dayEnd: { type: string, examples: ['18:00'] }
+        clocks: { type: array, items: { $ref: '#/components/schemas/SlaClock' } }
+
+    # ── incidents ─────────────────────────────────────────────────────────────
+
+    DetectionView:
+      type: object
+      description: |
+        **The deterministic gate's evidence.** `arrivalRateMultiple` against
+        `gateThresholds.minRateMultiple` is the record of why this was proposed, and it makes
+        clear that a statistical check — not a model — made that call.
+      properties:
+        method: { type: string, enum: [CLUSTER, MANUAL] }
+        clusterSizeAtDetection: { type: integer }
+        arrivalRateMultiple: { type: number }
+        baselineNote: { type: string }
+        gateThresholds:
+          type: object
+          properties:
+            minClusterSize: { type: integer }
+            minRateMultiple: { type: number }
+            windowMinutes: { type: integer }
+        firstTicketAt: { type: string, format: date-time }
+        detectedAt: { type: string, format: date-time }
+        timeToDetectSeconds: { type: integer }
+
+    IncidentSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string, examples: [INC-204] }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        linkedTicketCount: { type: integer }
+        timeToDetectSeconds: { type: integer, description: A headline metric that comes straight out of the schema rather than a stopwatch. }
+        detection: { $ref: '#/components/schemas/DetectionView' }
+
+    IncidentDetail:
+      type: object
+      description: |
+        The full board-card-plus-everything view. Deliberately **not** composed with `allOf`
+        over `IncidentSummary` — the detail response has no top-level `timeToDetectSeconds`
+        (it lives inside `detection`, once) and adds fields a list row has no use for.
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string, examples: [INC-204] }
+        title: { type: string }
+        summary: { type: string }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        detection: { $ref: '#/components/schemas/DetectionView' }
+        titleGeneratedBy:
+          type: [string, 'null']
+          description: |
+            The model that wrote the **title, and nothing else**. `null` means the title
+            was templated because the LLM was unavailable — and the incident was still
+            detected, because detection never depended on the model.
+        confirmedBy: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }] }
+        confirmedAt: { type: [string, 'null'], format: date-time }
+        rejectedReason: { type: [string, 'null'] }
+        linkedTicketCount: { type: integer }
+        linkedTickets:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentLinkedTicket' }
+        detachedTickets:
+          type: array
+          description: Soft-detached links, kept for the audit trail and the evaluation set.
+          items: { $ref: '#/components/schemas/IncidentLinkedTicket' }
+        updates:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentUpdateView' }
+        etag: { type: string, examples: ['W/"4"'] }
+
+    IncidentLinkedTicket:
+      type: object
+      properties:
+        ticketId: { type: integer, format: int64, examples: [88301] }
+        reference: { type: string, examples: [TKT-10461] }
+        subject: { type: string }
+        linkConfidence: { type: [number, 'null'], description: 'Set for a gate-proposed link; `null` for a manual one.' }
+        linkedAt: { type: string, format: date-time }
+        linkedBy: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }], description: '`null` for a gate-proposed link.' }
+        detachedAt: { type: [string, 'null'], format: date-time }
+
+    IncidentDeliverySummary:
+      type: object
+      properties:
+        total: { type: integer }
+        sent: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+
+    IncidentUpdateView:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        body: { type: string }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        authorName: { type: string }
+        publishedAt: { type: string, format: date-time }
+        delivery: { $ref: '#/components/schemas/IncidentDeliverySummary' }
+
+    ConfirmIncidentRequest:
+      type: object
+      description: '`pauseResolutionClocks` defaults to `true` when the body is omitted entirely.'
+      properties:
+        pauseResolutionClocks: { type: boolean, default: true }
+
+    ConfirmIncidentResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        effects:
+          type: object
+          properties:
+            ticketsLinked: { type: integer }
+            resolutionClocksPaused: { type: integer }
+            firstResponseClocksUnaffected:
+              type: integer
+              description: |
+                Count of linked tickets whose first-response clock kept running, because the
+                customer still deserves an acknowledgement even during an outage.
+            evalLabelRecorded: { type: boolean }
+        etag: { type: string, examples: ['W/"5"'] }
+
+    RejectIncidentRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 10, maxLength: 500 }
+
+    LinkTicketRequest:
+      type: object
+      required: [ticketId]
+      properties:
+        ticketId: { type: integer, format: int64, examples: [88301] }
+
+    ResolveIncidentRequest:
+      type: object
+      required: [resolutionNote]
+      properties:
+        resolutionNote: { type: string, minLength: 1, maxLength: 5000 }
+        resolveLinkedTickets: { type: boolean, default: true }
+
+    ResolveIncidentResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        resolvedTicketCount: { type: integer }
+        skipped:
+          type: array
+          description: Ids of linked tickets that could not be auto-resolved; the incident still resolves.
+          items: { type: integer, format: int64 }
+        etag: { type: string, examples: ['W/"6"'] }
+
+    PublishUpdateRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+        visibility:
+          allOf: [{ $ref: '#/components/schemas/Visibility' }]
+          default: INTERNAL
+        force:
+          type: boolean
+          default: false
+          description: Bypasses `TOO_MANY_LINKED_TICKETS` for an incident linked to more than 500 tickets.
+
+    PublishUpdateResponse:
+      type: object
+      properties:
+        updateId: { type: integer, format: int64 }
+        incidentId: { type: integer, format: int64 }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        fanout:
+          type: object
+          properties:
+            total: { type: integer }
+            status: { type: string, examples: [QUEUED] }
+        links:
+          type: object
+          properties:
+            deliveries: { type: string }
+        publishedAt: { type: string, format: date-time }
+
+    DeliveryStatusResponse:
+      type: object
+      properties:
+        updateId: { type: integer, format: int64 }
+        summary: { $ref: '#/components/schemas/IncidentDeliverySummary' }
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketId: { type: integer, format: int64 }
+              attempts: { type: integer }
+              lastError: { type: string }
+
+    # ── attachments, notifications, admin ─────────────────────────────────────
+
+    ReserveAttachmentRequest:
+      type: object
+      required: [filename, mimeType, byteSize]
+      properties:
+        filename: { type: string, maxLength: 255 }
+        mimeType: { type: string, description: '**Declared, not trusted.** `/complete` verifies the actual magic bytes.' }
+        byteSize: { type: integer, format: int64, maximum: 10485760 }
+
+    MarkReadRequest:
+      type: object
+      description: Exactly one of `ids` or `all`.
+      properties:
+        ids: { type: array, items: { type: integer, format: int64 } }
+        all: { type: boolean }
+
+    AvailabilityRequest:
+      type: object
+      required: [isAvailable]
+      properties:
+        isAvailable: { type: boolean }
+        shiftStart: { type: string, examples: ['09:00'] }
+        shiftEnd: { type: string, examples: ['18:00'] }
+
+    SlaPolicyRequest:
+      type: object
+      required: [priority, planTier, firstResponseMinutes, resolutionMinutes, effectiveFrom]
+      properties:
+        priority: { $ref: '#/components/schemas/Priority' }
+        planTier: { $ref: '#/components/schemas/PlanTier' }
+        firstResponseMinutes: { type: integer, minimum: 1 }
+        resolutionMinutes: { type: integer, minimum: 1 }
+        escalationRungs:
+          type: array
+          items: { type: integer }
+          description: Percentages of the target at which to escalate. Each rung fires **exactly once**, guaranteed by `uq_escalation_rung` rather than by the poller being careful.
+        effectiveFrom: { type: string, format: date-time }
+
+    UpdateTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/Category' }
+          description: Drives routing. Every value must be a valid `Category`.
+        isDefault: { type: boolean, description: At most one per tenant. Clearing the last one is permitted and warned about — unroutable tickets then stay unassigned rather than erroring. }
