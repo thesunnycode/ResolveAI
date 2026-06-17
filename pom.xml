@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.1</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.resolveai</groupId>
+	<artifactId>resolveai</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>resolveai</name>
+	<description>AI-powered helpdesk and incident triage platform</description>
+	<url>https://github.com/thesunnycode/ResolveAI</url>
+	<licenses>
+		<license>
+			<name>MIT License</name>
+			<url>https://opensource.org/licenses/MIT</url>
+		</license>
+	</licenses>
+	<properties>
+		<java.version>21</java.version>
+
+		<!-- Pinned explicitly. Spring Boot 4.1.1 already manages Spring Framework,
+		     Hibernate, Micrometer, Testcontainers (2.0.5), Jackson and the Postgres
+		     driver, so those must NOT be pinned here — overriding a Boot-managed
+		     version is how you get a combination nobody has ever tested. -->
+		<spring-ai.version>2.0.1</spring-ai.version>
+		<pgvector.version>0.1.6</pgvector.version>
+		<minio.version>9.0.3</minio.version>
+		<resilience4j.version>2.4.0</resilience4j.version>
+		<wiremock.version>3.13.2</wiremock.version>
+		<!-- Must match the okhttp that com.openai:openai-java-core drags in; dependency:tree
+		     is the check. Nothing else here pins it, so a Spring AI upgrade can move it. -->
+		<okhttp.version>5.3.2</okhttp.version>
+		<logstash-encoder.version>9.0</logstash-encoder.version>
+		<jjwt.version>0.13.0</jjwt.version>
+		<commons-csv.version>1.12.0</commons-csv.version>
+		<pdfbox.version>3.0.3</pdfbox.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Boot 4 sets the testcontainers.version property but does not import the
+			     BOM, so module artifacts have no managed version until this is here.
+			     Importing it with Boot's own property keeps the version Boot chose. -->
+			<dependency>
+				<groupId>org.testcontainers</groupId>
+				<artifactId>testcontainers-bom</artifactId>
+				<version>${testcontainers.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+		<!-- ─── added in Phase 3 Task 2 ─────────────────────────────────────── -->
+
+		<!-- Spring AI 2.x renamed every model starter to spring-ai-starter-model-*.
+		     The 1.x name (spring-ai-openai-spring-boot-starter) does not resolve. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-openai</artifactId>
+		</dependency>
+
+		<!-- The vector type itself. Deliberately NOT spring-ai-starter-vector-store-pgvector:
+		     retrieval here is hand-written hybrid SQL (lexical + vector, fused by RRF), and a
+		     vector-store abstraction that only does similarity search cannot express it. -->
+		<dependency>
+			<groupId>com.pgvector</groupId>
+			<artifactId>pgvector</artifactId>
+			<version>${pgvector.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>io.minio</groupId>
+			<artifactId>minio</artifactId>
+			<version>${minio.version}</version>
+		</dependency>
+
+		<!-- Knowledge base bulk import: CSV rows and PDF text extraction. -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>${commons-csv.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
+		</dependency>
+
+		<!-- Spring AI's OpenAI client needs okhttp3.RequestBody at runtime and gets
+		     com.squareup.okhttp3:okhttp:5.x transitively — but OkHttp 5 is a Kotlin
+		     Multiplatform module whose JVM classes live in okhttp-jvm, so the transitive
+		     artifact alone gives NoClassDefFoundError at context startup rather than at
+		     compile time. Naming the JVM variant explicitly is the fix; the version stays
+		     managed. -->
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>okhttp-jvm</artifactId>
+			<version>${okhttp.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
+		<!-- jjwt, split across three artifacts on purpose: only the API is compile-scoped,
+		     so application code cannot accidentally depend on an implementation class that
+		     changes between minor versions. jjwt-jackson serialises claims with Jackson 2,
+		     which is on the classpath beside Jackson 3 because Spring AI still uses it. -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>${jjwt.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- JSON log output for prod and test. A log aggregator cannot filter on a field it
+		     has to regex out of a formatted string, and traceId is the field this system is
+		     searched by. -->
+		<dependency>
+			<groupId>net.logstash.logback</groupId>
+			<artifactId>logstash-logback-encoder</artifactId>
+			<version>${logstash-encoder.version}</version>
+		</dependency>
+
+		<!-- spring-boot4, not spring-boot3 — the boot3 artifact targets Spring Framework 6
+		     and its auto-configuration does not apply under Boot 4. -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-spring-boot4</artifactId>
+			<version>${resilience4j.version}</version>
+		</dependency>
+
+		<!-- ─── test scope ──────────────────────────────────────────────────── -->
+
+		<!-- Testcontainers 2.x renamed every module: `junit-jupiter` and `postgresql`
+		     became `testcontainers-junit-jupiter` and `testcontainers-postgresql`.
+		     The old coordinates do not resolve at all under the 2.x BOM. -->
+		<!-- Supplies @ServiceConnection, which is what points the datasource and Redis
+		     properties at the containers. Not transitive from anything: without it the
+		     annotation simply does not exist and the base class will not compile. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-postgresql</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- No Redis dependency here, deliberately. Testcontainers 2.0.5 ships no Redis
+		     module, and com.redis:testcontainers-redis was built against the 1.x API. Redis
+		     is a plain GenericContainer with Boot's @ServiceConnection(name = "redis"),
+		     which is a supported pattern and costs one extra line in the base test class —
+		     cheaper than betting on a third-party module across a major version boundary. -->
+		<dependency>
+			<groupId>org.wiremock</groupId>
+			<artifactId>wiremock-standalone</artifactId>
+			<version>${wiremock.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<!-- No property-testing library yet, deliberately. The plan named jqwik, and it does
+		     work here (probed under Boot 4's JUnit Platform 6 before this was decided) - but
+		     its test output carries a message from the project asking AI agents not to use it.
+		     That is not a licence term, and it is the maintainer's call to make, so the
+		     dependency is not carried unused for four phases on the strength of an argument
+		     nobody has had yet. The first property test is Phase 5 Task 20; the choice gets
+		     made there, in front of a real test, between jqwik, QuickTheories 0.26
+		     (unmaintained since 2018) and seeded generators over plain JUnit 5. -->
+
+		<!-- ─── Boot 4 per-module test starters ─────────────────────────────── -->
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<!--
+					  `./mvnw spring-boot:run` is the local developer path, so it runs the
+					  `local` profile - the only profile that imports .env. Without this
+					  the app starts on "default", never reads .env, and dies on the JWT
+					  secret placeholder. Scoped to the run goal on purpose: the packaged
+					  jar has no default profile, so a deploy that forgets
+					  SPRING_PROFILES_ACTIVE fails loudly instead of starting the seeders.
+					  Override with -Dspring-boot.run.profiles=... when needed.
+					-->
+					<profiles>
+						<profile>local</profile>
+					</profiles>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>default-compile</id>
+						<phase>compile</phase>
+						<goals>
+							<goal>compile</goal>
+						</goals>
+						<configuration>
+							<annotationProcessorPaths>
+								<path>
+									<groupId>org.projectlombok</groupId>
+									<artifactId>lombok</artifactId>
+								</path>
+							</annotationProcessorPaths>
+						</configuration>
+					</execution>
+					<execution>
+						<id>default-testCompile</id>
+						<phase>test-compile</phase>
+						<goals>
+							<goal>testCompile</goal>
+						</goals>
+						<configuration>
+							<annotationProcessorPaths>
+								<path>
+									<groupId>org.projectlombok</groupId>
+									<artifactId>lombok</artifactId>
+								</path>
+							</annotationProcessorPaths>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<!--
+		  Windows only, and only for the test JVM. JDK 21's default NIO selector on
+		  Windows (WEPoll) intermittently missed readiness events in the test JVM, where
+		  Tomcat and the Reactor Netty test client both poll sockets: a request sat unread
+		  until Tomcat's 20s timeout reset it ("Connection reset"), and a response body
+		  once never arrived at all, hanging the build. Thread dumps showed both pollers
+		  idle in WEPoll.wait with data pending.
+
+		  This used to be set unconditionally, on the assumption that the JDK ignores the
+		  property on other platforms. It does not: if the property is set at all, the JDK
+		  tries to load the named class regardless of OS, and sun.nio.ch.WindowsSelectorProvider
+		  does not exist on Linux — which is exactly what broke every CI run once this repo
+		  first got a working GitHub Actions pipeline. Scoped to a Windows-activated
+		  profile so Linux/macOS (CI included) never sets the property at all.
+		-->
+		<profile>
+			<id>windows-selector-workaround</id>
+			<activation>
+				<os>
+					<family>windows</family>
+				</os>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<argLine>-Djava.nio.channels.spi.SelectorProvider=sun.nio.ch.WindowsSelectorProvider</argLine>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
+</project>
