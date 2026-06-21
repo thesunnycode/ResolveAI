@@ -1,0 +1,300 @@
+# ResolveAI — base configuration.
+#
+# Phase 3 Task 4. Everything here applies to every profile. Anything environment-specific
+# lives in application-{local,test,prod}.yml.
+#
+# Values that look like defaults but are not, and why each one is set explicitly:
+#   ddl-auto: validate      Flyway owns the schema. `update` gives it two owners.
+#   open-in-view: false     Spring's default is `true`, and it is wrong.
+#   jdbc.time_zone: UTC     Otherwise the JVM's zone silently enters your timestamps.
+#   flyway.baseline-on-migrate: false   `true` makes an unversioned database look migrated.
+
+spring:
+  application:
+    name: resolveai
+
+  # ── Persistence ───────────────────────────────────────────────────────────
+  jpa:
+    hibernate:
+      # NEVER `update`. Flyway owns the schema; Hibernate's only job here is to fail loudly
+      # when an entity disagrees with it. With `update`, Hibernate quietly adds the column it
+      # wants, the migration that was supposed to add it never runs, and the schema has two
+      # sources of truth that disagree on every machine.
+      ddl-auto: validate
+    # Spring's default is `true`, which keeps the Hibernate session open for the whole request
+    # so a lazy association can be resolved during view rendering. That turns an N+1 in a
+    # response mapper into something that works, which is worse than something that fails —
+    # it works in development and falls over under load, and the query happens outside any
+    # transaction you declared. This API returns DTOs, never entities, so nothing needs it.
+    open-in-view: false
+    properties:
+      # Without this, Hibernate writes timestamps in the JVM's default zone. Every server
+      # then stores slightly different instants and business-hours arithmetic quietly breaks.
+      hibernate.jdbc.time_zone: UTC
+      # Fail fast on an accidental in-memory pagination of a fetch-joined collection, rather
+      # than loading the whole table and paging it in the JVM.
+      hibernate.query.fail_on_pagination_over_collection_fetch: true
+      hibernate.jdbc.batch_size: 50
+      hibernate.order_inserts: true
+      hibernate.order_updates: true
+
+  flyway:
+    # Off, deliberately. Migrations here contain JSON, regex and dollar-quoted prompt
+    # text, and Flyway's ${...} substitution reads "$schema${" - a dollar-quote tag
+    # followed by a brace - as an unresolved placeholder and refuses to start. Nothing
+    # in this project needs the feature, and the failure it causes names a line number
+    # rather than a cause.
+    placeholder-replacement: false
+    enabled: true
+    locations: classpath:db/migration
+    # `true` would tell Flyway to assume any non-empty database is already at the baseline
+    # version — which is exactly how a half-migrated database gets marked as done.
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      # 30s. Prints a stack trace for any connection held longer than this, which is how you
+      # find the place that forgot to close one. Cheap in production, invaluable in Phase 6
+      # when the workers start competing for the pool.
+      leak-detection-threshold: 30000
+      connection-timeout: 10000
+      pool-name: resolveai-pool
+
+  # ── Outbound mail (team invites only) ───────────────────────────────────
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
+    # No `write-dates-as-timestamps: false` here. Boot 4 ships Jackson 3, which moved that
+    # flag out of SerializationFeature into DateTimeFeature — and, more to the point, flipped
+    # its default: Jackson 3 writes java.time values as ISO-8601 already. Setting it under
+    # `serialization` is not a no-op, it is a startup failure.
+    deserialization:
+      fail-on-unknown-properties: false  # additive API changes must not break older clients
+
+  mvc:
+    problemdetails:
+      # Off. Boot's handler also emits RFC 7807, but without errorCode, timestamp or
+      # traceId - the three fields doc 05 makes contractual. Two producers of error bodies
+      # means the shape of a response depends on which advice ran first, which is not a
+      # contract. GlobalExceptionHandler owns every error path, and it is ordered
+      # HIGHEST_PRECEDENCE so this setting is belt as well as braces.
+      enabled: false
+    # Without this, an unmatched path is served by Spring's own 404 handling and never
+    # reaches @RestControllerAdvice - one of the few remaining ways a response that is not
+    # application/problem+json can escape this API.
+    throw-exception-if-no-handler-found: true
+
+  servlet:
+    multipart:
+      # Default is 1MB, too small for a couple of PDFs. Knowledge base bulk
+      # import (KnowledgeBulkImportService) is the only multipart endpoint.
+      max-file-size: 20MB
+      max-request-size: 40MB
+
+  web:
+    resources:
+      # No static resources are served. Leaving the default mapping on means the resource
+      # handler answers unmatched paths before the exception above can be thrown.
+      add-mappings: false
+
+  task:
+    scheduling:
+      pool:
+        # Above 1, deliberately. The default is a single thread, so the SLA poller and
+        # every scheduler Phase 6 adds - the outbox dispatcher, the IN_FLIGHT reaper, the
+        # correlation sweep - would queue behind each other. A slow SLA poll would stall
+        # the outbox, and the symptom would be "async work is late" with nothing pointing
+        # at the scheduler as the cause.
+        size: 4
+      thread-name-prefix: resolveai-sched-
+
+  threads:
+    virtual:
+      # Java 21 virtual threads for request handling. The workload is overwhelmingly
+      # IO-bound — Postgres round trips and LLM calls measured in seconds — which is exactly
+      # the case where a platform-thread pool is the bottleneck and a virtual thread is not.
+      enabled: true
+
+server:
+  # Heroku (and most PaaS targets) assign a container's listening port at
+  # runtime via $PORT; only local dev falls back to a fixed 8080.
+  port: ${PORT:8080}
+  error:
+    # Nothing about the internals reaches a client. The @RestControllerAdvice owns every
+    # error response; these settings make sure Spring's fallback page cannot leak past it.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    whitelabel:
+      enabled: false
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Readiness gates traffic, so it includes only what a request actually needs. The
+        # outbox is deliberately absent: a lagging poller means async work is behind, not
+        # that this instance should be pulled out of the load balancer - and removing it
+        # would remove the very capacity that has to drain the backlog.
+        readiness:
+          include: db, redis
+        liveness:
+          include: livenessState
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  observations:
+    key-values:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    root: INFO
+    com.resolveai: DEBUG
+
+# ── Application configuration ───────────────────────────────────────────────
+# Bound to @ConfigurationProperties records, never read with @Value scattered through
+# services: one typed object per concern, validated at startup, so a missing value is a
+# refusal to boot rather than a null three hours into a worker run.
+resolveai:
+  # Demo mode: one-click role logins, a seeded showcase queue, the outage simulator. OFF
+  # unless DEMO_ENABLED=true, in every profile - a real deployment never grows public
+  # logins by accident. See com.resolveai.demo.DemoSettings for what each switch does.
+  demo:
+    enabled: ${DEMO_ENABLED:false}
+    tenant-slug: ${DEMO_TENANT_SLUG:demo}
+    seed-tenant: ${DEMO_SEED_TENANT:true}
+    password: ${DEMO_PASSWORD:}
+    allow-admin: ${DEMO_ALLOW_ADMIN:false}
+    storm-on-seed: ${DEMO_STORM_ON_SEED:true}
+    storm-cooldown-minutes: ${DEMO_STORM_COOLDOWN_MINUTES:10}
+    # Spring cron ("0 0 3 * * *" = 03:00 UTC daily); "-" disables the reset.
+    reset-cron: ${DEMO_RESET_CRON:-}
+  auth:
+    access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
+    refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+  workers:
+    pool-size: ${WORKER_POOL_SIZE:8}
+    poll-interval-ms: ${WORKER_POLL_INTERVAL_MS:1000}
+    sla-poller-batch-size: ${SLA_POLLER_BATCH_SIZE:200}
+    # Retry shape for every worker. The jitter is the part that is not decoration: without
+    # it, a provider outage that fails 200 events retries all 200 in the same instant,
+    # five times over, against a service that is already struggling.
+    max-attempts: ${WORKER_MAX_ATTEMPTS:5}
+    max-backoff-seconds: ${WORKER_MAX_BACKOFF_SECONDS:300}
+    max-jitter-seconds: ${WORKER_MAX_JITTER_SECONDS:30}
+    reaper-interval-ms: ${WORKER_REAPER_INTERVAL_MS:60000}
+    # Oldest unfinished event older than this and the health endpoint goes DOWN. Workers
+    # poll every second, so a healthy age is seconds; this is the "something is wedged"
+    # threshold, not a latency budget.
+    lag-degraded-after-seconds: ${WORKER_LAG_DEGRADED_AFTER_SECONDS:300}
+    # How often the SLA poller wakes. This is the resolution of the escalation ladder,
+    # not a latency budget - a rung is not a real-time event, and a minute would be
+    # defensible. Ten seconds keeps a demo legible.
+    sla-poll-interval-ms: ${SLA_POLL_INTERVAL_MS:10000}
+  correlation:
+    window-minutes: ${CORRELATION_WINDOW_MINUTES:30}
+    min-cluster-size: ${CORRELATION_MIN_CLUSTER_SIZE:5}
+    rate-multiplier: ${CORRELATION_RATE_MULTIPLIER:3.0}
+    # tau is the leader-clustering similarity threshold (cosine plus the entity boost);
+    # entity-boost weights the Jaccard overlap of extracted entities. 0.68, not the 0.82
+    # the synthetic sweep suggested: re-tuned on REAL text-embedding-3-small vectors of
+    # demo/storm.json against demo/no-storm.json and the 200-ticket starter corpus
+    # (CorrelationRealEmbeddingTuningTest). The varied storm is only 0.44 cosine-similar
+    # on median, so at 0.82 no real outage was ever detected. Table in the README.
+    tau: ${CORRELATION_TAU:0.68}
+    entity-boost: ${CORRELATION_ENTITY_BOOST:0.15}
+    max-overlap-fraction: ${CORRELATION_MAX_OVERLAP_FRACTION:0.50}
+    baseline-floor: ${CORRELATION_BASELINE_FLOOR:2.0}
+    # How often the sweep wakes. A minute, like the SLA poller's ten seconds, is a
+    # resolution choice, not a latency budget - see CorrelationSweepWorker.
+    sweep-interval-ms: ${CORRELATION_SWEEP_INTERVAL_MS:60000}
+    sweep-lock-ttl-seconds: ${CORRELATION_SWEEP_LOCK_TTL_SECONDS:55}
+  drafting:
+    coverage-threshold: ${DRAFT_COVERAGE_THRESHOLD:0.8}
+  mail:
+    from: ${MAIL_FROM:no-reply@resolveai.app}
+    # Used to build the link inside an invite email; the backend has no other reason
+    # to know where the SPA is hosted.
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  ai:
+    monthly-budget-micros: ${MONTHLY_TOKEN_BUDGET_MICROS:5000000}
+    # The tenant-configurable order-reference shape the PII redactor looks for.
+    # Single-quoted, because YAML reads a bare backslash-b as a backspace character
+    # and then refuses to start with "unacceptable code point 0x8" - a message that
+    # names neither this file nor this key.
+    order-ref-pattern: '${AI_ORDER_REF_PATTERN:\bORD-\d{4,10}\b}'
+    # How often to check whether the month has turned. Hourly rather than one midnight
+    # fire, so a restart cannot step over the single instant it would happen at.
+    budget-reset-check-ms: ${AI_BUDGET_RESET_CHECK_MS:3600000}
+
+# ── Resilience ──────────────────────────────────────────────────────────────
+# One breaker instance per provider. Shared state across providers would mean a bad
+# minute at OpenAI stopping calls to Ollama, which is the opposite of a fallback.
+resilience4j:
+  circuitbreaker:
+    configs:
+      llm:
+        # Count-based rather than time-based: the call volume here is low enough that a
+        # time window can hold two calls, and a breaker that opens on "100% of 2 failures"
+        # trips on noise.
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 1
+        automatic-transition-from-open-to-half-open-enabled: true
+        # A parse failure is the model's fault, not the provider's - the socket worked
+        # perfectly. Counting it would open the breaker on a prompt problem and stop
+        # calls that would have succeeded.
+        ignore-exceptions:
+          - com.resolveai.platform.ai.model.LlmExceptions$LlmParseException
+          - com.resolveai.platform.ai.model.LlmExceptions$BudgetExhaustedException
+    instances:
+      openai:
+        base-config: llm
+      ollama:
+        base-config: llm
+  retry:
+    configs:
+      llm:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        # Retrying a 400 is pointless: a malformed request is malformed every time, and
+        # three attempts only means three identical rejections and three times the
+        # latency before the caller finds out.
+        ignore-exceptions:
+          - com.resolveai.platform.ai.model.LlmExceptions$LlmParseException
+          - com.resolveai.platform.ai.model.LlmExceptions$BudgetExhaustedException
+    instances:
+      openai:
+        base-config: llm
