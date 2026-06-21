@@ -25,7 +25,7 @@ instead of forty parallel investigations.
 
 <table align="center">
 <tr>
-<td align="center"><b>75</b><br><sub>API endpoints</sub></td>
+<td align="center"><b>73</b><br><sub>API endpoints</sub></td>
 <td align="center"><b>616</b><br><sub>tests</sub></td>
 <td align="center"><b>39</b><br><sub>DB tables</sub></td>
 <td align="center"><b>Java 21</b><br><sub>Spring Boot 4</sub></td>
@@ -158,7 +158,7 @@ a template fallback that means the feature works with the AI provider off.
 ### API overview
 
 <details>
-<summary>75 endpoints across auth, tickets, SLA, triage, knowledge, drafts, incidents, AI policy, analytics, and demo — click to expand</summary>
+<summary>73 endpoints across auth, tickets, SLA, triage, knowledge, drafts, incidents, AI policy, analytics, and demo — click to expand</summary>
 
 | Area | Methods | Endpoint prefix | Auth |
 |---|---|---|---|
