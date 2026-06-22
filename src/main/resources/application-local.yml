@@ -1,0 +1,86 @@
+# Local development. Reads from .env (git-ignored), with docker-compose defaults so a fresh
+# clone starts without a .env at all — except for the secrets, which have no defaults on
+# purpose.
+
+spring:
+  config:
+    # Spring parses .env itself, as a properties file. The alternative — `set -a && . ./.env`
+    # in the shell — breaks on Windows: .env has CRLF line endings, so every value picks up a
+    # trailing carriage return and the database rejects the password with an error that
+    # says nothing about line endings. Letting the framework read the file removes the shell
+    # from the path entirely, and `optional:` means a clone without a .env still starts on the defaults below.
+    import: optional:file:./.env[.properties]
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:55432/resolveai}
+    username: ${DATABASE_USERNAME:resolveai}
+    password: ${DATABASE_PASSWORD:resolveai_local}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    # MailHog (docker-compose, http://localhost:8025) wants neither. The base config turns
+    # both on for the real SMTP providers prod uses.
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+  jpa:
+    properties:
+      # Local only. Formatted SQL in the log is how you notice the N+1 you just wrote,
+      # and it is far too expensive to leave on anywhere else.
+      hibernate.format_sql: true
+  ai:
+    openai:
+      api-key: ${LLM_PRIMARY_API_KEY:}
+      chat:
+        options:
+          model: ${LLM_PRIMARY_MODEL:gpt-4.1-mini}
+      embedding:
+        options:
+          model: ${EMBEDDING_MODEL:text-embedding-3-small}
+          # text-embedding-3-small is natively 1536-d and the schema column is vector(768).
+          # Rather than widening the column, ask OpenAI for 768 — the model is Matryoshka, so
+          # a truncated embedding is still a usable embedding, and 768-d HNSW indexes are
+          # meaningfully smaller and faster than 1536-d ones.
+          dimensions: 768
+
+resolveai:
+  storage:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    bucket: ${S3_BUCKET:resolveai-attachments}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+  # Locally the demo is the seeded `acme` tenant (IamSeeder owns it, so the demo never
+  # creates or rotates it) and the login page offers one-click sign-in for every role.
+  demo:
+    enabled: ${DEMO_ENABLED:true}
+    tenant-slug: ${DEMO_TENANT_SLUG:acme}
+    seed-tenant: false
+    allow-admin: true
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+  security:
+    pii-encryption-key: ${PII_ENCRYPTION_KEY:}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5176,http://localhost:5173}
+  ai:
+    fallback:
+      provider: ${LLM_FALLBACK_PROVIDER:}
+      api-key: ${LLM_FALLBACK_API_KEY:}
+      model: ${LLM_FALLBACK_MODEL:}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:llama3.2:3b}
+
+logging:
+  level:
+    org.flywaydb: INFO
+    org.hibernate.SQL: DEBUG
+    # Renders bound parameters into the logged SQL. DEBUG-only and local-only: these values
+    # include customer ticket bodies, so this must never be enabled anywhere real.
+    org.hibernate.orm.jdbc.bind: TRACE
