@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Phase 3 Task 9.
+
+  Two shapes for the same events:
+    local  - a human reading a terminal, so pattern output with the traceId inline
+    prod   - a log aggregator, so JSON with traceId as a queryable field
+    test   - JSON as well, deliberately: if the prod encoder is going to fail on some field,
+             it should fail in CI rather than at 2am.
+
+  `logback-spring.xml`, not `logback.xml`: only the -spring variant is read late enough for
+  <springProfile> to mean anything.
+-->
+<configuration>
+
+    <property name="CONSOLE_PATTERN"
+              value="%d{HH:mm:ss.SSS} %highlight(%-5level) %cyan(%-12.12thread) %yellow(%X{traceId:-·}) %magenta(%-36.36logger{36}) %msg%n%throwable"/>
+
+    <!-- ── local: readable ───────────────────────────────────────────────── -->
+    <springProfile name="local">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_PATTERN}</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- ── prod and test: machine-readable ───────────────────────────────── -->
+    <springProfile name="prod,test">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- Every MDC key becomes a top-level field, which is what makes
+                     `traceId:"0af765..."` a query rather than a regex over a message. -->
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <includeMdcKeyName>tenantId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <message>message</message>
+                    <thread>thread</thread>
+                    <logger>logger</logger>
+                    <levelValue>[ignore]</levelValue>
+                    <version>[ignore]</version>
+                </fieldNames>
+                <customFields>{"application":"resolveai"}</customFields>
+                <!-- Bound the stack trace. An unbounded one from a deep Spring proxy chain is
+                     tens of kilobytes per event, and the frames that matter are at the top. -->
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                    <maxLength>4096</maxLength>
+                    <shortenedClassNameLength>40</shortenedClassNameLength>
+                    <exclude>^sun\.reflect\..*\.invoke</exclude>
+                    <exclude>^net\.sf\.cglib\.proxy\.MethodProxy\.invoke</exclude>
+                    <rootCauseFirst>true</rootCauseFirst>
+                </throwableConverter>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+    </springProfile>
+
+    <!-- ── no profile set (plain `java -jar`, IDE run) ───────────────────── -->
+    <springProfile name="!local &amp; !prod &amp; !test">
+        <appender name="FALLBACK" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_PATTERN}</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="FALLBACK"/>
+        </root>
+    </springProfile>
+
+    <!-- Noise that is never worth an INFO line, in any profile. -->
+    <logger name="org.apache.catalina.util.LifecycleBase" level="WARN"/>
+    <logger name="org.hibernate.orm.deprecation" level="ERROR"/>
+</configuration>
