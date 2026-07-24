@@ -1,0 +1,12 @@
+# Redocly lint configuration for docs/openapi.yaml.
+#
+#   npx @redocly/cli lint docs/openapi.yaml --config ops/redocly.yaml
+#
+# Run by ops/verify-openapi.mjs and by CI (doc 13 T16).
+extends:
+  - recommended
+rules:
+  # The local docker-compose server is the one a reader can actually call today.
+  # The deployed URL is listed beside it; a spec that omits localhost is less useful,
+  # not more correct.
+  no-server-example.com: off
