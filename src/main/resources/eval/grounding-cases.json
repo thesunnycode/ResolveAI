@@ -1,0 +1,242 @@
+{
+  "cases": [
+    {
+      "caseId": "r1",
+      "claimText": "A failed UPI payment that was debited is reversed within 5-7 business days.",
+      "citedSpan": "Payments that are debited from the customer's account without a corresponding order are automatically detected by the nightly reconciliation job and reversed by the PSP within 5-7 business days.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r1",
+      "claimText": "The reversal window is set by the PSP's dispute resolution process, not Ledgerly.",
+      "citedSpan": "This is not a Ledgerly-controlled window; it is set by the NPCI dispute resolution process that every UPI-enabled PSP must follow.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r1",
+      "claimText": "You can check the UPI reference number against the transaction log.",
+      "citedSpan": "confirm the UPI reference number (a 12-digit UTR) and check whether ERR_UPI_COLLECT_FAILED or ERR_SETTLEMENT_DELAY appears against the transaction",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r2",
+      "claimText": "A manual reversal is only needed if the automatic job has not caught it within 7 days.",
+      "citedSpan": "A manual reversal is only needed when the automatic job has not picked up the transaction after 7 business days, or when the customer disputes the amount reversed.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r2",
+      "claimText": "The UTR is a 12-digit number visible in the bank statement.",
+      "citedSpan": "The UTR is a 12-digit number visible in the customer's bank statement and in payment-service's transaction log against the same order.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r3",
+      "claimText": "UPI payments that are declined are usually due to insufficient balance.",
+      "citedSpan": "This usually means insufficient balance, an incorrect UPI PIN entered too many times, or the receiving VPA being temporarily suspended by the PSP.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r3",
+      "claimText": "Your refund of Rs 3,450 will be processed within 24 hours.",
+      "citedSpan": "A refund initiated through Ledgerly typically takes 5-7 business days to reflect in the customer's account once approved.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r3",
+      "claimText": "ERR_UPI_COLLECT_EXPIRED means the request was not approved within the UPI window.",
+      "citedSpan": "the customer did not approve the request within the UPI-mandated window (typically 2 minutes on most apps)",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r4",
+      "claimText": "Settlement always takes exactly 2 days.",
+      "citedSpan": "Settlement is the process by which money collected via UPI, cards or netbanking actually lands in the merchant's bank account... typically T+2 working days.",
+      "label": "PARTIAL",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r4",
+      "claimText": "A bank holiday can extend the settlement window.",
+      "citedSpan": "A bank holiday extending the settlement window (settlement only happens on working days for the receiving bank, not the paying one).",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r5",
+      "claimText": "Ledgerly refunds are always issued to the original payment method within 3 days.",
+      "citedSpan": "A refund initiated through Ledgerly typically takes 5-7 business days to reflect in the customer's account once approved, matching the UPI reversal timeline.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r5",
+      "claimText": "You should contact your bank directly for all refund enquiries.",
+      "citedSpan": "A refund initiated through Ledgerly typically takes 5-7 business days to reflect in the customer's account once approved.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r6",
+      "claimText": "A downgrade is blocked if the account is using more team members than the target plan allows.",
+      "citedSpan": "Ledgerly blocks a downgrade from PRO or ENTERPRISE to a lower tier when the account is currently using a feature the target tier does not support -- most commonly more team members than FREE allows.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r6",
+      "claimText": "Historical data is retained even after a downgrade.",
+      "citedSpan": "Historical data, past invoices and exported reports are retained regardless of plan tier. A downgrade only affects what can be created or connected going forward.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r6",
+      "claimText": "You can request a downgrade waiver from support for a one-time fee.",
+      "citedSpan": "The customer needs to remove the excess team members, disconnect the extra bank feed, or otherwise bring usage within the target plan's limits before the downgrade can proceed.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r7",
+      "claimText": "ERR_2FA_MISMATCH is most often caused by the phone's clock being out of sync.",
+      "citedSpan": "The most common cause by far is the customer's phone clock being out of sync -- TOTP codes are time-based and a phone more than 30 seconds off will generate wrong codes consistently.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r7",
+      "claimText": "Resetting the authenticator app without re-scanning the QR code causes mismatches.",
+      "citedSpan": "the authenticator app may have been set up against a different account or re-installed without re-scanning the QR code, which silently generates a different code sequence.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r8",
+      "claimText": "You can call our 24/7 support line at 1800-555-0134 for urgent 2FA resets.",
+      "citedSpan": "Resetting 2FA requires identity verification beyond a normal support interaction.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r8",
+      "claimText": "2FA reset requires identity verification beyond a normal support interaction.",
+      "citedSpan": "Resetting 2FA requires identity verification beyond a normal support interaction -- see the 2FA reset runbook.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r9",
+      "claimText": "The rate limit is 100 requests per minute per API key on the PRO plan.",
+      "citedSpan": "api-gateway enforces 100 requests per minute per API key on PRO, and 500 per minute on ENTERPRISE.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r9",
+      "claimText": "The limit applies per API key, not per calling process.",
+      "citedSpan": "the limit is per key, not per calling process, so five workers each making 30 requests a minute against the same key hit the PRO limit collectively.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r9",
+      "claimText": "You should upgrade to ENTERPRISE immediately to fix this.",
+      "citedSpan": "api-gateway enforces 100 requests per minute per API key on PRO, and 500 per minute on ENTERPRISE.",
+      "label": "PARTIAL",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r10",
+      "claimText": "ERR_TALLY_CONN almost always means a network or Tally configuration issue on the customer's side.",
+      "citedSpan": "This is almost always a network or Tally configuration issue on the customer's side, not a Ledgerly outage.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r10",
+      "claimText": "The sync connector's default port is 9000.",
+      "citedSpan": "Is the sync connector's configured port (default 9000) open on the local firewall?",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r10",
+      "claimText": "Tally sync happens every 5 minutes automatically.",
+      "citedSpan": "Is Tally actually running and the company file open on the machine running the Ledgerly sync connector?",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r11",
+      "claimText": "ERR_GST_RECONCILE_FAIL is usually caused by a mismatched GSTIN.",
+      "citedSpan": "usually because of a mismatch between an invoice's recorded GSTIN and the one on the portal's records for the same transaction. A single-digit GSTIN typo is by far the most common cause.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r11",
+      "claimText": "A reconciliation failure affects the underlying ledger entries too.",
+      "citedSpan": "A reconciliation failure affects only the GST return generation for the mismatched invoices specifically; it does not affect the underlying ledger entries, which remain correct regardless.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r12",
+      "claimText": "KYC review typically completes within 24 hours.",
+      "citedSpan": "KYC document review is typically completed within 24 hours of a valid submission.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r12",
+      "claimText": "The account cannot be accessed at all during KYC review.",
+      "citedSpan": "The account is fully created and accessible during KYC review; only specific actions ... are gated behind verification completing.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r12",
+      "claimText": "A submission stuck beyond 48 hours should be escalated.",
+      "citedSpan": "A submission stuck beyond 48 hours with no rejection and no approval should be escalated -- this indicates the review queue itself has a problem.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r13",
+      "claimText": "A GST return report over a full financial year can take up to 2 minutes.",
+      "citedSpan": "A GST return report over a full financial year with a high transaction volume can take up to 2 minutes -- this is expected, not a fault.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r13",
+      "claimText": "Splitting a large export into monthly chunks avoids the timeout.",
+      "citedSpan": "Splitting a large export into smaller date-range chunks (monthly instead of annual, for instance) avoids the timeout and is the standard workaround.",
+      "label": "SUPPORTED",
+      "citationSupportsClaim": true
+    },
+    {
+      "caseId": "r14",
+      "claimText": "Ledgerly guarantees 99.99% uptime under its SLA.",
+      "citedSpan": "A single occurrence, resolved by narrowing the date range, does not need escalation.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    },
+    {
+      "caseId": "r14",
+      "claimText": "You will receive a credit for any downtime automatically.",
+      "citedSpan": "A single occurrence, resolved by narrowing the date range, does not need escalation.",
+      "label": "NOT_SUPPORTED",
+      "citationSupportsClaim": false
+    }
+  ]
+}
