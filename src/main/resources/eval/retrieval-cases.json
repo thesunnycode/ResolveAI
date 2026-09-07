@@ -1,0 +1,565 @@
+{
+  "cases": [
+    {
+      "name": "art-upi-reversal",
+      "group": "ARTICLE",
+      "query": "how long does a UPI reversal take",
+      "relevantDocumentTitles": [
+        "UPI payment failures"
+      ]
+    },
+    {
+      "name": "art-manual-reversal",
+      "group": "ARTICLE",
+      "query": "how do I request a manual payment reversal",
+      "relevantDocumentTitles": [
+        "Manual reversal process"
+      ]
+    },
+    {
+      "name": "art-settlement-delay",
+      "group": "ARTICLE",
+      "query": "why is my payment settlement delayed",
+      "relevantDocumentTitles": [
+        "Settlement delays"
+      ]
+    },
+    {
+      "name": "art-gateway-5xx",
+      "group": "ARTICLE",
+      "query": "what does a gateway 5xx error mean during payment",
+      "relevantDocumentTitles": [
+        "Gateway timeouts and 5xx errors"
+      ]
+    },
+    {
+      "name": "art-refund-timeline",
+      "group": "ARTICLE",
+      "query": "how long does a Ledgerly refund take",
+      "relevantDocumentTitles": [
+        "Refund processing timeline"
+      ]
+    },
+    {
+      "name": "art-duplicate-charge",
+      "group": "ARTICLE",
+      "query": "how does Ledgerly prevent charging a customer twice",
+      "relevantDocumentTitles": [
+        "Duplicate charge detection"
+      ]
+    },
+    {
+      "name": "art-payment-method-troubleshoot",
+      "group": "ARTICLE",
+      "query": "why would a netbanking payment fail",
+      "relevantDocumentTitles": [
+        "Payment method troubleshooting"
+      ]
+    },
+    {
+      "name": "art-invoice-understanding",
+      "group": "ARTICLE",
+      "query": "what appears on a Ledgerly subscription invoice",
+      "relevantDocumentTitles": [
+        "Understanding your Ledgerly invoice"
+      ]
+    },
+    {
+      "name": "art-downgrade-blocked",
+      "group": "ARTICLE",
+      "query": "why is my plan downgrade being blocked",
+      "relevantDocumentTitles": [
+        "Plan downgrade blocked"
+      ]
+    },
+    {
+      "name": "art-card-expired",
+      "group": "ARTICLE",
+      "query": "what happens if my card on file expires before renewal",
+      "relevantDocumentTitles": [
+        "Card on file expired"
+      ]
+    },
+    {
+      "name": "art-plan-comparison",
+      "group": "ARTICLE",
+      "query": "what is the difference between the PRO and ENTERPRISE plans",
+      "relevantDocumentTitles": [
+        "Subscription plan comparison"
+      ]
+    },
+    {
+      "name": "art-gst-correction",
+      "group": "ARTICLE",
+      "query": "can I correct the GSTIN on a past invoice",
+      "relevantDocumentTitles": [
+        "GST invoice corrections"
+      ]
+    },
+    {
+      "name": "art-password-reset-missing",
+      "group": "ARTICLE",
+      "query": "why didn't I receive my password reset email",
+      "relevantDocumentTitles": [
+        "Password reset not arriving"
+      ]
+    },
+    {
+      "name": "art-2fa-mismatch",
+      "group": "ARTICLE",
+      "query": "why does my two-factor code keep failing",
+      "relevantDocumentTitles": [
+        "Two-factor authentication issues"
+      ]
+    },
+    {
+      "name": "art-session-expiry",
+      "group": "ARTICLE",
+      "query": "why do I keep getting logged out of Ledgerly",
+      "relevantDocumentTitles": [
+        "Session expiry and unexpected logouts"
+      ]
+    },
+    {
+      "name": "art-api-key-mgmt",
+      "group": "ARTICLE",
+      "query": "how do I rotate an API key without downtime",
+      "relevantDocumentTitles": [
+        "API key management"
+      ]
+    },
+    {
+      "name": "art-auth-token-expiry",
+      "group": "ARTICLE",
+      "query": "what does an auth token expired error mean",
+      "relevantDocumentTitles": [
+        "Understanding auth token expiry"
+      ]
+    },
+    {
+      "name": "art-rate-limit",
+      "group": "ARTICLE",
+      "query": "why am I being rate limited on the API",
+      "relevantDocumentTitles": [
+        "Rate limiting and ERR_RATE_LIMIT"
+      ]
+    },
+    {
+      "name": "art-webhook-delivery",
+      "group": "ARTICLE",
+      "query": "why are my webhooks not being delivered",
+      "relevantDocumentTitles": [
+        "Webhook delivery failures"
+      ]
+    },
+    {
+      "name": "art-idempotency-keys",
+      "group": "ARTICLE",
+      "query": "how long is an idempotency key honoured",
+      "relevantDocumentTitles": [
+        "API idempotency keys"
+      ]
+    },
+    {
+      "name": "art-schema-validation",
+      "group": "ARTICLE",
+      "query": "what does a schema validation error mean on the API",
+      "relevantDocumentTitles": [
+        "Schema validation errors"
+      ]
+    },
+    {
+      "name": "art-error-response-shape",
+      "group": "ARTICLE",
+      "query": "what fields does a Ledgerly API error contain",
+      "relevantDocumentTitles": [
+        "Understanding API error responses"
+      ]
+    },
+    {
+      "name": "art-dashboard-slow",
+      "group": "ARTICLE",
+      "query": "why is my dashboard loading so slowly",
+      "relevantDocumentTitles": [
+        "Dashboard slowness troubleshooting"
+      ]
+    },
+    {
+      "name": "art-report-delay",
+      "group": "ARTICLE",
+      "query": "why is my GST return report taking so long to generate",
+      "relevantDocumentTitles": [
+        "Report generation delays"
+      ]
+    },
+    {
+      "name": "art-upstream-timeout",
+      "group": "ARTICLE",
+      "query": "what does an upstream timeout error mean internally",
+      "relevantDocumentTitles": [
+        "Upstream service timeouts"
+      ]
+    },
+    {
+      "name": "art-tally-conn",
+      "group": "ARTICLE",
+      "query": "why can't Ledgerly connect to my Tally instance",
+      "relevantDocumentTitles": [
+        "Tally sync troubleshooting"
+      ]
+    },
+    {
+      "name": "art-zoho-setup",
+      "group": "ARTICLE",
+      "query": "how do I connect Zoho Books to Ledgerly",
+      "relevantDocumentTitles": [
+        "Zoho Books integration setup"
+      ]
+    },
+    {
+      "name": "art-bank-feed-stale",
+      "group": "ARTICLE",
+      "query": "why has my bank feed stopped updating",
+      "relevantDocumentTitles": [
+        "Bank feed connection issues"
+      ]
+    },
+    {
+      "name": "art-sync-mapping",
+      "group": "ARTICLE",
+      "query": "why is a customer record not syncing correctly from Tally",
+      "relevantDocumentTitles": [
+        "Sync mapping errors"
+      ]
+    },
+    {
+      "name": "art-export-incomplete",
+      "group": "ARTICLE",
+      "query": "why is my data export missing rows",
+      "relevantDocumentTitles": [
+        "Export troubleshooting"
+      ]
+    },
+    {
+      "name": "art-gst-reconcile",
+      "group": "ARTICLE",
+      "query": "why is my GST return failing to reconcile",
+      "relevantDocumentTitles": [
+        "GST return reconciliation"
+      ]
+    },
+    {
+      "name": "art-missing-records",
+      "group": "ARTICLE",
+      "query": "I think a transaction is missing from my ledger",
+      "relevantDocumentTitles": [
+        "Missing or duplicate records"
+      ]
+    },
+    {
+      "name": "art-kyc-docs",
+      "group": "ARTICLE",
+      "query": "what documents are required for KYC verification",
+      "relevantDocumentTitles": [
+        "KYC document requirements"
+      ]
+    },
+    {
+      "name": "art-gstin-invalid",
+      "group": "ARTICLE",
+      "query": "why is my GSTIN being rejected as invalid",
+      "relevantDocumentTitles": [
+        "GSTIN verification issues"
+      ]
+    },
+    {
+      "name": "art-pan-mismatch",
+      "group": "ARTICLE",
+      "query": "why does my PAN not match during verification",
+      "relevantDocumentTitles": [
+        "PAN verification mismatches"
+      ]
+    },
+    {
+      "name": "art-onboarding-checklist",
+      "group": "ARTICLE",
+      "query": "what are the steps to set up a new Ledgerly account",
+      "relevantDocumentTitles": [
+        "Account setup checklist"
+      ]
+    },
+    {
+      "name": "art-2fa-recovery-codes",
+      "group": "ARTICLE",
+      "query": "what are two-factor recovery codes for",
+      "relevantDocumentTitles": [
+        "Understanding two-factor recovery codes"
+      ]
+    },
+    {
+      "name": "art-api-pagination",
+      "group": "ARTICLE",
+      "query": "how does pagination work on Ledgerly API list endpoints",
+      "relevantDocumentTitles": [
+        "API pagination"
+      ]
+    },
+    {
+      "name": "art-notification-prefs",
+      "group": "ARTICLE",
+      "query": "can I turn off security notification emails",
+      "relevantDocumentTitles": [
+        "Understanding notification preferences"
+      ]
+    },
+    {
+      "name": "art-password-strength",
+      "group": "ARTICLE",
+      "query": "what are Ledgerly's password requirements",
+      "relevantDocumentTitles": [
+        "Password strength requirements"
+      ]
+    },
+    {
+      "name": "para-money-gone-no-invoice",
+      "group": "PARAPHRASE",
+      "query": "money left my account but the order still shows unpaid",
+      "relevantDocumentTitles": [
+        "UPI payment failures"
+      ]
+    },
+    {
+      "name": "para-refund-not-showing",
+      "group": "PARAPHRASE",
+      "query": "I was told I'd get my money back but it's been over a week and nothing",
+      "relevantDocumentTitles": [
+        "Refund processing timeline"
+      ]
+    },
+    {
+      "name": "para-charged-twice",
+      "group": "PARAPHRASE",
+      "query": "I think I got billed for the same thing two times",
+      "relevantDocumentTitles": [
+        "Duplicate charge detection"
+      ]
+    },
+    {
+      "name": "para-cant-downgrade",
+      "group": "PARAPHRASE",
+      "query": "the app won't let me move down to the cheaper plan",
+      "relevantDocumentTitles": [
+        "Plan downgrade blocked"
+      ]
+    },
+    {
+      "name": "para-subscription-failed-renew",
+      "group": "PARAPHRASE",
+      "query": "my subscription didn't renew and now I've lost my features",
+      "relevantDocumentTitles": [
+        "Card on file expired"
+      ]
+    },
+    {
+      "name": "para-reset-email-never-came",
+      "group": "PARAPHRASE",
+      "query": "I asked to reset my password an hour ago and still nothing in my inbox",
+      "relevantDocumentTitles": [
+        "Password reset not arriving"
+      ]
+    },
+    {
+      "name": "para-authenticator-wrong-code",
+      "group": "PARAPHRASE",
+      "query": "the six digit code from my app is never right",
+      "relevantDocumentTitles": [
+        "Two-factor authentication issues"
+      ]
+    },
+    {
+      "name": "para-keeps-signing-me-out",
+      "group": "PARAPHRASE",
+      "query": "it logs me out every few minutes for no reason",
+      "relevantDocumentTitles": [
+        "Session expiry and unexpected logouts"
+      ]
+    },
+    {
+      "name": "para-lost-my-api-key",
+      "group": "PARAPHRASE",
+      "query": "I can't find my API key anywhere and I need a new one",
+      "relevantDocumentTitles": [
+        "API key management"
+      ]
+    },
+    {
+      "name": "para-too-many-requests",
+      "group": "PARAPHRASE",
+      "query": "our integration is being blocked even though we're not sending that much traffic",
+      "relevantDocumentTitles": [
+        "Rate limiting and ERR_RATE_LIMIT"
+      ]
+    },
+    {
+      "name": "para-webhooks-stopped",
+      "group": "PARAPHRASE",
+      "query": "our server stopped receiving events from Ledgerly a few days ago",
+      "relevantDocumentTitles": [
+        "Webhook delivery failures"
+      ]
+    },
+    {
+      "name": "para-everything-slow-today",
+      "group": "PARAPHRASE",
+      "query": "the whole dashboard has been crawling since this morning",
+      "relevantDocumentTitles": [
+        "Dashboard slowness troubleshooting"
+      ]
+    },
+    {
+      "name": "para-export-missing-rows",
+      "group": "PARAPHRASE",
+      "query": "the file I downloaded is missing some of my transactions",
+      "relevantDocumentTitles": [
+        "Export troubleshooting"
+      ]
+    },
+    {
+      "name": "para-tally-not-talking",
+      "group": "PARAPHRASE",
+      "query": "Tally hasn't synced in three days and I don't see any error",
+      "relevantDocumentTitles": [
+        "Tally sync troubleshooting"
+      ]
+    },
+    {
+      "name": "para-bank-feed-dead",
+      "group": "PARAPHRASE",
+      "query": "my bank transactions just stopped coming in",
+      "relevantDocumentTitles": [
+        "Bank feed connection issues"
+      ]
+    },
+    {
+      "name": "para-gst-return-wont-match",
+      "group": "PARAPHRASE",
+      "query": "the GST filing keeps failing to line up with the portal",
+      "relevantDocumentTitles": [
+        "GST return reconciliation"
+      ]
+    },
+    {
+      "name": "para-docs-keep-getting-rejected",
+      "group": "PARAPHRASE",
+      "query": "I've uploaded my documents three times and it keeps saying no",
+      "relevantDocumentTitles": [
+        "KYC document requirements"
+      ]
+    },
+    {
+      "name": "para-gst-number-wont-take",
+      "group": "PARAPHRASE",
+      "query": "the system won't accept my GST number no matter how I type it",
+      "relevantDocumentTitles": [
+        "GSTIN verification issues"
+      ]
+    },
+    {
+      "name": "para-invoice-tax-confusion",
+      "group": "PARAPHRASE",
+      "query": "why is there an extra charge on my bill I don't understand",
+      "relevantDocumentTitles": [
+        "Understanding your Ledgerly invoice"
+      ]
+    },
+    {
+      "name": "para-cant-tell-what-broke",
+      "group": "PARAPHRASE",
+      "query": "the app crashed and I don't know what to tell you about it",
+      "relevantDocumentTitles": [
+        "Understanding crash and error reports"
+      ]
+    },
+    {
+      "name": "id-upi-collect-failed",
+      "group": "IDENTIFIER",
+      "query": "ERR_UPI_COLLECT_FAILED",
+      "relevantDocumentTitles": [
+        "UPI payment failures"
+      ]
+    },
+    {
+      "name": "id-settlement-delay",
+      "group": "IDENTIFIER",
+      "query": "ERR_SETTLEMENT_DELAY meaning",
+      "relevantDocumentTitles": [
+        "Settlement delays"
+      ]
+    },
+    {
+      "name": "id-gateway-5xx",
+      "group": "IDENTIFIER",
+      "query": "ERR_GATEWAY_5XX",
+      "relevantDocumentTitles": [
+        "Gateway timeouts and 5xx errors"
+      ]
+    },
+    {
+      "name": "id-idempotency-conflict",
+      "group": "IDENTIFIER",
+      "query": "ERR_IDEMPOTENCY_CONFLICT",
+      "relevantDocumentTitles": [
+        "Duplicate charge detection",
+        "API idempotency keys"
+      ]
+    },
+    {
+      "name": "id-plan-downgrade-blocked",
+      "group": "IDENTIFIER",
+      "query": "ERR_PLAN_DOWNGRADE_BLOCKED",
+      "relevantDocumentTitles": [
+        "Plan downgrade blocked"
+      ]
+    },
+    {
+      "name": "id-card-on-file-expired",
+      "group": "IDENTIFIER",
+      "query": "ERR_CARD_ON_FILE_EXPIRED",
+      "relevantDocumentTitles": [
+        "Card on file expired"
+      ]
+    },
+    {
+      "name": "id-2fa-mismatch",
+      "group": "IDENTIFIER",
+      "query": "ERR_2FA_MISMATCH",
+      "relevantDocumentTitles": [
+        "Two-factor authentication issues"
+      ]
+    },
+    {
+      "name": "id-session-revoked",
+      "group": "IDENTIFIER",
+      "query": "ERR_SESSION_REVOKED",
+      "relevantDocumentTitles": [
+        "Session expiry and unexpected logouts"
+      ]
+    },
+    {
+      "name": "id-apikey-revoked",
+      "group": "IDENTIFIER",
+      "query": "ERR_APIKEY_REVOKED",
+      "relevantDocumentTitles": [
+        "API key management"
+      ]
+    },
+    {
+      "name": "id-tally-conn",
+      "group": "IDENTIFIER",
+      "query": "ERR_TALLY_CONN",
+      "relevantDocumentTitles": [
+        "Tally sync troubleshooting"
+      ]
+    }
+  ]
+}
