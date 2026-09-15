@@ -1,0 +1,180 @@
+{
+ "_note": "Demo seed tickets. Showcase entries are hand-written to match documents in knowledge/corpus.json; the rest are the first four tickets per category from seed/generated/tickets-starter.json. Regenerate with the snippet in docs/ONBOARDING-ACTIVATION-AUDIT.md if the starter corpus changes.",
+ "tickets": [
+  {
+   "showcase": "draft",
+   "subject": "Charged twice for one invoice payment",
+   "body": "I paid my Ledgerly invoice once but my bank statement shows two debits for the same amount a few minutes apart. My connection dropped after the first attempt looked like it failed, so I tried again. How do I get the duplicate charge back?"
+  },
+  {
+   "showcase": "paused",
+   "subject": "UPI payment stuck on processing for an hour",
+   "body": "I paid my subscription by UPI about an hour ago. The money has left my account but Ledgerly still shows the payment as processing and my plan has not renewed. What should I do?"
+  },
+  {
+   "showcase": "refund",
+   "subject": "When will my refund reach my account?",
+   "body": "Support approved a refund for my cancelled add-on three days ago. My bank does not show it yet. How long does a Ledgerly refund normally take?"
+  },
+  {
+   "subject": "Failed to finalize  INV-2026-1857 in ap-south-1 due to idempotency conflict",
+   "body": "While processing invoice INV-2026-1857 under GST period, system shows ERR_IDEMPOTENCY_CONFLICT error preventing confirmation. Issue occurred in ap-south-1 region. This blocks reconciliation and ledger updates.",
+   "category": "API"
+  },
+  {
+   "subject": "422 error ERR_IDEMPOTENCY_CONFLICT with invoice INV-2026-9956, fix needed",
+   "body": "Error ERR_IDEMPOTENCY_CONFLICT received with HTTP 422 on invoice INV-2026-9956 during request processing. Duplicate or conflicting submission detected, blocking invoice lifecycle progression.",
+   "category": "API"
+  },
+  {
+   "subject": "api-gateway causing invoice INV-2026-1693 to stall, requests fail",
+   "body": "Invoice INV-2026-1693 processing hangs at the API gateway layer frequently. Transactions do not proceed and remain in pending state. Please check api-gateway logs and fix backend issues.",
+   "category": "API"
+  },
+  {
+   "subject": "api-gateway shows frequent request blocks and delayed webhooks",
+   "body": "Multiple webhook notifications do not arrive and requests frequently blocked at api-gateway. This disrupts invoice status updates and causes delays in downstream processes.",
+   "category": "API"
+  },
+  {
+   "subject": "Keeps getting logged out from dashboard, session ends abruptly",
+   "body": "I keep facing constant logout from the system interface. Tried restarting browser, but session expiry happens fast and does not remember me. No reset messages come to email either, very frustrating.",
+   "category": "AUTH"
+  },
+  {
+   "subject": "Locked out immediately after login attempts, cannot access account",
+   "body": "After entering credentials, the system forces logout. No reset emails received, two-factor always fails to verify. This sudden lockout must be resolved urgently.",
+   "category": "AUTH"
+  },
+  {
+   "subject": "cannot login to my account, keep getting stuck on verification for INV-2026-0038",
+   "body": "Hi, I am trying to access my invoices and I keep getting logged out or my 2FA never accepts the code. I even tried resetting password but the reset link never comes. Please fix verification process issues so I can see invoice INV-2026-0038.",
+   "category": "AUTH"
+  },
+  {
+   "subject": "cannot login due to repeated failures at auth-service during 2FA, urgent",
+   "body": "After password reset, the 2FA codes generated are always rejected by auth-service and login does not succeed. This locks me out of the system and I cannot access accounting data. Please resolve immediately.",
+   "category": "AUTH"
+  },
+  {
+   "subject": "query about our subscription invoices and plan modifications",
+   "body": "We changed plans recently but the invoice for new plan is unclear and subscription charges look duplicated on portal. Need explanation and proper invoice reflecting latest plan as per agreements.",
+   "category": "BILLING"
+  },
+  {
+   "subject": "subscription plan change after downgrade still showing previous charges",
+   "body": "After downgrading my subscription, I noticed the next cycle shows charges as if I never changed the plan. I was expecting the new lower amount but invoice still reflects older higher amount. Please look into this.",
+   "category": "BILLING"
+  },
+  {
+   "subject": "request clarification on latest Ledgerly subscription invoicing",
+   "body": "we noticed double charges for last month and plan upgrade wasn't reflected correctly in recent invoice. please provide detailed breakdown of charges and next cycle details.",
+   "category": "BILLING"
+  },
+  {
+   "subject": "subscription payment for Ledgerly renewed without my consent urgently fix",
+   "body": "Why was I charged again for the Ledgerly plan I thought I had canceled? This unauthorized recurring charge is causing serious cash flow problems for my business, please reverse it immediately and confirm cancellation, I need this fixed urgently.",
+   "category": "BILLING"
+  },
+  {
+   "subject": "Missing entries in reports and exports, repeated rows observed",
+   "body": "Our exported transaction files and GST reports show missing and duplicated entries randomly. Data export is inconsistent causing problems in filing and reconciliation. Need immediate help resolving data quality problems.",
+   "category": "DATA"
+  },
+  {
+   "subject": "export report missing expected invoice lines, urgent issue",
+   "body": "Hi, when I download monthly sales export, several invoice entries are missing unexpectedly. This distorts GST computations and reconciliation effort. Need investigation why these records are absent from exports.",
+   "category": "DATA"
+  },
+  {
+   "subject": "export fails with ERR_EXPORT_INCOMPLETE from report-service, help needed",
+   "body": "During export attempts for GST returns, I receive error ERR_EXPORT_INCOMPLETE from report-service API. This aborts the process midway. Request debugging this for correct full exports delivery.",
+   "category": "DATA"
+  },
+  {
+   "subject": "report-service throws error ERR_GST_RECONCILE_FAIL 409 in ap-southeast-1",
+   "body": "The report-service in ap-southeast-1 fails to generate GST reconciliation exports. It throws 409 conflict error ERR_GST_RECONCILE_FAIL blocking the data needed for filing. Immediate investigation requested.",
+   "category": "DATA"
+  },
+  {
+   "subject": "Unable to sync invoice INV-2026-1110 records properly, reconciliation impacted",
+   "body": "Invoice INV-2026-1110 data is not reflected correctly in system ledger. Ledger and invoice data mismatch after latest update. Request close review to identify sync issue sources and update ledger accordingly.",
+   "category": "INTEGRATION"
+  },
+  {
+   "subject": "sync-service ERR_ZOHO_AUTH_EXPIRED error stops syncing invoice INV-2026-3366",
+   "body": "sync-service reports ERR_ZOHO_AUTH_EXPIRED on invoice INV-2026-3366 causing bank feed ingestion failures. Connector breaks sync flow intermittently. Please renew token or advise on recovery.",
+   "category": "INTEGRATION"
+  },
+  {
+   "subject": "ledger-service ERR_TALLY_CONN causing ledger sync failures",
+   "body": "ledger-service raises ERR_TALLY_CONN, unable to connect to Tally service for current cycle. Sync fails without retries, no updates pushed to client ledger leading to mismatch.",
+   "category": "INTEGRATION"
+  },
+  {
+   "subject": "ledger-service sync fails constantly with Tally and Zoho Books, data not syncing",
+   "body": "When using ledger-service to connect with Tally or Zoho Books, sync operations fail repeatedly without transferring latest invoice and ledger entries. This disruption blocks my accurate bookkeeping and GST filing. Please assist urgently.",
+   "category": "INTEGRATION"
+  },
+  {
+   "subject": "Delay processing invoice INV-2026-4754 through kyc-service, docs stuck",
+   "body": "Invoice INV-2026-4754 verification stalled in the kyc-service. Document review not progressing causing account activation delay. Need update on verification steps and estimated completion.",
+   "category": "ONBOARDING"
+  },
+  {
+   "subject": "KYC delays affecting invoice INV-2026-6289 in kyc-service, assistance required",
+   "body": "For invoice INV-2026-6289, kyc-service is taking longer than expected to finish business verification and document checks. This is causing process to halt and ledger entry to be deferred.",
+   "category": "ONBOARDING"
+  },
+  {
+   "subject": "kyc-service failure ERR_GSTIN_INVALID with HTTP 500, system crash",
+   "body": "During GSTIN validation in kyc-service, error ERR_GSTIN_INVALID is triggered with 500 status. This results in crash of document processing pipeline and blocks KYC completion.",
+   "category": "ONBOARDING"
+  },
+  {
+   "subject": "waited long but no update on account verification, documents pending",
+   "body": "I sent my business documents a while back but nothing changed in account setup. Please tell me kya karu now? This delay is holding my transactions and billing cycle.",
+   "category": "ONBOARDING"
+  },
+  {
+   "subject": "Settlement delays causing ledger discrepancy, please investigate urgently",
+   "body": "Transactions expected in ledger reconciliation show missing settlements. Delay between invoice issuance and cleared amounts causing mismatch. Immediate action needed to resolve settlement timeline issues.",
+   "category": "PAYMENT"
+  },
+  {
+   "subject": "Funds of 51336 INR stuck in payment-service, urgent resolution required",
+   "body": "amount 51336 INR via payment-service not transferring as expected; money debited from bank account but not credited to counterparty. Settlement delay causing operational halt. Please escalate immediately.",
+   "category": "PAYMENT"
+  },
+  {
+   "subject": "card declined or funds not transferred for 156207 INR through payment-service",
+   "body": "Attempted to send 156207 INR using payment-service but amount did not reach recipient. Bank shows deduction but no confirmation in system. Urgent investigation required to complete money flow.",
+   "category": "PAYMENT"
+  },
+  {
+   "subject": "Inbound collections and settlements delayed, ledger entries missing",
+   "body": "Receipts expected to reflect in ledger are not showing for last 48 hours. This is causing mismatch in account balances. Please assist in checking settlement and reconciliation flows.",
+   "category": "PAYMENT"
+  },
+  {
+   "subject": "403 errors and ERR_QUERY_TIMEOUT with api-gateway, need debug",
+   "body": "api-gateway throws error ERR_QUERY_TIMEOUT, HTTP status 403 on several attempts. Endpoint is unresponsive; requests fail to complete and hang indefinitely. Need logs or fix for query execution timeouts.",
+   "category": "PERFORMANCE"
+  },
+  {
+   "subject": "Pages hang and crash during invoice creation, need quick fix",
+   "body": "System UI becomes unresponsive and crashes when trying to create new invoices. No errors shown, just stuck loading for extended time before browser tab closes on its own.",
+   "category": "PERFORMANCE"
+  },
+  {
+   "subject": "api-gateway pages not responding properly, loading just hangs",
+   "body": "I'm using the app and when I try to handle some tasks, the pages from api-gateway just freeze. Nothing loads and it becomes unresponsive at random times. I tried different browsers but same. Can you check why service is hanging?",
+   "category": "PERFORMANCE"
+  },
+  {
+   "subject": "app keeps freezing and timeouts occur when I try to work, very frustrating",
+   "body": "Hi team, the app is unresponsive many times during my usage—sometimes it crashes or hangs without loading pages. This makes me lose time and I can’t finish updating invoices or send requests. Please look into this matter.",
+   "category": "PERFORMANCE"
+  }
+ ]
+}
