@@ -1,0 +1,308 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens (Lovable reskin, 2026-09-27). Palette/radius/fonts adopted
+ * from the Lovable export; type scale kept from the prior audited system
+ * (six steps, nothing below 12px - UI audit V1) since Lovable's export
+ * doesn't override Tailwind's default text scale.
+ *
+ * Both themes are first-class; the default follows the OS (lib/theme.ts).
+ * `--input` is darkened one notch from Lovable's source value (L 0.66 -> 0.63)
+ * to restore the 3:1 WCAG 1.4.11 contrast the prior tokens held for
+ * form-control borders - Lovable's own value only cleared 2.88:1 on --background.
+ */
+@theme {
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 1.45;
+  --text-sm: 13px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14px;
+  --text-base--line-height: 1.55;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.45;
+  --text-xl: 20px;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 1.15;
+  --text-display: 44px;
+  --text-display--line-height: 1.05;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --radius-full: 9999px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-link: var(--link);
+  --color-info-soft: var(--info-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-internal: var(--internal);
+  --color-internal-border: var(--internal-border);
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.05);
+  --shadow-elevated: 0 8px 24px -8px rgb(0 0 0 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.06);
+  --shadow-popover: 0 16px 40px -12px rgb(0 0 0 / 0.22), 0 4px 10px -4px rgb(0 0 0 / 0.08);
+
+  --animate-fade-in: fade-in 0.18s ease-out;
+  --animate-slide-up: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: oklch(0.972 0.008 280);
+  --foreground: oklch(0.22 0.035 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.035 275);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.035 275);
+  --primary: oklch(0.45 0.17 272);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.02 280);
+  --secondary-foreground: oklch(0.45 0.17 272);
+  --muted: oklch(0.95 0.02 280);
+  --muted-foreground: oklch(0.42 0.035 275);
+  --accent: oklch(0.95 0.02 280);
+  --accent-foreground: oklch(0.45 0.17 272);
+  --destructive: oklch(0.5 0.19 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.87 0.02 280);
+  --input: oklch(0.63 0.04 278);
+  --ring: oklch(0.52 0.15 274);
+  --link: oklch(0.45 0.17 272);
+  --info-soft: oklch(0.95 0.02 280);
+  --danger: oklch(0.5 0.19 27);
+  --danger-soft: oklch(0.955 0.025 20);
+  --danger-border: oklch(0.88 0.06 22);
+  --warning: oklch(0.45 0.14 275);
+  --warning-soft: oklch(0.96 0.02 275);
+  --warning-border: oklch(0.88 0.045 275);
+  --success: oklch(0.44 0.1 158);
+  --success-soft: oklch(0.97 0.03 160);
+  --success-border: oklch(0.9 0.07 160);
+  /* Amber, only for "this needs you": warning is brand-indigo, so it can't flag the customer's turn. */
+  --attention: oklch(0.52 0.13 60);
+  --attention-soft: oklch(0.96 0.04 75);
+  --internal: oklch(0.96 0.018 280);
+  --internal-border: oklch(0.86 0.05 278);
+  --chart-1: oklch(0.45 0.17 272);
+  --chart-2: oklch(0.67 0.11 277);
+  --chart-3: oklch(0.5 0.11 158);
+  --chart-4: oklch(0.6 0.08 250);
+  --chart-5: oklch(0.53 0.19 27);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.42 0.035 275);
+  --sidebar-primary: oklch(0.45 0.17 272);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.02 280);
+  --sidebar-accent-foreground: oklch(0.45 0.17 272);
+  --sidebar-border: oklch(0.9 0.015 280);
+  --sidebar-ring: oklch(0.67 0.11 277);
+}
+
+.dark {
+  --background: oklch(0.19 0.02 275);
+  --foreground: oklch(0.95 0.01 280);
+  --card: oklch(0.24 0.02 275);
+  --card-foreground: oklch(0.95 0.01 280);
+  --popover: oklch(0.24 0.02 275);
+  --popover-foreground: oklch(0.95 0.01 280);
+  --primary: oklch(0.75 0.13 272);
+  --primary-foreground: oklch(0.19 0.02 275);
+  --secondary: oklch(0.3 0.025 278);
+  --secondary-foreground: oklch(0.95 0.01 280);
+  --muted: oklch(0.3 0.025 278);
+  --muted-foreground: oklch(0.72 0.03 278);
+  --accent: oklch(0.3 0.025 278);
+  --accent-foreground: oklch(0.95 0.01 280);
+  --destructive: oklch(0.68 0.19 27);
+  --destructive-foreground: oklch(0.15 0 0);
+  --border: oklch(0.34 0.02 278);
+  --input: oklch(0.5 0.03 278);
+  --ring: oklch(0.72 0.13 274);
+  --link: oklch(0.78 0.13 272);
+  --info-soft: oklch(0.3 0.025 278);
+  --danger: oklch(0.68 0.19 27);
+  --danger-soft: oklch(0.28 0.05 22);
+  --danger-border: oklch(0.4 0.09 22);
+  --warning: oklch(0.75 0.13 275);
+  --warning-soft: oklch(0.28 0.03 275);
+  --warning-border: oklch(0.4 0.06 275);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --success-border: oklch(0.38 0.09 160);
+  --attention: oklch(0.8 0.13 75);
+  --attention-soft: oklch(0.3 0.05 65);
+  --internal: oklch(0.28 0.02 280);
+  --internal-border: oklch(0.4 0.05 278);
+  --chart-1: oklch(0.75 0.13 272);
+  --chart-2: oklch(0.6 0.1 277);
+  --chart-3: oklch(0.68 0.1 158);
+  --chart-4: oklch(0.65 0.08 250);
+  --chart-5: oklch(0.68 0.19 27);
+  --sidebar: oklch(0.24 0.02 275);
+  --sidebar-foreground: oklch(0.72 0.03 278);
+  --sidebar-primary: oklch(0.75 0.13 272);
+  --sidebar-primary-foreground: oklch(0.19 0.02 275);
+  --sidebar-accent: oklch(0.3 0.025 278);
+  --sidebar-accent-foreground: oklch(0.95 0.01 280);
+  --sidebar-border: oklch(0.34 0.02 278);
+  --sidebar-ring: oklch(0.6 0.1 277);
+}
+
+@layer base {
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, .font-heading {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+::selection {
+  background: var(--color-secondary);
+  color: var(--color-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Headings receive focus programmatically on navigation (RouteAnnouncer); that is a
+   reading position, not an interactive target, so no ring. */
+h1[tabindex='-1']:focus,
+main:focus {
+  outline: none;
+}
+}
+
+@layer components {
+/* The one panel treatment the whole app uses, instead of a different bordered
+   box per component. Solid, not blurred (audit V4): nothing sits behind these
+   panels, so a backdrop-filter cost paint time on every long list and bought
+   nothing. Blur is kept only where content genuinely scrolls underneath - the
+   sticky bars, which use bg-glass + backdrop-blur explicitly. */
+.glass {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+
+/* "Skip to content" (audit A7): first tab stop, invisible until focused. */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 200;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.skip-link:focus {
+  top: 12px;
+}
+}
+
+.skeleton {
+  background: var(--color-muted);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
