@@ -75,7 +75,12 @@ function pickEntities(rng, domain, category, persona) {
   if (!rng.bool(density)) return {};
 
   const e = {};
-  if (rng.bool(0.70)) e.service = rng.pick(domain.services);
+  if (rng.bool(0.70)) {
+    // Weighted toward the category's most likely service. Uniform picking made
+    // PAYMENT tickets cite sync-service, which would cluster on noise.
+    const candidates = domain.servicesFor(category);
+    e.service = rng.weighted(candidates.map((s, i) => ({ value: s, weight: Math.max(1, 6 - i * 2) })));
+  }
   if (persona === 'DEVELOPER' && rng.bool(0.80)) e.errorCode = rng.pick(domain.errorCodesFor(category));
   else if (rng.bool(0.15)) e.errorCode = rng.pick(domain.errorCodesFor(category));
   if (persona === 'DEVELOPER' && rng.bool(0.55)) e.httpStatus = rng.pick(domain.httpStatuses);

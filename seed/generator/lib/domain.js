@@ -34,6 +34,13 @@ export function loadDomain() {
     if (!errorCodes.error_codes[cat]) {
       throw new Error(`error-codes.yml: no codes defined for category ${cat}`);
     }
+    const cs = services.category_services?.[cat];
+    if (!cs) throw new Error(`services.yml: no category_services entry for ${cat}`);
+    for (const svc of cs) {
+      if (!services.services.includes(svc)) {
+        throw new Error(`services.yml: category_services.${cat} references unknown service "${svc}"`);
+      }
+    }
   }
   const defaults = Object.entries(taxonomy.teams).filter(([, t]) => t.default);
   if (defaults.length !== 1) {
@@ -46,6 +53,7 @@ export function loadDomain() {
     teamFor: (cat) => taxonomy.categories[cat].team,
     descriptionFor: (cat) => taxonomy.categories[cat].description,
     services: services.services,
+    servicesFor: (cat) => services.category_services?.[cat] ?? services.services,
     serviceAliases: services.aliases ?? {},
     errorCodesFor: (cat) => errorCodes.error_codes[cat],
     httpStatuses: errorCodes.http_statuses,

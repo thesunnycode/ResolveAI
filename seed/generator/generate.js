@@ -61,10 +61,20 @@ Return ONLY a JSON array, same length and order as the input, each element:
 
 RULES — these are not stylistic preferences, they are requirements:
 
-1. NEVER use the scenario's category name (or an obvious morphological variant) anywhere
-   in the subject or body. A PAYMENT ticket must not contain "payment"/"paying"/"paid for".
-   Describe the SYMPTOM as the customer experienced it. This matters: if the category
-   name appears, classification degenerates into keyword matching.
+1. NEVER use the scenario's forbiddenWords (or an obvious morphological variant) as
+   standalone words anywhere in the subject or body. Describe the SYMPTOM as the
+   customer experienced it. If the category name appears, classification degenerates
+   into keyword matching and the whole corpus is worthless.
+
+   The ONE exception: a service name from "entities" is used verbatim even if it
+   contains a forbidden substring — "payment-service" is fine, a bare "payment" is not.
+
+   Instead of the forbidden word, reach for the symptom:
+     PAYMENT → "money left my account", "card was declined", "collect request expired"
+     BILLING → "charged for a plan I downgraded", "subscription renewed twice"
+     AUTH    → "logged out constantly", "reset link never arrives", "2FA code rejected"
+     API     → "endpoint returns 429", "webhook never fired", "SDK throws on init"
+     DATA    → "export is missing rows", "return does not tally", "records duplicated"
 
 2. Match the persona exactly:
    - OWNER: non-technical, often frustrated or worried, describes symptoms not causes,
@@ -197,7 +207,14 @@ async function main() {
 function assemble(s, written, domain, index) {
   const subject = String(written.subject ?? '').trim().slice(0, 200);
   const body = String(written.body ?? '').trim();
-  const haystack = `${subject}\n${body}`.toLowerCase();
+  // Mask entity values before scanning. The model is REQUIRED to use them verbatim,
+  // and "payment-service" legitimately contains "payment". A naive substring match
+  // reported 11 false positives out of 19 on the first run — the check was wrong,
+  // not the model.
+  let haystack = `${subject}\n${body}`.toLowerCase();
+  for (const v of Object.values(s.entities)) {
+    haystack = haystack.split(String(v).toLowerCase()).join(' ⟪ entity ⟫ ');
+  }
   const violations = forbiddenWordsFor(s.category).filter((w) => haystack.includes(w));
 
   const createdAt = s.createdAt;

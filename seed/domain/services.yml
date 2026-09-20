@@ -19,3 +19,17 @@ aliases:
   sync-service:         [sync svc, syncing service]
   api-gateway:          [api gw, gateway]
   notification-service: [notifications service, notif service]
+
+# Which services plausibly appear in a ticket of each category.
+# Without this, pickEntities() chooses uniformly and a PAYMENT ticket cites
+# sync-service — which makes the shared-entity boost in doc 12 T6 cluster on
+# noise. Weighted: first entry is the most likely.
+category_services:
+  PAYMENT:     [payment-service, ledger-service, notification-service]
+  BILLING:     [payment-service, ledger-service]
+  AUTH:        [auth-service, api-gateway]
+  API:         [api-gateway, auth-service, ledger-service]
+  PERFORMANCE: [api-gateway, report-service, ledger-service, sync-service]
+  INTEGRATION: [sync-service, ledger-service]
+  DATA:        [report-service, ledger-service, sync-service]
+  ONBOARDING:  [kyc-service, notification-service, auth-service]
