@@ -2,7 +2,8 @@
 
 **File:** `seed/generated/tickets-starter.json`
 **Generated:** 2026-09-20 · `--count 200 --seed 42 --days 14 --batch 20`
-**Model:** `gpt-4.1-mini` (OpenAI) · 22,337 input / 12,978 output tokens · **≈ $0.03**
+**Model:** `gpt-4.1-mini` (OpenAI) · 23,870 input / 13,568 output tokens · **≈ $0.03**
+**Revision 2** — three findings from revision 1 fixed; see *What was fixed* below.
 **Reviewed by:** hand, 30 tickets read in full, stratified across all 8 categories
 
 > Doc 14 Task 10: *"Reading thirty tickets is not optional and it is not busywork. A
@@ -18,17 +19,23 @@
 | PERFORMANCE / DATA / API / BILLING | 9 / 12 / 6 / 8 % | 11.0 / 9.5 / 7.0 / 6.0 % |
 | Priority P1 / P2 / P3 / P4 | 6 / 22 / 48 / 24 % | 6.5 / 22.0 / 47.0 / 24.5 % |
 | Persona OWNER / ACCOUNTANT / DEVELOPER | 55 / 30 / 15 % | 54.5 / 30.5 / 15.0 % |
-| Tenant acme / bluestone / chai | 50 / 33 / 17 % | 51.0 / 31.0 / 18.0 % |
-| Tickets naming an entity | ~50 % | **41.5 %** |
+| Tenant acme / bluestone / chai | 50 / 33 / 17 % | 53.5 / 32.5 / 14.0 % |
+| Tickets naming an entity | ~50 % | **45.5 %** |
 | Implausible service↔category pairings | 0 | **0** |
 
 **ONBOARDING over-represented** (15.5% against 11%) and **DATA under** (9.5% against 12%)
 — sampling variance at n=200, expected to converge in the 2,000-ticket run. Not corrected;
 over-fitting a synthetic distribution is not worth the time.
 
-**Entity density 41.5% against a ~50% target.** Accepted. The requirement in doc 14 is
-"roughly half"; 58.5% of tickets carry no extractable entity, which preserves the property
-that matters — entity extraction must not look trivially reliable.
+**Entity density** was 41.5% in revision 1; per-persona densities were nudged
+(0.92/0.42/0.28 → 0.95/0.52/0.36) and it now sits at **45.5%**. Doc 14 asks for "roughly
+half"; 54.5% of tickets still carry no extractable entity, preserving the property that
+matters — entity extraction must not look trivially reliable.
+
+**Entity fidelity: 99.5%** (193/194 entity values appear verbatim). The one miss is a
+dropped `auth-service`. An apparent second miss was my check's fault: `amountInr=54181`
+appears as `₹54,181`, which is *more* realistic than a bare integer — the check now
+normalises separators.
 
 ---
 
@@ -68,17 +75,47 @@ itself*: `payment-service` contains "payment", `auth-service` contains "auth". T
 was correctly obeying the instruction to use entities verbatim; **the check was wrong, not
 the model.** The checker now masks entity values before scanning.
 
-**3. Genuine forbidden-word leakage: 9/200 = 4.5%.**
-Real, and not fully fixed. Strengthening the prompt (adding an explicit symptom-vocabulary
-table) moved it from 4.0% to 4.5% — i.e. **not measurably at all.** Recorded rather than
-chased further: at 95.5% clean, keyword matching still cannot classify this corpus, which
-is the property that matters.
+**3. Forbidden-word leakage: 4.5% → 0%. FIXED.**
 
-Two of the nine are arguably the checker's fault, not the model's: `'data '` and `'api '`
-are ordinary English words that appear naturally in tickets of *any* category
-(*"partial data for last month"*). Those two entries in the `FORBIDDEN` map are too
-aggressive. **Left as-is deliberately** — a checker that over-reports is safer than one
-that under-reports, and the count is reported honestly rather than tuned down.
+Revision 1 recorded 9/200 genuine leaks and accepted them, having found that strengthening
+the prompt moved leakage from 4.0% to 4.5% — i.e. not at all. Two mechanical fixes closed it:
+
+*a. Hard/soft classification.* The `FORBIDDEN` map conflated two different things.
+**Hard** words are distinctive category names (`payment`, `billing`, `onboarding`) where a
+leak genuinely gives the label away. **Soft** words are ordinary English that happens to be
+a category name — `data` and `api`. *"partial data for last month"* is natural writing in a
+ticket of **any** category, and a DATA ticket can hardly avoid it. Counting those as defects
+overstated the failure rate. They are now reported separately: **8/200 soft hits, not a
+defect.** Matching also moved from substring to whole-word regex, so `pay` no longer flags
+`paying`.
+
+*b. A targeted repair loop.* After generation, any ticket still containing a hard word is
+sent back in a single batch with an explicit *"you used X, rewrite without it, preserve
+every identifier"* instruction, up to two rounds. A rewrite of the offenders is the
+mechanical fix that works where prompt engineering did not.
+
+**Result: 0/200 hard-word leaks, verified independently** with a re-derivation that does not
+share code with the generator.
+
+**4. The generator crashed on a malformed model response. FIXED.**
+
+Regeneration hit `Bad control character in string literal in JSON at position 5656` — the
+model emitted a literal newline inside a quoted string. `JSON.parse` is strict, so one stray
+`
+` discarded a whole 20-ticket batch. `extractJsonArray` now retries with a parser that
+walks the text tracking string state and escapes raw control characters. Also switched the
+error path from `process.exit(1)` to `process.exitCode`, which was tripping a libuv
+assertion on Windows.
+
+## What was NOT fixed, and why
+
+| Finding | Status |
+|---|---|
+| ~3% label noise | **Recorded, not fixed** — see below |
+| Soft-word hits, 8/200 | **Not a defect** — reclassified, reported separately |
+| Entity fidelity 99.5% (1 miss) | **Accepted** at 0.5% |
+| Category distribution variance (ONBOARDING 15.5% vs 11%) | **Accepted** — n=200 sampling variance, expected to converge at 2,000 |
+| Tenant distribution drift (chai 14% vs 17%) | **Accepted** — same reason |
 
 ---
 

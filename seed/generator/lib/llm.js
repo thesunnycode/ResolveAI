@@ -112,6 +112,33 @@ export async function generateBatch(config, system, user, { maxTokens = 4096, no
   throw lastErr;
 }
 
+/**
+ * Escape raw control characters that appear INSIDE JSON string literals.
+ *
+ * Models intermittently emit a literal newline inside a quoted string, which is
+ * invalid JSON and makes JSON.parse throw "Bad control character in string
+ * literal". Rejecting the whole batch over one stray \n wastes the call, so walk
+ * the text tracking string state and escape them.
+ */
+function escapeControlCharsInStrings(json) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of json) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === '\\') { out += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; out += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { out += '\\r'; continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+      if (ch < ' ') { continue; }          // drop other control chars outright
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Tolerant JSON extraction — models wrap arrays in prose or fences. */
 export function extractJsonArray(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -119,5 +146,10 @@ export function extractJsonArray(text) {
   const start = body.indexOf('[');
   const end = body.lastIndexOf(']');
   if (start === -1 || end === -1) throw new Error(`No JSON array in response: ${text.slice(0, 200)}`);
-  return JSON.parse(body.slice(start, end + 1));
+  const slice = body.slice(start, end + 1);
+  try {
+    return JSON.parse(slice);
+  } catch {
+    return JSON.parse(escapeControlCharsInStrings(slice));   // let a second failure throw
+  }
 }

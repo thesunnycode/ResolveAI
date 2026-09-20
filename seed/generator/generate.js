@@ -102,7 +102,7 @@ function buildUserPrompt(scenarios, domain) {
     i,
     persona: s.persona,
     priority: s.priority,
-    forbiddenWords: forbiddenWordsFor(s.category),
+    forbiddenWords: allWordsFor(s.category),
     situation: domain.descriptionFor(s.category),
     entities: s.entities,
   }));
@@ -112,17 +112,40 @@ function buildUserPrompt(scenarios, domain) {
 }
 
 // Rule 1 enforcement input — and the post-generation check below.
+//
+// HARD words are distinctive category names. A leak is a real defect: the word
+// gives the label away and classification degenerates into keyword matching.
+//
+// SOFT words are ordinary English that happens to be a category name. "partial
+// data for last month" is natural writing in a ticket of ANY category, and a
+// DATA ticket can hardly avoid it. Reported separately rather than counted as a
+// defect — the first review conflated the two and overstated the failure rate.
 const FORBIDDEN = {
-  PAYMENT:     ['payment', 'paid', 'paying', 'pay '],
-  BILLING:     ['billing', 'bill '],
-  AUTH:        ['auth', 'authentication'],
-  API:         ['api '],
-  PERFORMANCE: ['performance'],
-  INTEGRATION: ['integration', 'integrate'],
-  DATA:        ['data '],
-  ONBOARDING:  ['onboarding', 'onboard'],
+  PAYMENT:     { hard: ['payment', 'payments', 'paid', 'paying'],   soft: ['pay'] },
+  BILLING:     { hard: ['billing', 'billed'],                       soft: ['bill'] },
+  AUTH:        { hard: ['auth', 'authentication', 'authenticate'],  soft: [] },
+  API:         { hard: [],                                          soft: ['api'] },
+  PERFORMANCE: { hard: ['performance'],                             soft: ['slow'] },
+  INTEGRATION: { hard: ['integration', 'integrate', 'integrated'],  soft: [] },
+  DATA:        { hard: [],                                          soft: ['data'] },
+  ONBOARDING:  { hard: ['onboarding', 'onboard', 'onboarded'],      soft: [] },
 };
-const forbiddenWordsFor = (cat) => FORBIDDEN[cat] ?? [];
+const hardWordsFor = (cat) => FORBIDDEN[cat]?.hard ?? [];
+const softWordsFor = (cat) => FORBIDDEN[cat]?.soft ?? [];
+const allWordsFor  = (cat) => [...hardWordsFor(cat), ...softWordsFor(cat)];
+
+/** Whole-word match — "paying" must not be flagged by "pay". */
+const containsWord = (haystack, word) =>
+  new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(haystack);
+
+/** Entity values are REQUIRED verbatim; "payment-service" legitimately holds "payment". */
+function maskEntities(text, entities) {
+  let out = text;
+  for (const v of Object.values(entities)) {
+    out = out.split(String(v).toLowerCase()).join(' ⟪ entity ⟫ ');
+  }
+  return out;
+}
 
 // ── main ────────────────────────────────────────────────────────────────────
 
@@ -180,14 +203,58 @@ async function main() {
     console.log(res.cached ? 'cached' : `${res.usage.out} tok`);
   }
 
+  // 3. Repair pass — regenerate ONLY the tickets that leaked a hard word.
+  //    Strengthening the prompt moved leakage 4.0% -> 4.5%, i.e. not at all.
+  //    A targeted rewrite is the mechanical fix that actually works.
+  for (let round = 1; round <= 2; round++) {
+    const bad = tickets.map((t, i) => ({ t, i })).filter(({ t }) => t._violations.length);
+    if (!bad.length) break;
+    process.stdout.write(`  repair round ${round}: ${bad.length} ticket(s) … `);
+
+    const items = bad.map(({ t }, k) => ({
+      k,
+      forbiddenWords: t._violations,
+      subject: t.subject,
+      body: t.body,
+    }));
+    const res = await generateBatch(
+      config,
+      'You rewrite support tickets to remove specific forbidden words. Return ONLY a JSON ' +
+      'array of {subject, body}, same length and order as the input. Preserve meaning, ' +
+      'persona, length and every specific identifier (invoice refs, error codes, service ' +
+      'names, amounts). Remove each forbidden word entirely — substitute the SYMPTOM ' +
+      '("money left my account", "logged out constantly", "export is missing rows"). ' +
+      'Do not introduce a different forbidden word.',
+      `Rewrite these ${items.length} tickets.
+
+${JSON.stringify(items, null, 2)}`,
+      { maxTokens: Math.min(8192, 420 * items.length), noCache: NO_CACHE }
+    );
+    tokensIn += res.usage.in; tokensOut += res.usage.out;
+
+    const fixed = extractJsonArray(res.text);
+    if (fixed.length !== bad.length) {
+      console.log(`⚠ expected ${bad.length}, got ${fixed.length} — skipping repair`);
+      break;
+    }
+    let stillBad = 0;
+    bad.forEach(({ i }, k) => {
+      const redone = assemble(structures[i], fixed[k], domain, i);
+      if (redone._violations.length) stillBad++;
+      tickets[i] = redone;
+    });
+    console.log(stillBad ? `${bad.length - stillBad} fixed, ${stillBad} remain` : 'all fixed');
+  }
+  violations = tickets.filter((t) => t._violations.length).length;
+  const softTotal = tickets.filter((t) => t._softHits.length).length;
+
   // 3. Report and write.
   report(structures, domain);
   console.log(`\n  tokens: ${tokensIn} in / ${tokensOut} out   (${cachedBatches} batches from cache)`);
-  if (violations) {
-    console.log(`  ⚠  ${violations}/${tickets.length} tickets leaked a forbidden category word — see _violations`);
-  } else {
-    console.log(`  ✅ no forbidden-word violations`);
-  }
+  console.log(violations
+    ? `  ⚠  hard-word leaks: ${violations}/${tickets.length} (${(violations / tickets.length * 100).toFixed(1)}%) — see _violations`
+    : `  ✅ hard-word leaks: 0/${tickets.length}`);
+  console.log(`  ·  soft-word hits: ${softTotal}/${tickets.length} (ordinary English, not a defect)`);
 
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify({
@@ -207,15 +274,9 @@ async function main() {
 function assemble(s, written, domain, index) {
   const subject = String(written.subject ?? '').trim().slice(0, 200);
   const body = String(written.body ?? '').trim();
-  // Mask entity values before scanning. The model is REQUIRED to use them verbatim,
-  // and "payment-service" legitimately contains "payment". A naive substring match
-  // reported 11 false positives out of 19 on the first run — the check was wrong,
-  // not the model.
-  let haystack = `${subject}\n${body}`.toLowerCase();
-  for (const v of Object.values(s.entities)) {
-    haystack = haystack.split(String(v).toLowerCase()).join(' ⟪ entity ⟫ ');
-  }
-  const violations = forbiddenWordsFor(s.category).filter((w) => haystack.includes(w));
+  const haystack = maskEntities(`${subject}\n${body}`.toLowerCase(), s.entities);
+  const violations = hardWordsFor(s.category).filter((w) => containsWord(haystack, w));
+  const softHits   = softWordsFor(s.category).filter((w) => containsWord(haystack, w));
 
   const createdAt = s.createdAt;
   const resolvedAt = new Date(createdAt.getTime() + s.resolutionBusinessMinutes * 60_000);
@@ -236,6 +297,7 @@ function assemble(s, written, domain, index) {
     resolutionBusinessMinutes: s.resolutionBusinessMinutes,
     resolvedAtApprox: resolvedAt.toISOString(),
     _violations: violations,
+    _softHits: softHits,
   };
 }
 

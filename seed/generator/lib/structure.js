@@ -71,7 +71,8 @@ export function pickStructure(rng, domain) {
 // ticket names a service makes entity extraction look trivially reliable and
 // inflates the clustering boost in doc 12 T6 against reality.
 function pickEntities(rng, domain, category, persona) {
-  const density = persona === 'DEVELOPER' ? 0.92 : persona === 'ACCOUNTANT' ? 0.42 : 0.28;
+  // Measured 41.5% at 0.92/0.42/0.28; nudged to land nearer the ~50% target.
+  const density = persona === 'DEVELOPER' ? 0.95 : persona === 'ACCOUNTANT' ? 0.52 : 0.36;
   if (!rng.bool(density)) return {};
 
   const e = {};
