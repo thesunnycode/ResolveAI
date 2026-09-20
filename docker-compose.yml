@@ -26,7 +26,12 @@ services:
       # Deterministic collation so ORDER BY is stable across machines
       POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
     ports:
-      - "5432:5432"
+      # 55432 on the host, not 5432. A native Windows PostgreSQL service already binds 5432,
+      # and when two processes listen on one port the client reaches whichever bound first -
+      # which produced "password authentication failed for user resolveai" against a server
+      # that had simply never heard of that role. Inside the compose network the port is
+      # still 5432; only the host mapping moved.
+      - "55432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # Runs once on first creation so `down -v && up` yields a ready database

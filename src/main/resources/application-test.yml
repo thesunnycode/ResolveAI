@@ -1,0 +1,57 @@
+# Integration tests.
+#
+# No datasource URL here, deliberately. Testcontainers supplies it at runtime through
+# @ServiceConnection, and a hard-coded URL in this file is how a test suite ends up
+# silently running against a developer's real local database and passing for the wrong
+# reason — or, worse, truncating it.
+#
+# Flyway stays ON. Tests run against the same migrations production runs, because a schema
+# created by Hibernate is a schema nobody ever migrated, and it hides exactly the bugs an
+# integration test exists to catch: a missing partial index, a trigger that was never
+# created, a default that only the migration sets.
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+    clean-disabled: true        # nothing in a test run may drop the schema
+
+  ai:
+    openai:
+      # Tests never call a real provider. WireMock stands in, and this key exists only so
+      # the auto-configuration has something non-blank to construct a client with. A test
+      # that reaches the network is a test that fails when the network does.
+      api-key: test-key-not-used
+      base-url: http://localhost:0
+
+resolveai:
+  auth:
+    # A fixed 384-bit test secret. Deterministic on purpose: token assertions must not
+    # depend on a value that changes per run. This is never used outside the test profile.
+    jwt-secret: dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdGVzdHMtMzg0LWJpdHMtbG9uZw==
+    access-token-ttl-minutes: 15
+    refresh-token-ttl-days: 7
+  security:
+    pii-encryption-key: dGVzdC1vbmx5LWFlcy1nY20ta2V5LTI1Ni1iaXRzLWxvbmch
+    cors-allowed-origins: http://localhost:5173
+  workers:
+    # Pollers are driven explicitly in tests — a background thread firing mid-assertion is
+    # the classic source of a suite that passes 9 runs in 10.
+    poll-interval-ms: 3600000
+    pool-size: 2
+  storage:
+    endpoint: http://localhost:0
+    bucket: resolveai-test
+    access-key: test
+    secret-key: test
+
+logging:
+  level:
+    root: WARN
+    com.resolveai: INFO
+    org.testcontainers: INFO
+    # Silences the container startup banner but keeps failures visible.
+    tc.testcontainers: WARN

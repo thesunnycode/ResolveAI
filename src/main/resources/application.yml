@@ -1,0 +1,135 @@
+# ResolveAI — base configuration.
+#
+# Phase 3 Task 4. Everything here applies to every profile. Anything environment-specific
+# lives in application-{local,test,prod}.yml.
+#
+# Values that look like defaults but are not, and why each one is set explicitly:
+#   ddl-auto: validate      Flyway owns the schema. `update` gives it two owners.
+#   open-in-view: false     Spring's default is `true`, and it is wrong.
+#   jdbc.time_zone: UTC     Otherwise the JVM's zone silently enters your timestamps.
+#   flyway.baseline-on-migrate: false   `true` makes an unversioned database look migrated.
+
+spring:
+  application:
+    name: resolveai
+
+  # ── Persistence ───────────────────────────────────────────────────────────
+  jpa:
+    hibernate:
+      # NEVER `update`. Flyway owns the schema; Hibernate's only job here is to fail loudly
+      # when an entity disagrees with it. With `update`, Hibernate quietly adds the column it
+      # wants, the migration that was supposed to add it never runs, and the schema has two
+      # sources of truth that disagree on every machine.
+      ddl-auto: validate
+    # Spring's default is `true`, which keeps the Hibernate session open for the whole request
+    # so a lazy association can be resolved during view rendering. That turns an N+1 in a
+    # response mapper into something that works, which is worse than something that fails —
+    # it works in development and falls over under load, and the query happens outside any
+    # transaction you declared. This API returns DTOs, never entities, so nothing needs it.
+    open-in-view: false
+    properties:
+      # Without this, Hibernate writes timestamps in the JVM's default zone. Every server
+      # then stores slightly different instants and business-hours arithmetic quietly breaks.
+      hibernate.jdbc.time_zone: UTC
+      # Fail fast on an accidental in-memory pagination of a fetch-joined collection, rather
+      # than loading the whole table and paging it in the JVM.
+      hibernate.query.fail_on_pagination_over_collection_fetch: true
+      hibernate.jdbc.batch_size: 50
+      hibernate.order_inserts: true
+      hibernate.order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # `true` would tell Flyway to assume any non-empty database is already at the baseline
+    # version — which is exactly how a half-migrated database gets marked as done.
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      # 30s. Prints a stack trace for any connection held longer than this, which is how you
+      # find the place that forgot to close one. Cheap in production, invaluable in Phase 6
+      # when the workers start competing for the pool.
+      leak-detection-threshold: 30000
+      connection-timeout: 10000
+      pool-name: resolveai-pool
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
+    # No `write-dates-as-timestamps: false` here. Boot 4 ships Jackson 3, which moved that
+    # flag out of SerializationFeature into DateTimeFeature — and, more to the point, flipped
+    # its default: Jackson 3 writes java.time values as ISO-8601 already. Setting it under
+    # `serialization` is not a no-op, it is a startup failure.
+    deserialization:
+      fail-on-unknown-properties: false  # additive API changes must not break older clients
+
+  mvc:
+    problemdetails:
+      enabled: true                      # RFC 7807 from Spring's own handlers too
+
+  threads:
+    virtual:
+      # Java 21 virtual threads for request handling. The workload is overwhelmingly
+      # IO-bound — Postgres round trips and LLM calls measured in seconds — which is exactly
+      # the case where a platform-thread pool is the bottleneck and a virtual thread is not.
+      enabled: true
+
+server:
+  port: 8080
+  error:
+    # Nothing about the internals reaches a client. The @RestControllerAdvice owns every
+    # error response; these settings make sure Spring's fallback page cannot leak past it.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    whitelabel:
+      enabled: false
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  observations:
+    key-values:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    root: INFO
+    com.resolveai: DEBUG
+
+# ── Application configuration ───────────────────────────────────────────────
+# Bound to @ConfigurationProperties records, never read with @Value scattered through
+# services: one typed object per concern, validated at startup, so a missing value is a
+# refusal to boot rather than a null three hours into a worker run.
+resolveai:
+  auth:
+    access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
+    refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+  workers:
+    pool-size: ${WORKER_POOL_SIZE:8}
+    poll-interval-ms: ${WORKER_POLL_INTERVAL_MS:1000}
+    sla-poller-batch-size: ${SLA_POLLER_BATCH_SIZE:200}
+  correlation:
+    window-minutes: ${CORRELATION_WINDOW_MINUTES:30}
+    min-cluster-size: ${CORRELATION_MIN_CLUSTER_SIZE:5}
+    rate-multiplier: ${CORRELATION_RATE_MULTIPLIER:3.0}
+  drafting:
+    coverage-threshold: ${DRAFT_COVERAGE_THRESHOLD:0.8}
+  ai:
+    monthly-budget-micros: ${MONTHLY_TOKEN_BUDGET_MICROS:5000000}

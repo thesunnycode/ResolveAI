@@ -142,7 +142,7 @@ bash ops/verify-stack.sh
 
 | Service | URL | Credentials |
 |---|---|---|
-| PostgreSQL | `localhost:5432` | `resolveai` / `resolveai_local` |
+| PostgreSQL | `localhost:55432` | `resolveai` / `resolveai_local` |
 | Redis | `localhost:6379` | — |
 | MinIO console | http://localhost:9001 | `resolveai` / `resolveai_local` |
 | Mailhog | http://localhost:8025 | — |
