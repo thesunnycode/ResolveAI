@@ -260,6 +260,12 @@ Content-Type:    application/json
 }
 ```
 
+> **Phase 2 Task 2 — a documented, intentional change.** This endpoint returns **`201` in
+> Phase 5** and **`202` from Phase 6 onward.** In Phase 5 there is no outbox and no async
+> triage, so the representation returned *is* final and `202` would be a lie. When triage
+> becomes asynchronous the status changes, in its own commit. The contract is not wrong for
+> six weeks — it is versioned by build phase.
+
 **`202`, not `201` — and this is the interview question.** The resource *is* created, which normally argues for `201`. But the response deliberately advertises `analysisStatus: "PROCESSING"`, and `priority`, `category`, `assignee` and `team` are all still null and **will change without any further client action**. `202` tells the client "accepted, processing continues, poll the status resource." Returning `201` would imply the representation is final, and the client would have no reason to poll. Either choice is defensible; what matters is being able to say *why*.
 
 **Errors:**
@@ -1060,7 +1066,7 @@ Returning the allowed set means a client can recover without hard-coding the sta
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
 | GET / PUT | `/api/v1/admin/sla-policies` | Effective-dated SLA policy | ADMIN |
-| GET / PUT | `/api/v1/admin/calendar` | Working hours, timezone, holidays | ADMIN |
+| GET / PUT | `/api/v1/admin/calendar` | Working hours, timezone, **and the holiday list** — one payload, since business-hours arithmetic needs both together | ADMIN |
 | GET / PUT | `/api/v1/admin/ai-policy` | External model, budget, retention | ADMIN |
 | GET | `/api/v1/admin/ai/usage` | Tokens and cost by prompt version | ADMIN |
 | GET | `/api/v1/admin/eval/runs` | Accuracy over prompt versions | ADMIN |
@@ -1160,6 +1166,121 @@ This endpoint is where several README numbers come from: cost per ticket, cache 
 ```
 
 **Reporting both `claimLevelGroundedness: 0.94` and `responseLevelGroundedness: 0.99` side by side is the point.** The gap between them *is* the finding — response-level averaging hides unsupported claims inside otherwise-good answers, which is exactly the failure mode documented in the 2026 RAG-faithfulness research (a metric reading 0.92 while a claim-level audit found 30% hallucination). Showing both makes the measurement honest and makes the design decision legible.
+
+---
+
+### 3.8 Attachments, Notifications, Teams & Agent Profile
+
+> **Added in Phase 2 Task 2.** The [design trace](../design-trace.md) found four tables
+> reachable from no endpoint: `attachment` was referenced by `attachmentIds` in three
+> request bodies but never obtainable; `notification` was written by the SLA poller and the
+> fan-out worker and read by nobody, while the UI showed an unread bell; `team.skills[]`
+> drove routing but could only be changed by editing the database; and `agent_profile.is_available`
+> was read on every routing decision and writable by no one.
+
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| POST | `/api/v1/attachments` | Reserve an attachment, get a presigned upload URL | Any |
+| POST | `/api/v1/attachments/{id}/complete` | Confirm upload; server verifies magic bytes and size | Any |
+| GET | `/api/v1/attachments/{id}/url` | Short-TTL presigned download URL | Any (ownership-checked) |
+| GET | `/api/v1/notifications` | Own notifications, cursor-paginated, `unreadOnly` filter | Any |
+| GET | `/api/v1/notifications/unread-count` | Badge count — cheap, polled | Any |
+| POST | `/api/v1/notifications/read` | Mark listed ids, or all, as read | Any |
+| GET | `/api/v1/admin/teams` | List teams with skills and member counts | AGENT+ |
+| POST | `/api/v1/admin/teams` | Create a team | ADMIN |
+| PUT | `/api/v1/admin/teams/{id}` | Update name, `skills[]`, default flag | ADMIN |
+| PUT | `/api/v1/agents/me/availability` | Agent sets own `is_available` and shift | AGENT+ |
+| PUT | `/api/v1/admin/agents/{userId}/capacity` | Admin sets `max_concurrent` | ADMIN |
+
+#### POST `/api/v1/attachments`
+
+**Request:** `{ "filename": "string (required, ≤255)", "mimeType": "string (required)", "byteSize": "long (required, ≤10485760)" }`
+
+**Success — `201`:**
+```json
+{
+  "id": 9021,
+  "uploadUrl": "https://minio.local/resolveai-attachments/a3f1…?X-Amz-Expires=300",
+  "storageKey": "a3f19c2e-7b41-4d0a-9e88-1c2f3d4e5a6b",
+  "expiresInSeconds": 300
+}
+```
+
+**Two security properties, both non-negotiable:**
+- `storageKey` is a **generated UUID**, never the user's filename. A filename-derived path
+  invites traversal, and a guessable one invites IDOR.
+- The declared `mimeType` is **not trusted**. `/complete` re-reads the object and verifies
+  **actual magic bytes**; a `.exe` renamed `.png` is rejected there, not here.
+
+**Errors:** `400 VALIDATION_ERROR` · `413 ATTACHMENT_TOO_LARGE` · `415 UNSUPPORTED_MEDIA_TYPE` (extension allow-list) · `429`
+
+#### POST `/api/v1/attachments/{id}/complete`
+
+No body. Server `HEAD`s the object, verifies size and magic bytes, computes `content_sha256`,
+marks the row usable. Only then may the id appear in `attachmentIds`.
+
+**Errors:** `409 ATTACHMENT_NOT_UPLOADED` · `415 CONTENT_TYPE_MISMATCH` (magic bytes disagree with the declared type) · `413`
+
+#### GET `/api/v1/notifications`
+
+**Query:** `cursor`, `size` (default 20, max 50), `unreadOnly` (default `false`), `kind`
+
+**Success — `200`:**
+```json
+{
+  "data": [
+    { "id": 8812, "kind": "SLA_ESCALATION",
+      "title": "TKT-10405 is at 75% of its resolution SLA",
+      "body": "34 business minutes remaining. Assigned to Neha Kulkarni.",
+      "linkUrl": "/tickets/88190", "readAt": null,
+      "createdAt": "2026-09-20T11:32:00Z" }
+  ],
+  "pagination": { "size": 20, "nextCursor": "eyJj…", "hasNext": true }
+}
+```
+
+Scoped to `recipient_id = me`, always — a notification is never visible to another user,
+including an admin. Served by `idx_notification_unread`.
+
+#### GET `/api/v1/notifications/unread-count`
+
+`{ "unreadCount": 3 }`. Separate from the list because the bell polls it every 30s and must
+not pay for row fetches. Backed by the partial index, so cost is proportional to **unread**
+rows rather than total.
+
+#### POST `/api/v1/notifications/read`
+
+`{ "ids": [8812, 8813] }` or `{ "all": true }` → `204`. Idempotent: re-marking a read
+notification is a no-op, not an error.
+
+#### PUT `/api/v1/agents/me/availability`
+
+**Request:** `{ "isAvailable": true, "shiftStart": "09:00", "shiftEnd": "18:00" }`
+
+An agent may set only their **own** availability — `403` otherwise, even for `TEAM_LEAD`.
+Going unavailable does **not** reassign existing tickets; it removes the agent from future
+`claimLeastLoadedAgent` selection only. Reassignment stays a deliberate human action.
+
+#### PUT `/api/v1/admin/teams/{id}`
+
+**Request:** `{ "name": "Payments", "skills": ["PAYMENT","BILLING"], "isDefault": false }`
+
+**Validation:** every skill must be a valid `Category`; **at most one team per tenant may be
+`isDefault`** — enforced by `idx_team_default` plus a service check that clears the previous
+default in the same transaction. A tenant with **no** default team leaves unroutable tickets
+unassigned rather than erroring ([11 T24](../planning/11-TASK-BREAKDOWN-PHASE-6.md)), so
+`isDefault: false` on the last default is permitted and warned about, not rejected.
+
+---
+
+### 3.9 Tables with no endpoint — deliberate
+
+| Table | Why |
+|---|---|
+| `tenant` | No self-serve tenant signup in scope. Onboarding is an operational procedure, not a public endpoint. |
+| `prompt_version` | **Prompts ship with the code.** A prompt change is a reviewable diff and a CI-gated deploy ([11 T14](../planning/11-TASK-BREAKDOWN-PHASE-6.md)), not a runtime edit. A UI to edit prompts would let someone bypass the evaluation gate, which is the one thing that must not be bypassable. |
+| `eval_case` | Test fixtures. They arrive from migrations, hand-labelling, and `/incidents/{id}/confirm`+`reject`. A UI to edit your own test data defeats the point of having it. |
+| `tenant_sequence`, `pii_redaction_map`, `idempotency_record`, `outbox_event`* | Internal mechanics. (*`outbox_event` is readable through `/admin/outbox/dead` only.) |
 
 ---
 

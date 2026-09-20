@@ -1229,6 +1229,21 @@ CREATE TABLE agent_profile (
 --         LIMIT 1 FOR UPDATE SKIP LOCKED
 CREATE INDEX idx_agent_routing ON agent_profile(tenant_id, is_available, open_count);
 
+-- Generates TKT-10428 / INC-204. Folded in at Phase 2 Task 2: ticket.reference is
+-- NOT NULL and the schema was incomplete without it (found in doc 10 T2).
+-- Row lock serialises creation per tenant; at ~1 write/sec that is irrelevant, and
+-- the escape hatch if it ever is not is hi/lo allocation (claim 100, hand out from
+-- memory, accept gaps).
+CREATE TABLE tenant_sequence (
+    tenant_id   BIGINT      NOT NULL,
+    entity_type VARCHAR(20) NOT NULL
+                CONSTRAINT ck_tenseq_type CHECK (entity_type IN ('TICKET','INCIDENT')),
+    next_value  BIGINT      NOT NULL DEFAULT 1000,
+    PRIMARY KEY (tenant_id, entity_type),
+    CONSTRAINT fk_tenseq_tenant FOREIGN KEY (tenant_id)
+        REFERENCES tenant(id) ON DELETE CASCADE
+);
+
 CREATE TABLE refresh_token (
     id          BIGSERIAL   PRIMARY KEY,
     user_id     BIGINT      NOT NULL,
@@ -1380,6 +1395,28 @@ CREATE TABLE ticket_event (          -- APPEND-ONLY (trigger-enforced, V7)
 );
 CREATE INDEX idx_event_ticket ON ticket_event(ticket_id, occurred_at);
 CREATE INDEX idx_event_audit  ON ticket_event(tenant_id, event_type, occurred_at DESC);
+
+-- Deterministic entities extracted from ticket text. Feeds the correlation gate's
+-- shared-entity boost (doc 12 T3/T6). Folded in at Phase 2 Task 2.
+-- Deliberately NOT the LLM's extractedEntities: the gate must be reproducible, and
+-- the whole argument of that feature is that a model does not decide an incident exists.
+CREATE TABLE ticket_entity (
+    id           BIGSERIAL   PRIMARY KEY,
+    ticket_id    BIGINT      NOT NULL,
+    tenant_id    BIGINT      NOT NULL,
+    entity_type  VARCHAR(24) NOT NULL
+                 CONSTRAINT ck_entity_type CHECK (entity_type IN
+                   ('ERROR_CODE','SERVICE','REGION','PAYMENT_METHOD','APP_VERSION','HTTP_STATUS')),
+    entity_value VARCHAR(80) NOT NULL,
+    CONSTRAINT uq_ticket_entity UNIQUE (ticket_id, entity_type, entity_value),
+    CONSTRAINT fk_te_ticket FOREIGN KEY (ticket_id)
+        REFERENCES ticket(id) ON DELETE CASCADE,
+    CONSTRAINT fk_te_tenant FOREIGN KEY (tenant_id)
+        REFERENCES tenant(id) ON DELETE RESTRICT
+);
+-- "which other recent tickets mention payment-service?"
+CREATE INDEX idx_ticket_entity_lookup ON ticket_entity(tenant_id, entity_type, entity_value);
+CREATE INDEX idx_ticket_entity_ticket ON ticket_entity(ticket_id);
 
 CREATE TABLE attachment (
     id                BIGSERIAL    PRIMARY KEY,
@@ -2201,6 +2238,18 @@ private float[] embedding;
     """, nativeQuery = true)
 Optional<AgentProfile> claimLeastLoadedAgent(@Param("tenantId") Long tenantId);
 ```
+
+### Three columns are deliberately unmapped in JPA
+
+Recorded at Phase 2 Task 2 so this reads as a decision rather than an oversight.
+`ddl-auto: validate` requires every *mapped* attribute to exist; it does not require every
+column to be mapped.
+
+| Column | Why unmapped |
+|---|---|
+| `ticket.search_tsv` | Maintained by the `trg_ticket_tsv` trigger. Mapping it means Hibernate tries to write it and fights the trigger. Read only from native search queries. |
+| `knowledge_chunk.text_tsv` | Same, via `trg_chunk_tsv`. |
+| `ticket.embedding` | Written by a native `UPDATE` in Phase 6. pgvector needs a custom Hibernate type, and wiring one for a single column that nothing reads through JPA is not worth it. `knowledge_chunk.embedding` **is** mapped, because the chunk detail view reads it. |
 
 ### Five mapping traps specific to this schema
 
