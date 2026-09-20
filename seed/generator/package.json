@@ -1,0 +1,16 @@
+{
+  "name": "resolveai-corpus-generator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generates the synthetic ticket corpus for ResolveAI. Label-first: structure is generated deterministically in code, the LLM only supplies phrasing.",
+  "scripts": {
+    "generate": "node generate.js",
+    "starter": "node generate.js --count 200 --seed 42 --out ../generated/tickets-starter.json",
+    "sample": "node generate.js --count 10 --seed 1 --dry-run"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  }
+}
