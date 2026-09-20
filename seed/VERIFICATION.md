@@ -101,8 +101,7 @@ share code with the generator.
 
 Regeneration hit `Bad control character in string literal in JSON at position 5656` — the
 model emitted a literal newline inside a quoted string. `JSON.parse` is strict, so one stray
-`
-` discarded a whole 20-ticket batch. `extractJsonArray` now retries with a parser that
+newline discarded a whole 20-ticket batch. `extractJsonArray` now retries with a parser that
 walks the text tracking string state and escapes raw control characters. Also switched the
 error path from `process.exit(1)` to `process.exitCode`, which was tripping a libuv
 assertion on Windows.
