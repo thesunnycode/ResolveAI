@@ -19,7 +19,7 @@ But doc 07's Phase 2 task list had nine items, and only the first four were "run
 | 1–4. Run db-schema-designer, api-designer, ui-ux-designer, system-architect | ✅ Docs 03–06 |
 | 5. Convert the SQL into Flyway migrations `V1`–`V7` | ❌ |
 | 6. Apply and verify every table, index and trigger | ❌ |
-| 7. Hand-test the three structural guarantees | ⚠️ Moved into [08 Task 6](08-TASK-BREAKDOWN-PHASE-3.md) |
+| 7. Hand-test the three structural guarantees | ⚠️ Had been pushed into 08 Task 6 — **taken back here** as [Task 12](#task-12--hand-test-the-structural-guarantees), automated, and widened from three assertions to ten |
 | 8. Build the Postman collection | ❌ |
 | 9. Review the design end to end | ❌ |
 
@@ -494,7 +494,10 @@ Most Skipped   : Task 12 — hand-testing the structural guarantees.
 
 ## Closing note — planning is complete
 
-> ✅ **Every phase of ResolveAI is now broken down: 17 documents, 242 tasks, ~135 working days.**
+> ✅ **Every phase of ResolveAI is now broken down: 17 documents, 241 tasks, ~135 working days.**
+>
+> *(242 at the time of writing. Phase 3 Task 6 was absorbed into Phase 2 Task 12 during the
+> Phase 2 handoff, and Phase 3 Task 5 shrank from 1.5 hours to 30 minutes.)*
 >
 > ```
 > Phase 1   ████  9–10 d     Phase 6   ████████  21 d

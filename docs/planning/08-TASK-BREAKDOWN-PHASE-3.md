@@ -119,70 +119,56 @@ Task 1.
 
 ---
 
-## TASK 5 — Copy the Flyway migrations and verify they apply
+## TASK 5 — Point Spring at the existing migrations
 
 **📝 Description**
-Copy the SQL from [04 §Step 6](04-DATABASE-SCHEMA.md) into `src/main/resources/db/migration/` as seven files: `V1__extensions_and_tenancy.sql` … `V7__triggers.sql`.
+> **Amended by [Phase 2 Task 16](16-TASK-BREAKDOWN-PHASE-2.md).** This task originally said
+> *"copy the SQL from [04](04-DATABASE-SCHEMA.md) into seven files and fix the typos"*, budgeted
+> at 1–1.5 hours. **Phase 2 already did that.** `V1`–`V7` are written, applied, and verified
+> from an empty database by `ops/verify-migrations.sh`. What is left is wiring, not authoring.
 
-Drop and recreate the `resolveai` database in the running Postgres container so you are migrating from truly empty. Run `mvn flyway:migrate` (or start the app once with security disabled).
+The migrations already exist in `src/main/resources/db/migration/`. Confirm Spring picks them
+up rather than fighting them:
 
-Then verify in psql:
-```sql
-\dt                                    -- expect 37 tables
-\di                                    -- indexes present
-SELECT * FROM flyway_schema_history;   -- 7 rows, all success
-SELECT extname FROM pg_extension;      -- vector, pg_trgm present
-```
+- `spring.flyway.enabled: true`, `spring.flyway.locations: classpath:db/migration`
+- **`spring.jpa.hibernate.ddl-auto: validate`** — not `update`, not `create-drop`. Flyway owns
+  the schema; Hibernate's only job is to complain when an entity disagrees with it. `update` on
+  a Flyway-managed schema is the classic way to get two sources of truth and a mystery column.
+- Start the app. Flyway should log `Schema public is up to date. No migration necessary`
+  against the already-migrated database, and `Successfully applied 7 migrations` against a
+  fresh one.
+
+There are no entities yet, so `validate` passes trivially today. It stops being trivial in
+Phase 4, which is exactly when a mismatch is cheap to fix.
 
 **⛓️ Dependencies**
-Task 4 (datasource configured), Phase 1 (Postgres container with pgvector running).
+Task 4 (datasource configured). Phase 2 Tasks 4–13 (the migrations themselves).
 
 **✅ Expected Output**
-`flyway_schema_history` has 7 successful rows. `\dt` lists 37 tables. `vector` and `pg_trgm` appear in `pg_extension`.
+The app starts against both an already-migrated and a freshly-dropped database. `ddl-auto:
+validate` is set and passes. `flyway_schema_history` has 7 successful rows.
 
 **⏱️ Estimated Time**
-1–1.5 hours. *(Most of this is fixing SQL typos found on first application — expect two or three.)*
+30 minutes.
 
 ---
 
-## TASK 6 — Hand-verify the three structural guarantees
+## TASK 6 — Verify Redis connectivity
 
 **📝 Description**
-In psql, insert test rows and confirm each partial unique index rejects the second insert. **This is the highest-value fifteen minutes in the phase** — these three constraints carry the system's most important correctness properties, and finding a mistake now instead of in Phase 5 saves a confused day.
-
-```sql
--- 1. One open SLA segment per record
-INSERT INTO sla_clock_segment (sla_record_id, state, started_at)
-  VALUES (1, 'RUNNING', NOW());
-INSERT INTO sla_clock_segment (sla_record_id, state, started_at)
-  VALUES (1, 'RUNNING', NOW());   -- MUST fail: uq_segment_open
-
--- 2. One escalation per rung
-INSERT INTO sla_escalation (sla_record_id, rung, elapsed_minutes_at_fire)
-  VALUES (1, 50, 120);
-INSERT INTO sla_escalation (sla_record_id, rung, elapsed_minutes_at_fire)
-  VALUES (1, 50, 121);            -- MUST fail: uq_escalation_rung
-
--- 3. One live incident per ticket
-INSERT INTO incident_ticket (incident_id, ticket_id) VALUES (1, 1);
-INSERT INTO incident_ticket (incident_id, ticket_id) VALUES (2, 1);
-                                  -- MUST fail: uq_incident_ticket_live
-```
-
-You will need placeholder parent rows first. Roll the whole thing back afterwards. Also confirm the append-only trigger works: `UPDATE ticket_event SET to_value='x' WHERE id=1;` must raise an exception.
-
-**⛓️ Dependencies**
-Task 5.
-
-**✅ Expected Output**
-All three second-inserts fail with the **named** constraint in the error message. The `ticket_event` update raises `Table ticket_event is append-only`. Nothing is left in the database.
-
-**⏱️ Estimated Time**
-45 minutes.
-
----
-
-## TASK 7 — Verify the Redis connection
+> **Renumbered by [Phase 2 Task 16](16-TASK-BREAKDOWN-PHASE-2.md).** The old Task 6 —
+> hand-verifying the structural guarantees in psql — was **absorbed into
+> [Phase 2 Task 12](16-TASK-BREAKDOWN-PHASE-2.md)** and automated as
+> `ops/structural-guarantees.sql`. It now runs on every invocation of
+> `ops/verify-migrations.sh`, covers **ten** assertions rather than three, and — the part the
+> hand-test was missing — includes **four positive cases**, because a constraint that blocks
+> the legitimate path is as broken as one that permits the illegitimate one.
+>
+> Run it once here to see it pass; do not redo it by hand.
+>
+> ```bash
+> bash ops/verify-migrations.sh
+> ```
 
 **📝 Description**
 Create `platform/config/RedisConfig.java` defining a `RedisTemplate<String, String>` with `StringRedisSerializer` for both keys and values (the default `JdkSerializationRedisSerializer` produces unreadable binary keys you will regret in `redis-cli`).
@@ -200,7 +186,7 @@ The application logs the round-tripped value on startup, and `redis-cli GET` ret
 
 ---
 
-## TASK 8 — Define the error model: `ApiProblem` and `ErrorCode`
+## TASK 7 — Define the error model: `ApiProblem` and `ErrorCode`
 
 **📝 Description**
 In `com.resolveai.common.error`, create:
@@ -210,7 +196,7 @@ In `com.resolveai.common.error`, create:
 - `FieldViolation` — `field`, `code`, `message`, `rejectedValue`.
 - `ApiException` — a `RuntimeException` carrying an `ErrorCode` and a detail message, for services to throw.
 
-No handler yet — that is Task 9.
+No handler yet — that is Task 8.
 
 **⛓️ Dependencies**
 Task 3.
@@ -223,7 +209,7 @@ Four types compile. `ErrorCode` has at least 14 constants, each with a status an
 
 ---
 
-## TASK 9 — Write the global `@RestControllerAdvice`
+## TASK 8 — Write the global `@RestControllerAdvice`
 
 **📝 Description**
 Create `common/error/GlobalExceptionHandler.java` annotated `@RestControllerAdvice`, returning `ApiProblem` with `Content-Type: application/problem+json` for:
@@ -244,7 +230,7 @@ Two rules the catch-all must follow: **the `detail` for a 500 is a generic strin
 **Build this now, in Phase 3.** Every endpoint written after this returns correct errors from its first line; retrofitting across 50 endpoints in Phase 9 is miserable and you will do it badly.
 
 **⛓️ Dependencies**
-Task 8.
+Task 7.
 
 **✅ Expected Output**
 The handler compiles. A temporary controller with `@Valid` on a DTO with a `@NotBlank` field returns a 400 `application/problem+json` body containing `errorCode: "VALIDATION_ERROR"` and a populated `errors[]`. Verified in Postman.
@@ -254,7 +240,7 @@ The handler compiles. A temporary controller with `@Valid` on a DTO with a `@Not
 
 ---
 
-## TASK 10 — Configure structured JSON logging with MDC
+## TASK 9 — Configure structured JSON logging with MDC
 
 **📝 Description**
 Add `logstash-logback-encoder` and create `logback-spring.xml` with two appenders: human-readable pattern output for the `local` profile, JSON for `prod` and `test`.
@@ -274,7 +260,7 @@ Requests under the `local` profile log a line containing a `traceId`. Under `pro
 
 ---
 
-## TASK 11 — Configure Actuator and a custom health indicator
+## TASK 10 — Configure Actuator and a custom health indicator
 
 **📝 Description**
 Confirm `/actuator/health`, `/actuator/info` and `/actuator/prometheus` respond, and that the database and Redis health indicators appear in the details.
@@ -294,7 +280,7 @@ Tasks 5, 7.
 
 ---
 
-## TASK 12 — Build the Testcontainers base test class
+## TASK 11 — Build the Testcontainers base test class
 
 **📝 Description**
 Create `src/test/java/com/resolveai/IntegrationTestBase.java`:
@@ -319,14 +305,14 @@ The class compiles. A trivial subclass with an empty `@Test` passes, and the log
 
 ---
 
-## TASK 13 — Write the first real integration test
+## TASK 12 — Write the first real integration test
 
 **📝 Description**
 Create `PlatformSmokeTest extends IntegrationTestBase` with three tests using `TestRestTemplate`:
 
 1. `healthEndpointReturnsUp` — `GET /actuator/health` returns 200 with `"status":"UP"`
 2. `flywayAppliedAllMigrations` — query `flyway_schema_history` via `JdbcTemplate`, assert 7 successful rows
-3. `validationErrorReturnsProblemJson` — POST an invalid body to the temporary test controller from Task 9, assert 400, `Content-Type: application/problem+json`, and `errorCode: "VALIDATION_ERROR"` in the body
+3. `validationErrorReturnsProblemJson` — POST an invalid body to the temporary test controller from Task 8, assert 400, `Content-Type: application/problem+json`, and `errorCode: "VALIDATION_ERROR"` in the body
 
 Test 3 is the important one: it proves the error contract from [05](05-API-CONTRACT.md) is real and not just documented.
 
@@ -341,7 +327,7 @@ Tasks 9, 11, 12.
 
 ---
 
-## TASK 14 — Set up the GitHub Actions CI workflow
+## TASK 13 — Set up the GitHub Actions CI workflow
 
 **📝 Description**
 Create `.github/workflows/ci.yml` triggering on push and pull request to `main`:
@@ -356,7 +342,7 @@ Testcontainers works on GitHub's Ubuntu runners without extra configuration — 
 Add a build-status badge to the README. Push and confirm the run is green.
 
 **⛓️ Dependencies**
-Task 13 (there must be tests for CI to run).
+Task 12 (there must be tests for CI to run).
 
 **✅ Expected Output**
 A green run on GitHub Actions in under 6 minutes. The README badge shows passing.
@@ -366,17 +352,17 @@ A green run on GitHub Actions in under 6 minutes. The README badge shows passing
 
 ---
 
-## TASK 15 — Clean up and commit the phase
+## TASK 14 — Clean up and commit the phase
 
 **📝 Description**
-Remove the temporary test controller from Task 9 (keep it only if you moved it to `src/test`). Remove any leftover `CommandLineRunner`. Run `mvn clean verify` one final time from a fresh `docker compose down -v && docker compose up -d`.
+Remove the temporary test controller from Task 8 (keep it only if you moved it to `src/test`). Remove any leftover `CommandLineRunner`. Run `mvn clean verify` one final time from a fresh `docker compose down -v && docker compose up -d`.
 
 Commit with a message listing what the phase delivered. Tag `phase-3-complete`.
 
 Update the README with a "Running locally" section: prerequisites, `docker compose up -d`, `mvn spring-boot:run`, the health URL.
 
 **⛓️ Dependencies**
-Task 14.
+Task 13.
 
 **✅ Expected Output**
 `docker compose down -v && docker compose up -d && mvn clean verify` succeeds from a completely empty database. No temporary scaffolding remains. Tag pushed.
@@ -394,33 +380,36 @@ Task 14.
 - Task 3 — Create the package structure (0.5h)
 - Task 4 — `application.yml` with three profiles (1h)
 
-**Day 2** *(3.25 hours)*
-- Task 5 — Copy and verify Flyway migrations (1.5h)
-- Task 6 — Hand-verify the three structural guarantees (0.75h)
-- Task 7 — Verify the Redis connection (0.75h)
+**Day 2** *(2 hours)*
+- Task 5 — Point Spring at the existing migrations (0.5h)
+- Task 6 — Verify the Redis connection (0.75h)
+- Spare 0.75h — pull Day 3 forward, or start [06 §11](06-UI-UX-DESIGN.md) Tier 1
 
-*These three go together: Day 2 is the day the infrastructure becomes real. Ending it with all 37 tables created and the partial indexes proven is a genuinely good stopping point.*
+*Day 2 was a 3.25-hour day until [Phase 2](16-TASK-BREAKDOWN-PHASE-2.md) took over writing
+and proving the schema. Authoring the migrations and hand-testing the guarantees is no longer
+work this phase does — `bash ops/verify-migrations.sh` does it in under a minute, and it
+checks ten properties rather than three.*
 
 **Day 3** *(4 hours)*
-- Task 8 — `ApiProblem` and `ErrorCode` (1.25h)
-- Task 9 — Global `@RestControllerAdvice` (2.5h)
+- Task 7 — `ApiProblem` and `ErrorCode` (1.25h)
+- Task 8 — Global `@RestControllerAdvice` (2.5h)
 
 *The error model and its handler belong on the same day — splitting them means re-loading the whole RFC 7807 shape into your head twice.*
 
 **Day 4** *(3 hours)*
-- Task 10 — Structured JSON logging with MDC (1.75h)
-- Task 11 — Actuator and the outbox-lag health indicator (1h)
+- Task 9 — Structured JSON logging with MDC (1.75h)
+- Task 10 — Actuator and the outbox-lag health indicator (1h)
 
 **Day 5** *(3.5 hours)*
-- Task 12 — Testcontainers base class (1.75h)
-- Task 13 — First integration test (1.5h)
+- Task 11 — Testcontainers base class (1.75h)
+- Task 12 — First integration test (1.5h)
 
 **Day 6** *(2.25 hours)*
-- Task 14 — GitHub Actions CI (1.25h)
-- Task 15 — Clean up, final verify, tag (0.75h)
+- Task 13 — GitHub Actions CI (1.25h)
+- Task 14 — Clean up, final verify, tag (0.75h)
 
 **Day 7 — Buffer / Catch-up**
-Reserved. Realistically consumed by: Flyway SQL typos found in Task 5, the Spring AI BOM version hunt in Task 2, or the first Testcontainers run in Task 12. If none of those bite, use the day to start [06 §11](06-UI-UX-DESIGN.md) Tier 1 — the Tailwind token config — which is pure setup and unblocks the frontend later.
+Reserved. Realistically consumed by the Spring AI BOM version hunt in Task 2 or the first Testcontainers run in Task 11 — **not** by Flyway typos any more; those were found and fixed in Phase 2, against an empty database, before any Java existed. If none of those bite, use the day to start [06 §11](06-UI-UX-DESIGN.md) Tier 1 — the Tailwind token config — which is pure setup and unblocks the frontend later.
 
 ---
 
@@ -428,19 +417,24 @@ Reserved. Realistically consumed by: Flyway SQL typos found in Task 5, the Sprin
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Tasks    : 15
-Total Estimate : 15.5–20 hours
+Total Tasks    : 14   (was 15; Task 6 absorbed into Phase 2 Task 12)
+Total Estimate : 13.25–17.5 hours   (was 15.5–20)
 Suggested Days : 6 working days + 1 buffer
-Hardest Task   : Task 9 — Global @RestControllerAdvice
+Hardest Task   : Task 8 — Global @RestControllerAdvice
                  (most new concepts at once: advice ordering, RFC 7807,
                   MDC-to-response trace correlation, and the discipline
                   of never leaking an exception message on a 500)
-Most Skipped   : Task 6 — Hand-verifying the partial unique indexes.
-                 It feels like it is not "real work" because no code is
-                 written. It is the highest-value 45 minutes in the phase:
-                 those three constraints carry the system's most important
-                 correctness guarantees, and finding a mistake here instead
-                 of in Phase 5 saves a confused day of debugging.
+Most Skipped   : Task 5 — setting ddl-auto to validate.
+                 It is one line, it changes nothing visible today, and
+                 `update` appears to work. It stops appearing to work in
+                 Phase 4, when Hibernate quietly adds a column Flyway does
+                 not know about and the schema has two owners.
+
+                 The old "most skipped" was hand-verifying the partial
+                 unique indexes. That is now automated in Phase 2 and runs
+                 on every `ops/verify-migrations.sh` — the fix for a task
+                 people skip is usually to stop asking them to do it by
+                 hand.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 

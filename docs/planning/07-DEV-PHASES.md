@@ -516,7 +516,7 @@ Phase 9 (everything tested).
 > | 7 | 6–8 d | 20 | 2.7× |
 > | 2 | 3–4 d | 9 | ~2.5× *(docs done; migrations, contracts and design review were not)* |
 >
-> **Every phase is now broken down** ([08](08-TASK-BREAKDOWN-PHASE-3.md)–[16](16-TASK-BREAKDOWN-PHASE-2.md)): **242 tasks, 100% of the project planned at task level.** Eight consecutive misses is systematic, not noise: **the phase-level numbers counted features and not the tests, DTOs, error paths, governance and plumbing between them.** Nothing is left at estimate level.
+> **Every phase is now broken down** ([08](08-TASK-BREAKDOWN-PHASE-3.md)–[16](16-TASK-BREAKDOWN-PHASE-2.md)): **241 tasks, 100% of the project planned at task level.** Eight consecutive misses is systematic, not noise: **the phase-level numbers counted features and not the tests, DTOs, error paths, governance and plumbing between them.** Nothing is left at estimate level.
 >
 > **Cutting Phase 7 saves only 14 days out of 110, so descoping is not the answer.** [12 §The reckoning](12-TASK-BREAKDOWN-PHASE-8.md) has the one that is: **ship incrementally.** Deploy a minimal version right after Phase 6A, and add a resume bullet at each checkpoint — two bullets by week 9, three by week 11, four by week 15, all five by week 19.
 

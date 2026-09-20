@@ -46,7 +46,7 @@ Read them in order. Each one consumes the output of the one before it.
 | `dsa-solver` | Unrelated to project planning |
 | `exam-notes` | Unrelated to project planning |
 
-`task-breakdown` is designed to be run **once per phase**. **All of them are now broken down** — docs 08–16 cover every phase: **242 tasks, 100% of the project planned at task level.** **Start at [14 Task 1](14-TASK-BREAKDOWN-PHASE-1.md), then [16](16-TASK-BREAKDOWN-PHASE-2.md).**
+`task-breakdown` is designed to be run **once per phase**. **All of them are now broken down** — docs 08–16 cover every phase: **241 tasks, 100% of the project planned at task level.** **Start at [14 Task 1](14-TASK-BREAKDOWN-PHASE-1.md), then [16](16-TASK-BREAKDOWN-PHASE-2.md).**
 
 **Note on timelines:** breaking Phases 4 and 5 into tasks revealed that [07](07-DEV-PHASES.md)'s estimates were each about half the real figure — the phase-level numbers counted features, not the tests, DTOs, error paths and plumbing between them. The totals in 07 are corrected to **71–85 working days ≈ 15–18 calendar weeks at 3–4 h/day**. Treat every un-broken-down phase estimate as a lower bound.
 
