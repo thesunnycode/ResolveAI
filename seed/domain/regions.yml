@@ -1,0 +1,3 @@
+regions:
+  - ap-south-1        # Mumbai — primary
+  - ap-southeast-1    # Singapore — DR

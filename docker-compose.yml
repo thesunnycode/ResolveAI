@@ -54,7 +54,9 @@ services:
 
   # ── MinIO (S3-compatible object storage) ──────────────────────────────────
   minio:
-    image: minio/minio:latest
+    # NOTE: MinIO withdrew their Docker Hub images in 2025 — quay.io is the
+    # supported registry. Using docker.io/minio/minio fails with 'pull access denied'.
+    image: quay.io/minio/minio:latest
     container_name: resolveai-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -76,7 +78,7 @@ services:
   # Creates the attachments bucket on first boot so Task 4 does not need a
   # manual console step. Runs once and exits.
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: resolveai-minio-init
     depends_on:
       minio:
