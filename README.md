@@ -160,21 +160,23 @@ docker compose down -v && docker compose up -d && bash ops/verify-stack.sh
 
 ## Build status
 
-**Phase 1 — Environment Setup**
+**Phase 1 — Environment Setup · ✅ complete** (`phase-1-complete`)
 
 | Task | |
 |---|---|
-| 1 Toolchain verified | ✅ Java 21.0.11, Maven→JDK 21, Docker 29.4, Node 24 |
+| 1 Toolchain verified | ✅ Java 21.0.11, Maven→JDK 21, Docker 29.4 (7.9 GB), Node 24 |
 | 2 Repository & hygiene | ✅ `.gitignore` in commit 1 |
-| 3 Compose stack | ✅ 7 services + bucket init |
+| 3 Compose stack | ✅ 7 services + auto bucket + auto extensions |
 | 4 Stack verified from empty volumes | ✅ **pgvector 0.8.6, HNSW proven by `EXPLAIN`** |
-| 5 LLM credentials | ⏸ awaiting keys |
-| 6 Local Ollama model | ⏳ pulling |
-| 7 Fictional product & vocabulary | ✅ |
+| 5 LLM credentials | ✅ OpenAI `gpt-4.1-mini`; embeddings at 768-d |
+| 6 Local Ollama model | ✅ `llama3.2:3b`, parseable JSON confirmed |
+| 7 Fictional product & vocabulary | ✅ Ledgerly, 6 domain files |
 | 8 Category taxonomy | ✅ 8 categories, 4 teams, deliberate PAYMENT/BILLING overlap |
-| 9 Corpus generator | ✅ deterministic; distributions on target |
-| 10 Starter corpus | ⏸ blocked on task 5 |
-| 11 README v-1 | 🔄 this file |
+| 9 Corpus generator | ✅ label-first, deterministic |
+| 10 Starter corpus | ✅ 200 tickets, **30 hand-verified** → [seed/VERIFICATION.md](seed/VERIFICATION.md) |
+| 11 README v-1 | ✅ this file |
+
+**Next: Phase 2 — migrations, structural guarantees, OpenAPI, Postman** (9 days).
 
 Phases 2–10 are planned at task level: **242 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with
