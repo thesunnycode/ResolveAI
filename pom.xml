@@ -36,6 +36,7 @@
 		     is the check. Nothing else here pins it, so a Spring AI upgrade can move it. -->
 		<okhttp.version>5.3.2</okhttp.version>
 		<logstash-encoder.version>9.0</logstash-encoder.version>
+		<jjwt.version>0.13.0</jjwt.version>
 	</properties>
 
 	<dependencyManagement>
@@ -142,6 +143,28 @@
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
+		<!-- jjwt, split across three artifacts on purpose: only the API is compile-scoped,
+		     so application code cannot accidentally depend on an implementation class that
+		     changes between minor versions. jjwt-jackson serialises claims with Jackson 2,
+		     which is on the classpath beside Jackson 3 because Spring AI still uses it. -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>${jjwt.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
 		</dependency>
 
 		<!-- JSON log output for prod and test. A log aggregator cannot filter on a field it

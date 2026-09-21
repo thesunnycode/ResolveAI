@@ -67,7 +67,9 @@ public class MdcFilter extends OncePerRequestFilter {
             // running last on the way out, which is the opposite of how it is ordered.
             MDC.remove(TRACE_ID);
             MDC.remove(REQUEST_ID);
-            // TODO Phase 4: the security filter owns tenantId and userId and removes its own.
+            // tenantId and userId are put in — and taken out — by JwtAuthenticationFilter,
+            // which is the only place that knows them. It runs inside this filter, so its
+            // finally block has already run by the time this one does.
         }
     }
 
