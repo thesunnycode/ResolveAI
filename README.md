@@ -10,7 +10,7 @@ Java 21 · Spring Boot · Spring AI · PostgreSQL + pgvector · Redis · Docker
 
 [![CI](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml/badge.svg)](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml)
 
-🚧 **Under active development — Phase 3 of 10 complete.** [Build status below.](#build-status)
+🚧 **Under active development — Phase 4 of 10 complete.** [Build status below.](#build-status)
 
 ---
 
@@ -179,14 +179,23 @@ source into the shell — which also sidesteps the CRLF problem, where sourcing 
 `.env` in bash appends a carriage return to every value and the database rejects a password
 that is visibly correct.
 
-There are no endpoints yet: Phase 3 delivers the platform, not the features. What responds:
+What responds today:
 
 | | |
 |---|---|
+| `POST /api/v1/auth/register` · `login` · `refresh` | public |
+| `POST /api/v1/auth/logout` · `GET /auth/me` | authenticated |
+| `PUT /api/v1/agents/me/availability` | AGENT+ |
+| `PUT /api/v1/admin/agents/{userId}/capacity` | ADMIN |
 | `GET /actuator/health` | `UP`, with `db`, `redis` and `outboxLag` |
 | `GET /actuator/health/readiness` | `db` and `redis` only — readiness gates traffic |
 | `GET /actuator/prometheus` | metrics, open to a scraper |
-| anything under `/api/v1/**` | `404` as RFC 7807, with an `errorCode` and a `traceId` |
+| anything else under `/api/v1/**` | `404` as RFC 7807, with an `errorCode` and a `traceId` |
+
+```bash
+curl -s localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"tenantSlug":"acme","email":"arjun@acme.com","password":"resolveai-local-2026"}'
+```
 
 **Verification, all four of which run in CI:**
 
@@ -197,6 +206,101 @@ bash ops/verify-openapi.sh       # Redocly + 64 operations + 12 with examples
 node ops/verify-postman.mjs      # collection matches the contract, both directions
 ./mvnw clean verify              # 5 integration tests on real containers
 ```
+
+---
+
+## Authentication
+
+Two tokens, and they are different kinds of thing on purpose.
+
+| | Access token | Refresh token |
+|---|---|---|
+| Form | JWT, HS256 | 256 bits of `SecureRandom`, base64url |
+| Lifetime | 15 minutes | 7 days |
+| Stored server-side | no | `SHA-256` of it, never the value |
+| Carries claims | `sub`, `tenantId`, `tenantSlug`, `role`, `jti`, `iss`, `aud` | none |
+| Revocable | **no** — see below | yes, individually and by family |
+
+**The tenant comes from the token and from nowhere else.** Not a header, not a path
+variable, not a request body. Any of those would let an authenticated user read another
+tenant's data by editing a parameter.
+
+### Rotation and reuse detection
+
+Every refresh token issued from one sign-in shares a `familyId`. A refresh token is
+**single use**: exchanging it marks it used and mints a successor in the same family.
+
+Presenting a token whose `used_at` is already set means the value leaked — either an
+attacker replayed a stolen token, or the real client replayed its own. **The system cannot
+tell which of the two is the attacker**, so it revokes the whole family and forces a fresh
+sign-in. Logging both out is the only choice that is safe under either reading.
+
+Rotation without detection is half a defence, and the detection has two properties that are
+easy to get wrong and are both tested:
+
+- the exchange takes a `SELECT … FOR UPDATE`, so eight concurrent refreshes produce exactly
+  one success — without it the single-use property that detection rests on is a race, and
+  it measurably was: three of eight succeeded
+- the revocation **commits**, rather than being rolled back by the exception that reports it
+
+### Login does not leak which half was wrong
+
+An unknown tenant, an unknown address and a wrong password all return the same
+`401 INVALID_CREDENTIALS` with the same body. A BCrypt comparison runs even when the user
+does not exist, against a dummy hash, so the response time does not say what the status code
+will not: measured **248.9ms vs 245.5ms**.
+
+### What logout does not do
+
+**Logging out does not invalidate the access token.** It is stateless and stays valid until
+it expires — at most 15 minutes. The fix is a Redis deny-list keyed on `jti`, and it is
+deliberately deferred: it adds a Redis read in front of *every* request to close a window
+that is already short.
+
+That is a trade-off rather than an oversight, and it is written here because "JWTs cannot be
+revoked instantly" is a fair question to be asked about this design.
+
+### Tenant isolation
+
+`@TenantId` on every tenant-scoped entity, with a `CurrentTenantIdentifierResolver` reading
+a `ThreadLocal` the JWT filter populates. Hibernate then appends the discriminator to every
+query **and** sets it on insert, so a repository cannot read another tenant's rows and a
+service cannot write into the wrong one — `AppUser` has no setter for `tenantId` at all.
+
+Two things worth knowing:
+
+- **An unset context means no rows, never all rows.** The resolver substitutes a sentinel
+  that matches nothing, so a mis-wired path returns an empty result rather than everybody's
+  data.
+- **Hibernate resolves the tenant when the session opens, not per statement.** So
+  `@Transactional` on a method that sets the tenant *inside* binds the session first and
+  every write lands under the sentinel. `TenantScope` exists to encode the correct order:
+  set the tenant, then open the transaction.
+
+**Native SQL bypasses all of this**, and Phases 6–8 use native queries for the outbox claim
+and hybrid retrieval. Those carry an explicit `AND tenant_id = :tenantId`, and
+`CrossTenantAccessTest` is what notices when one does not.
+
+### Local seed logins
+
+`docker compose up -d && ./mvnw spring-boot:run` seeds 3 tenants, 12 teams and 87 users, and
+prints a login table at startup. Password for every seeded account:
+
+```
+resolveai-local-2026
+```
+
+| tenantSlug | role | email |
+|---|---|---|
+| `acme` (ENTERPRISE) | ADMIN | admin@acme.com |
+| `acme` | TEAM_LEAD | sana@acme.com |
+| `acme` | AGENT | arjun@acme.com |
+| `acme` | CUSTOMER | customer1@example.com |
+| `bluestone` (PRO), `chai` (FREE) | same four roles | `@bluestone.in`, `@chaicorner.in` |
+
+⚠️ **A single shared password across every seeded account is fine for a machine on your desk
+and catastrophic anywhere else.** The seeder is `@Profile("local")` and guarded by
+`resolveai.seed.enabled`; it cannot run under `prod`.
 
 ---
 
@@ -258,7 +362,31 @@ node ops/verify-postman.mjs      # collection matches the contract, both directi
 > `TestRestTemplate` moves package *and* needs an annotation, and OkHttp 5 keeps its JVM
 > classes in a separate artifact. Each was found by running, not by reading.
 
-**Next: Phase 4 — auth, tenancy and the JWT filter chain** (10 days).
+**Phase 4 — Authentication, Tenancy & User Management · ✅ complete** (`phase-4-complete`)
+
+| Task | |
+|---|---|
+| 1–2 Entities and repositories | ✅ 5 entities, 5 repositories, `ddl-auto: validate` passes |
+| 3 Entity–schema mapping test | ✅ enum-as-string, `text[]`, soft delete, `@Version` |
+| 4–5 TenantContext and `@TenantId` | ✅ discriminator multi-tenancy, sentinel on unset |
+| 6 Tenant isolation test | ✅ list, direct lookup, insert, and the unset-context case |
+| 7–10 JWT, filter, user details, SecurityConfig | ✅ HS256 pinned, iss/aud verified |
+| 11–15 register / login / refresh / logout / me | ✅ contract from doc 05 §3.1 |
+| 16 Method security | ✅ `@IsAdmin`, `@IsTeamLeadOrAbove`, `@IsAgentOrAbove`, all used |
+| 17 Seed loader | ✅ 3 tenants, 12 teams, 87 users, idempotent |
+| 18 Refresh rotation and reuse test | ✅ incl. **exactly 1 of 8 concurrent refreshes** |
+| 19 Cross-tenant access test | ✅ 10 assertions; **verified by breaking `@TenantId`** |
+| 20 Cleanup and tag | ✅ this section |
+
+> **Three controls that looked correct and were not**, all found by running the tests rather
+> than reading the code: single use was a race (3 of 8 concurrent refreshes succeeded); the
+> family revocation on reuse was rolled back by the exception reporting it, so the successor
+> token kept working while the response claimed otherwise; and `@Transactional` outside
+> `TenantContext.runAs` bound the Hibernate session to the no-tenant sentinel, because the
+> resolver is consulted when the session opens rather than per statement. Details in the
+> commit history.
+
+**Next: Phase 5 — ticket lifecycle, state machine and SLA engine** (14 days).
 
 Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with

@@ -13,8 +13,11 @@ ResolveAI.local.postman_environment.json   environment template — passwords bl
 
 1. Import both files into Postman.
 2. Select the **ResolveAI — local** environment.
-3. Fill in `agentPassword`, `customerPassword` and `adminPassword`. **Do not commit them back**
-   — `ops/verify-postman.mjs` fails the build if a secret-shaped key has a value.
+3. Fill in `agentPassword`, `customerPassword` and `adminPassword`. For a local stack the
+   seeder prints them at startup and they are the same for every account:
+   `resolveai-local-2026`. **Do not commit them back** — `ops/verify-postman.mjs` fails the
+   build if a secret-shaped key has a value, which is the point: the day this collection is
+   pointed at something real, the blank field is what stops a password going into git.
 4. Run **Auth › Login**.
 
 That last step is the whole point. Its post-response script writes `accessToken` and
