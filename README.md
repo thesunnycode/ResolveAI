@@ -304,6 +304,101 @@ and catastrophic anywhere else.** The seeder is `@Profile("local")` and guarded 
 
 ---
 
+## The SLA engine
+
+A promise like "four business hours to resolve a P2" is three separate problems wearing one
+sentence: what a business hour is, what stops the clock, and who finds out before the
+promise is broken. Each is solved by something checkable rather than by a comment.
+
+### Business-hours arithmetic is a property test, not an example test
+
+`BusinessHours.add(from, minutes, calendar)` walks working days in the tenant's own zone.
+The suite states five properties and lets jqwik search for counterexamples across three
+calendars — including a DST zone and a **Sunday-to-Thursday** week, because a support desk
+in Dubai is not a bug report:
+
+* adding zero is identity
+* adding is monotonic in the minutes
+* `elapsed(from, add(from, n)) == n` — the two functions are inverses, which is the property
+  that catches an off-by-one in the boundary convention
+* no result ever lands outside working hours
+* a holiday is never counted
+
+`day_start` is inclusive and `day_end` exclusive, in both functions. Stating the convention
+is not pedantry: if `add` and `elapsed` disagree by one minute at the boundary, every clock
+drifts by a minute per day and nothing fails loudly.
+
+### The clock is append-only. There is no `elapsed_minutes` column
+
+Elapsed time is a **sum over `sla_clock_segment` rows**, derived on every read. Pausing
+closes the open segment and inserts a paused one; resuming does the reverse and recomputes
+the deadline from *remaining budget*, not from the original start — a ticket that spent two
+days waiting on the customer has burned none of its target.
+
+A mutable counter would be a lost update under concurrency, and a wrong one is
+undetectable after the fact. A segment history can always be re-derived, and the
+`GET /tickets/{id}/sla` response publishes the segments for exactly that reason. The
+database enforces the shape rather than trusting the code to: `uq_segment_open` allows one
+open segment per record, and a trigger refuses to reopen a closed one.
+
+The order of statements in `pause()` is load-bearing, and it is written out explicitly
+instead of going through a cascading collection — Hibernate does not flush in source order,
+and letting it put the INSERT before the UPDATE trips `uq_segment_open` with an error that
+points at the wrong statement entirely.
+
+### Deadlines are absolute instants in an indexed column, and a poller reads them
+
+**This is the part worth arguing about.** The obvious design is a
+`ScheduledExecutorService` task per deadline: simpler, no polling latency, and it
+**silently loses every pending escalation on restart** — including an ordinary deploy.
+Nothing logs it, because from the new process's point of view those timers never existed.
+The first anyone hears is a customer escalating weeks later about a breach that was never
+flagged.
+
+An absolute deadline in `sla_record.next_deadline_at` has no such failure mode. The
+application is stateless with respect to it, and `SlaPollerTest` says so in a test:
+
+> **Restart recovery** — a deadline two hours in the past, as left behind by an application
+> that was down for two hours. One poll finds it and fires the correct rung immediately.
+> Nothing is lost and nothing is skipped.
+
+`idx_sla_poller` is partial on `state = 'RUNNING'`, so the cost of a poll is proportional
+to the number of *due* clocks, not to the number of open tickets. A paused clock has a null
+deadline and leaves the index entirely.
+
+### Escalation is exactly-once because of one line of DDL
+
+The poller is **at-least-once by construction**: it claims ids in one short transaction
+(`FOR UPDATE SKIP LOCKED`) and processes each in its own, so two runs — or two application
+instances — can pick the same record. Holding those locks for a whole batch would block an
+agent replying to any of two hundred tickets behind a background job, so the locks are
+deliberately short and the duplication is deliberately allowed.
+
+It is safe because of `uq_escalation_rung UNIQUE (sla_record_id, rung)`. The escalation row
+is inserted **before** the notification is sent; a violation means the rung has already
+fired and the method returns having sent nothing. An at-least-once trigger becomes an
+exactly-once effect with no leader election, no distributed lock and no coordination. The
+constraint name is checked before the violation is swallowed, so a genuine bug in the
+notification write is not hidden for ever behind "already fired".
+
+### What the concurrency tests actually pin down
+
+| Test | Invariant |
+|---|---|
+| 20 agents assign one ticket | exactly one `200`, nineteen `409`, `open_count` moves by one |
+| 50 tickets, 5 agents | load skew ≤ 1 |
+| reply vs. breach poller, ×50 | the clock is `MET` with no breach row, or `BREACHED` — never both, never neither |
+| two concurrent pauses | both `200`, exactly one open segment, exactly two rows |
+| pause vs. resume | one open segment, and its state agrees with the record's |
+| poller run repeatedly | four rungs, four notifications — not twelve |
+| two pollers, one record | one escalation row |
+| deadline two hours stale | the right rung fires on the first poll after recovery |
+
+Every one of them is released by a `CountDownLatch`, never a `Thread.sleep`. A sleep-based
+concurrency test is flaky, gets `@Disabled` within a week, and then protects nothing.
+
+---
+
 ## Build status
 
 **Phase 1 — Environment Setup · ✅ complete** (`phase-1-complete`)
@@ -386,7 +481,56 @@ and catastrophic anywhere else.** The seeder is `@Profile("local")` and guarded 
 > resolver is consulted when the session opens rather than per statement. Details in the
 > commit history.
 
-**Next: Phase 5 — ticket lifecycle, state machine and SLA engine** (14 days).
+**Phase 5 — Ticketing & the SLA Engine · ✅ complete** (`phase-5-complete`)
+
+| Task | |
+|---|---|
+| 1–3 Entities, reference generator, repositories | ✅ `TKT-1000` per tenant, gapless under concurrency |
+| 4–5 State machine | ✅ pure component, **73 table-driven cases**, `allowedTransitions` on every 409 |
+| 6–7 Event recorder, `Idempotency-Key` | ✅ replay returns the first response, byte for byte |
+| 8–13 Create, list, detail, ETag, PATCH | ✅ cursor pagination, role-scoped DTOs, `If-Match` required |
+| 14–16 Messages, assign, status/resolve/reopen | ✅ conditional update with an affected-row check |
+| 17 Attachments | ⏭️ deferred to Phase 8 with the storage work |
+| 18–19 SLA entities and repositories | ✅ 6 entities; the claim query returns `(id, tenant_id)` |
+| 20–22 `BusinessHours` | ✅ **5 properties × 3 calendars**, incl. DST and a Sun–Thu week |
+| 23–27 Policy resolution, clocks, lifecycle wiring | ✅ effective-dated, append-only, driven from `sideEffectOf` |
+| 28–31 Poller, escalation ladder, prediction, at-risk | ✅ `SKIP LOCKED`, exactly-once by constraint |
+| 32–34 Concurrency tests | ✅ **95 runs across three suites**, all latch-released |
+| 35 Cleanup, README, Postman, tag | ✅ this section |
+
+**Measured, on this machine** (Testcontainers, Docker Desktop, 8-core laptop):
+
+| | |
+|---|---|
+| 20 concurrent assignments | 1 × `200`, 19 × `409`, `open_count` +1 — over 10 repeats |
+| 50 tickets, 5 agents, concurrent | load skew **1** |
+| reply vs. breach poller | **50/50 runs consistent** — never both, never neither |
+| poller batch | 50 due clocks, one pass, **1.8–2.0 s (37–41 ms/record)** |
+| whole suite | **281 tests** from an empty database |
+
+> The ~40 ms per record is a *per-record transaction*, not a row read: claim, re-lock,
+> recompute elapsed from the segment history, insert the escalation, write the
+> notification and the ticket event, commit. The number worth defending is not that it is
+> fast but that it is `O(due)` — `idx_sla_poller` is partial on `state = 'RUNNING'`, so a
+> quiet poll with ten thousand open tickets costs one index probe.
+
+> **Seven bugs the tests found, none of which the code looked wrong for.** A `@Lock`
+> annotation on a native query meant **no escalation would ever have fired** — it threw on
+> every record, and the poller logged and carried on. The tenant was set *inside* the
+> poller's transaction, but Hibernate reads it when the session opens, so every ticket
+> load failed on a row that plainly existed (the same trap as Phase 4, in a new place).
+> `hibernate.jdbc.time_zone: UTC` is correct for `TIMESTAMP` and silently corrupts `TIME`:
+> every tenant's working day was shifted by the server's offset, and because the day was
+> still nine hours long, every duration property still passed. The next rung's deadline
+> was computed from its full budget instead of the remaining one, so the ladder stopped
+> climbing on exactly the tickets it exists for. `start()` asked "does this ticket have
+> any clock?" rather than "of this kind", so a **reopened ticket got no resolution clock
+> at all** and would never breach again. Pausing an already-paused clock appended a third
+> segment and moved the pause's start time. And deadlines written from the JVM's clock
+> were claimed by a query comparing against the database's, so a due rung went unclaimed
+> whenever the container drifted — now every timestamp comes from `DatabaseClock`.
+
+**Next: Phase 6 — async pipeline, transactional outbox and AI triage.**
 
 Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with

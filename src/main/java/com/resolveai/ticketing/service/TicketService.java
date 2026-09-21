@@ -12,6 +12,7 @@ import com.resolveai.iam.repository.AppUserRepository;
 import com.resolveai.iam.repository.TeamRepository;
 import com.resolveai.iam.security.ResolvePrincipal;
 import com.resolveai.platform.sequence.ReferenceGenerator;
+import com.resolveai.ticketing.domain.Priority;
 import com.resolveai.ticketing.domain.SlaEffect;
 import com.resolveai.ticketing.domain.Ticket;
 import com.resolveai.ticketing.domain.TicketEventType;
@@ -32,6 +33,7 @@ import com.resolveai.ticketing.web.dto.StatusChangeRequest;
 import com.resolveai.ticketing.web.dto.StatusChangeResponse;
 import com.resolveai.ticketing.web.dto.TicketSummaryResponse;
 import com.resolveai.ticketing.web.dto.UpdateTicketRequest;
+import com.resolveai.platform.time.DatabaseClock;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,12 +73,14 @@ public class TicketService {
     private final TicketAccess access;
     private final TicketMapper mapper;
     private final SlaLifecycle sla;
+    private final DatabaseClock clock;
 
     public TicketService(TicketRepository tickets, TicketMessageRepository messages,
                          TicketQueryRepository ticketQuery, AppUserRepository users,
                          TeamRepository teams, AgentProfileRepository agentProfiles,
                          ReferenceGenerator references, TicketEventRecorder eventRecorder,
-                         TicketAccess access, TicketMapper mapper, SlaLifecycle sla) {
+                         TicketAccess access, TicketMapper mapper, SlaLifecycle sla,
+                         DatabaseClock clock) {
         this.tickets = tickets;
         this.messages = messages;
         this.ticketQuery = ticketQuery;
@@ -88,6 +92,7 @@ public class TicketService {
         this.access = access;
         this.mapper = mapper;
         this.sla = sla;
+        this.clock = clock;
     }
 
     // ── Create ──────────────────────────────────────────────────────────────
@@ -240,6 +245,45 @@ public class TicketService {
                 Map.of("field", field));
     }
 
+    /**
+     * Sets a ticket's priority by hand, with a reason.
+     *
+     * <p><b>Priority is computed, never set</b> — doc 05 §STEP 2 is explicit that there is
+     * no {@code POST /tickets/{id}/priority}. This is the one human path, and it requires
+     * a reason precisely so that the override can be analysed later: the question worth
+     * answering is whether the model misread the ticket or the policy is wrong, and those
+     * are two completely different bugs that look identical without the reason.
+     *
+     * <p><b>In Phase 5 this is also the only way a ticket gets a priority at all</b>, and
+     * therefore the only way its SLA clocks start. Phase 6's triage worker computes one
+     * automatically; until then an agent decides, which is what they would do anyway when
+     * triage is down. Starting the clocks here rather than at creation is the arrangement
+     * the plan says Phase 6 moves to, so this path does not change when triage arrives.
+     */
+    @Transactional
+    public TicketSummaryResponse overridePriority(
+            ResolvePrincipal principal, Long ticketId,
+            com.resolveai.ticketing.web.dto.PriorityOverrideRequest request) {
+        access.requireAgentOrAbove(principal, "set a ticket's priority");
+        Ticket ticket = access.loadVisibleForUpdate(principal, ticketId);
+        requireNotClosed(ticket);
+
+        Priority from = ticket.getPriority();
+        ticket.setPriority(request.priority());
+        eventRecorder.record(ticket, TicketEventType.PRIORITY_CHANGED, from.name(),
+                request.priority().name(),
+                Map.of("reason", request.reason(), "source", "HUMAN_OVERRIDE"));
+
+        // Idempotent: a second override does not create a second pair of clocks, and the
+        // targets already snapshotted onto the first pair are not rewritten. Changing the
+        // target of a clock that is already running would move the goalposts mid-game -
+        // Phase 9's admin surface is where a deliberate re-target belongs, if ever.
+        sla.start(ticket);
+
+        tickets.saveAndFlush(ticket);
+        return mapper.toSummary(ticket, messages.countByTicketId(ticketId));
+    }
+
     // ── Messages ────────────────────────────────────────────────────────────
 
     /**
@@ -270,7 +314,7 @@ public class TicketService {
         }
 
         AppUser author = access.caller(principal);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = clock.now();
 
         // Three conditions, all necessary. Public, because an internal note is not a reply
         // to the customer. Not the requester, because a customer adding detail to their own
@@ -417,7 +461,7 @@ public class TicketService {
                     "A reason is required when moving a ticket to " + to + ".");
         }
 
-        ticket.moveTo(to, OffsetDateTime.now());
+        ticket.moveTo(to, clock.now());
         Map<String, Object> effect = applySlaEffect(ticket, from, to, request.reason());
         eventRecorder.recordStatusChange(ticket, from.name(), to.name(), request.reason());
         tickets.saveAndFlush(ticket);
@@ -456,7 +500,7 @@ public class TicketService {
             throw new IllegalTransitionException(from, TicketStatus.RESOLVED);
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = clock.now();
         AppUser author = access.caller(principal);
 
         // The resolution is stored as the final public message rather than as a column: it

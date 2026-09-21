@@ -87,6 +87,17 @@ spring:
       # handler answers unmatched paths before the exception above can be thrown.
       add-mappings: false
 
+  task:
+    scheduling:
+      pool:
+        # Above 1, deliberately. The default is a single thread, so the SLA poller and
+        # every scheduler Phase 6 adds - the outbox dispatcher, the IN_FLIGHT reaper, the
+        # correlation sweep - would queue behind each other. A slow SLA poll would stall
+        # the outbox, and the symptom would be "async work is late" with nothing pointing
+        # at the scheduler as the cause.
+        size: 4
+      thread-name-prefix: resolveai-sched-
+
   threads:
     virtual:
       # Java 21 virtual threads for request handling. The workload is overwhelmingly
@@ -149,6 +160,10 @@ resolveai:
     pool-size: ${WORKER_POOL_SIZE:8}
     poll-interval-ms: ${WORKER_POLL_INTERVAL_MS:1000}
     sla-poller-batch-size: ${SLA_POLLER_BATCH_SIZE:200}
+    # How often the SLA poller wakes. This is the resolution of the escalation ladder,
+    # not a latency budget - a rung is not a real-time event, and a minute would be
+    # defensible. Ten seconds keeps a demo legible.
+    sla-poll-interval-ms: ${SLA_POLL_INTERVAL_MS:10000}
   correlation:
     window-minutes: ${CORRELATION_WINDOW_MINUTES:30}
     min-cluster-size: ${CORRELATION_MIN_CLUSTER_SIZE:5}

@@ -56,17 +56,17 @@ class PlatformSmokeTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("Flyway applied all 7 migrations against a truly empty database")
+    @DisplayName("Flyway applied all 9 migrations against a truly empty database")
     void flywayAppliedAllMigrations() {
         Integer applied = jdbc.queryForObject(
                 "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-        assertThat(applied).isEqualTo(7);
+        assertThat(applied).isEqualTo(9);
 
         Integer tables = jdbc.queryForObject("""
                 SELECT count(*) FROM pg_tables
                  WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history'
                 """, Integer.class);
-        assertThat(tables).isEqualTo(39);
+        assertThat(tables).isEqualTo(40);
 
         // The partial indexes carry the correctness properties the whole system rests on.
         // A WHERE clause silently dropped during a migration edit creates an index that

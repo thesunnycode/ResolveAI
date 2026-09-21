@@ -68,12 +68,26 @@ public class TicketTestSupport {
         return ((Number) response.getBody().get("id")).longValue();
     }
 
-    /** The current ETag, read the way a client would: from a GET. */
+    /**
+     * The current ETag, read the way a client would: from a GET.
+     *
+     * <p><b>Fails loudly when the GET did not succeed.</b> Returning null instead would
+     * send the following request out with no {@code If-Match}, which comes back as a
+     * {@code 428} — and the test then fails several lines later with "expected 200 but
+     * was 428", which says nothing about the GET that actually went wrong. One
+     * intermittent failure cost an hour of reading the wrong code before this check
+     * existed.
+     */
     @SuppressWarnings("unchecked")
     public String etag(TestRestTemplate rest, String token, Long ticketId) {
         ResponseEntity<Map> response = rest.exchange("/api/v1/tickets/" + ticketId,
                 HttpMethod.GET, new HttpEntity<>(AuthTestSupport.bearer(token)), Map.class);
-        return response.getHeaders().getETag();
+        String etag = response.getHeaders().getETag();
+        if (etag == null) {
+            throw new IllegalStateException("No ETag for ticket " + ticketId + ": GET returned "
+                    + response.getStatusCode() + " " + response.getBody());
+        }
+        return etag;
     }
 
     @SuppressWarnings("unchecked")

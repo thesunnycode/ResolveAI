@@ -191,6 +191,23 @@ public class TicketController {
         return tickets.addMessage(principal, id, request);
     }
 
+    /**
+     * The one human path to a priority. Doc 05 §3.3.
+     *
+     * <p>Lives on this controller rather than a triage one because in Phase 5 there is no
+     * triage: this is a plain ticket mutation with an audit label. When Phase 6 adds the
+     * worker, the computed path goes beside it and this stays as the override.
+     */
+    @PostMapping("/{id}/priority-override")
+    public ResponseEntity<Object> overridePriority(
+            @AuthenticationPrincipal ResolvePrincipal principal,
+            @PathVariable Long id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Valid @RequestBody com.resolveai.ticketing.web.dto.PriorityOverrideRequest request) {
+        requireIfMatch(principal, id, ifMatch);
+        return ok(tickets.overridePriority(principal, id, request), principal, id);
+    }
+
     @PostMapping("/{id}/assign")
     public ResponseEntity<Object> assign(
             @AuthenticationPrincipal ResolvePrincipal principal,

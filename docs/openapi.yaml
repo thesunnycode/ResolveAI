@@ -1407,6 +1407,58 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /dev/tickets/{id}/sla/fast-forward:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [SLA]
+      operationId: fastForwardSla
+      summary: Age a ticket's clocks — local profile only
+      description: |
+        **A demo affordance, not part of the product surface.** The escalation ladder is
+        the most interesting behaviour in the SLA engine and the least demonstrable:
+        showing a rung fire honestly means waiting out half of a business-hours target.
+        This moves a ticket's clocks into the past so the next poll does what an hour of
+        waiting would have done.
+
+        **It rewrites the clock segments, not only the deadline.** The poller re-checks
+        elapsed against the rung under the row lock before firing — the guard that stops a
+        pause landing between claim and process from firing a rung the clock has not
+        reached — so shifting the deadline alone would be rescheduled rather than fired.
+
+        `@Profile("local")`: the bean does not exist under `prod` or `test`, the same guard
+        the seed loader uses. `ADMIN` in addition, and it logs at `WARN`, because an
+        endpoint that rewrites audit history should never be quiet about it.
+      parameters:
+        - name: minutes
+          in: query
+          required: false
+          schema: { type: integer, default: 60 }
+          description: |
+            How far back to move them. 40 puts a P2 first-response clock (60-minute
+            target) past its 50% rung; 500 puts a resolution clock past all four.
+      responses:
+        '200':
+          description: How much was moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticketId: { type: integer, format: int64 }
+                  movedBackMinutes: { type: integer, format: int64 }
+                  segmentsShifted: { type: integer }
+                  deadlinesShifted: { type: integer }
+                  note: { type: string }
+              example:
+                ticketId: 88213
+                movedBackMinutes: 40
+                segmentsShifted: 2
+                deadlinesShifted: 2
+                note: "The next poll (<=10s) will fire whatever rungs this crossed."
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/TicketNotFound' }
+
   /sla/at-risk:
     get:
       tags: [SLA]
