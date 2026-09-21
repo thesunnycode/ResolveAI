@@ -8,7 +8,9 @@ Java 21 · Spring Boot · Spring AI · PostgreSQL + pgvector · Redis · Docker
 > signals; versioned deterministic policy functions compute every priority, route,
 > escalation and SLA breach.
 
-🚧 **Under active development — Phase 1 of 10.** [Build status below.](#build-status)
+[![CI](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml/badge.svg)](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml)
+
+🚧 **Under active development — Phase 3 of 10 complete.** [Build status below.](#build-status)
 
 ---
 
@@ -156,6 +158,46 @@ Tear down completely — **this is the real test**, and CI runs it:
 docker compose down -v && docker compose up -d && bash ops/verify-stack.sh
 ```
 
+> **Postgres is on 55432, not 5432.** A native PostgreSQL service and Docker's port proxy
+> can both bind 5432, and the client then reaches whichever bound first — which presents as
+> `password authentication failed`, from a server that has simply never heard of the
+> `resolveai` role. Moving the host-side port sidesteps it without touching anything else
+> installed on the machine.
+
+---
+
+## Running the application
+
+```bash
+docker compose up -d                      # datastores first
+./mvnw spring-boot:run                    # defaults to the local profile
+curl -s localhost:8080/actuator/health | jq
+```
+
+`.env` is read by Spring itself, through `spring.config.import`, so there is nothing to
+source into the shell — which also sidesteps the CRLF problem, where sourcing a Windows
+`.env` in bash appends a carriage return to every value and the database rejects a password
+that is visibly correct.
+
+There are no endpoints yet: Phase 3 delivers the platform, not the features. What responds:
+
+| | |
+|---|---|
+| `GET /actuator/health` | `UP`, with `db`, `redis` and `outboxLag` |
+| `GET /actuator/health/readiness` | `db` and `redis` only — readiness gates traffic |
+| `GET /actuator/prometheus` | metrics, open to a scraper |
+| anything under `/api/v1/**` | `404` as RFC 7807, with an `errorCode` and a `traceId` |
+
+**Verification, all four of which run in CI:**
+
+```bash
+bash ops/verify-stack.sh         # 7 containers, pgvector, HNSW
+bash ops/verify-migrations.sh    # schema from empty + 10 structural guarantees
+bash ops/verify-openapi.sh       # Redocly + 64 operations + 12 with examples
+node ops/verify-postman.mjs      # collection matches the contract, both directions
+./mvnw clean verify              # 5 integration tests on real containers
+```
+
 ---
 
 ## Build status
@@ -176,9 +218,49 @@ docker compose down -v && docker compose up -d && bash ops/verify-stack.sh
 | 10 Starter corpus | ✅ 200 tickets, **30 hand-verified** → [seed/VERIFICATION.md](seed/VERIFICATION.md) |
 | 11 README v-1 | ✅ this file |
 
-**Next: Phase 2 — migrations, structural guarantees, OpenAPI, Postman** (9 days).
+**Phase 2 — Design Closure & Schema · ✅ complete** (`phase-2-complete`)
 
-Phases 2–10 are planned at task level: **242 tasks, ~135 working days.**
+| Task | |
+|---|---|
+| 1 End-to-end design trace | ✅ **backward trace found 6 gaps** → [docs/design-trace.md](docs/design-trace.md) |
+| 2 Schema and contract gaps closed | ✅ +11 endpoints, 2 tables folded into V1/V2 |
+| 3 Migration roadmap | ✅ V1–V14 reserved → [docs/migrations.md](docs/migrations.md) |
+| 4–10 V1–V7 written | ✅ extracted from doc 04, **applied first try** |
+| 11 Schema verified | ✅ 39 tables · 125 indexes · 10 triggers · 73 FKs |
+| 12 Structural guarantees | ✅ **all 10 hold** — 6 negatives, 4 positives |
+| 13 Migration repeatability | ✅ `ops/verify-migrations.sh`, green from empty |
+| 14 OpenAPI 3.1 | ✅ 64 operations, 12 with real examples, Redocly clean |
+| 15 Postman collection | ✅ 77 requests, self-authenticating, no secrets |
+| 16 Handoff | ✅ [docs/phase-2-handoff.md](docs/phase-2-handoff.md) |
+
+**Phase 3 — Project Setup & Boilerplate · ✅ complete** (`phase-3-complete`)
+
+| Task | |
+|---|---|
+| 1–2 Skeleton and dependencies | ✅ **Spring Boot 4.1.1 + Spring AI 2.0.1** (see below) |
+| 3 Module packages | ✅ 10 packages, each with its dependency rule in `package-info.java` |
+| 4 Config profiles | ✅ `local` / `test` / `prod`; prod has no defaults, by design |
+| 5 Flyway wired | ✅ `ddl-auto: validate`, "Schema public is up to date" |
+| 6 Redis | ✅ `redis: UP`, 7.4.11 |
+| 7–8 Error model and advice | ✅ 48 error codes, RFC 7807 on every path |
+| 9 Structured logging | ✅ MDC `traceId`, `X-Request-Id`, JSON under prod |
+| 10 Actuator | ✅ health / readiness / prometheus, plus `outboxLag` |
+| 11–12 Testcontainers suite | ✅ 5 integration tests, **14.7s** |
+| 13 GitHub Actions | ✅ `.github/workflows/ci.yml` — two jobs |
+| 14 Cleanup and tag | ✅ this section |
+
+> **Why Boot 4 and not the 3.3.x the plan specified.** The plan was written before the
+> build started. start.spring.io now offers no 3.x at all, and both 3.3 and 3.5 are past
+> OSS end of life — shipping an unsupported framework line is a worse answer in an
+> interview than explaining a migration. The cost was real and is documented in the commit
+> history: Boot 4 renames the starters, Spring AI 2 renames the model starters,
+> Testcontainers 2 renames every module, Jackson 3 moves `WRITE_DATES_AS_TIMESTAMPS`,
+> `TestRestTemplate` moves package *and* needs an annotation, and OkHttp 5 keeps its JVM
+> classes in a separate artifact. Each was found by running, not by reading.
+
+**Next: Phase 4 — auth, tenancy and the JWT filter chain** (10 days).
+
+Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with
 [00-README](docs/planning/00-README.md).
 

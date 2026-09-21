@@ -10,9 +10,31 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PG=resolveai-postgres
-NET=resolveai_default
 MIG="$(pwd)/src/main/resources/db/migration"
 DBURL=jdbc:postgresql://${PG}:5432/resolveai
+
+# The compose network is named after the project, which is the directory name - so it is
+# resolveai_default locally and whatever the checkout directory is called in CI. Ask Docker
+# rather than assuming: a hardcoded name fails with "network not found", which reads like a
+# Docker problem rather than a naming one.
+NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$PG" 2>/dev/null)
+if [ -z "$NET" ]; then
+  echo "❌ container $PG is not running — start it with: docker compose up -d postgres"
+  exit 1
+fi
+
+# `docker compose up -d` returns as soon as the container is created, not when Postgres is
+# accepting connections. Locally it is usually ready by the time anyone runs this; in CI it
+# is usually not, and the failure looks like a migration error rather than a race.
+echo "── waiting for postgres ──"
+for i in $(seq 1 60); do
+  if docker compose exec -T postgres pg_isready -U resolveai -d postgres >/dev/null 2>&1; then
+    echo "  ready after ${i}s (network: $NET)"
+    break
+  fi
+  [ "$i" = 60 ] && { echo "❌ postgres did not become ready in 60s"; exit 1; }
+  sleep 1
+done
 
 fail=0
 expect() { # label expected actual

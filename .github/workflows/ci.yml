@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch cancels the first. CI runs here start real Docker
+# containers; queueing three superseded runs behind the one that matters wastes minutes and
+# tells you nothing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # Testcontainers needs no setup on GitHub's Ubuntu runners — Docker is already
+      # running. This step exists so that when something *is* wrong with the daemon, the
+      # failure says so on its own line instead of surfacing as a container timeout
+      # fifteen minutes into the test phase.
+      - name: Check Docker is available
+        run: docker version --format '{{.Server.Version}}'
+
+      - name: Build and test
+        run: ./mvnw -B --no-transfer-progress clean verify
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+  contracts:
+    name: contracts and migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Independent of the Java build: the contract and the schema are verifiable without
+    # compiling anything, and keeping them in their own job means a broken OpenAPI example
+    # is not buried under a Maven log.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install seed generator dependencies
+        run: npm --prefix seed/generator ci || npm --prefix seed/generator install
+
+      - name: Verify OpenAPI contract
+        run: bash ops/verify-openapi.sh
+
+      - name: Verify Postman collection matches the contract
+        run: node ops/verify-postman.mjs
+
+      # Brings the stack up and runs the migrations from a truly empty database, then the
+      # ten structural guarantees. This is the check that would catch a partial index
+      # losing its WHERE clause.
+      - name: Start datastores
+        run: docker compose up -d postgres redis
+
+      - name: Verify migrations from empty
+        run: bash ops/verify-migrations.sh
+
+      - name: Stop datastores
+        if: always()
+        run: docker compose down -v
