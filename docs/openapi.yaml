@@ -2349,10 +2349,36 @@ paths:
       tags: [Admin]
       operationId: getAiPolicy
       summary: External-model permission, monthly budget, retention
-      description: 'TODO: schema.'
+      description: |
+        The gate every model call is checked against. Read before **every** call and
+        cached in Redis for five minutes, evicted on update — so switching external
+        models off takes effect immediately rather than within the TTL.
+
+        **A tenant with no policy row is treated as AI-disabled**, never as permissive
+        defaults. A missing row usually means a tenant provisioned by a path that forgot
+        to create one, and the two ways of guessing wrong are not symmetrical: guess
+        "disabled" and somebody files a bug that triage is not running; guess "allowed"
+        and a customer's messages have already gone to a third party they never agreed
+        to. This endpoint creates the row with restrictive defaults rather than 404ing,
+        so an admin always sees the five settings that govern them.
+
+        `currentMonthSpendMicros` is read-only here — it is moved by usage, never by an
+        admin, because an editable spend counter is a way to make the bill say anything.
       responses:
         '200':
           description: The tenant AI policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiPolicyView' }
+              example:
+                tenantId: 3
+                externalModelAllowed: true
+                allowedProviders: [openai]
+                piiRedactionRequired: true
+                monthlyBudgetMicros: 5000000
+                currentMonthSpendMicros: 412873
+                budgetRemainingMicros: 4587127
+                retentionDays: 365
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     put:
@@ -2365,10 +2391,30 @@ paths:
         policy is a hard gate, not a preference — and the response warns about it rather than
         silently degrading.
 
-        TODO: schema.
+        **A full `PUT`, not a `PATCH`.** Five fields, read together before every model
+        call; a partial update of a safety setting is how one thing gets changed and
+        another silently kept. Sending the whole object means the admin has seen all five.
+
+        **No tenant id in the path**: it comes from the authenticated caller, so an admin
+        can only ever change their own tenant's policy. A `/admin/tenants/{id}/ai-policy`
+        shape would need an authorization check that this one cannot forget.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAiPolicyRequest' }
+            example:
+              externalModelAllowed: true
+              allowedProviders: [openai]
+              piiRedactionRequired: true
+              monthlyBudgetMicros: 5000000
+              retentionDays: 365
       responses:
         '200':
-          description: Updated.
+          description: Updated. The cache entry is evicted, so the next call sees this.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiPolicyView' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2791,6 +2837,52 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
+    AiPolicyView:
+      type: object
+      description: |
+        A tenant's AI settings. Everything here is read before a model call; nothing here
+        is advisory.
+      properties:
+        tenantId:                { type: integer, format: int64 }
+        externalModelAllowed:    { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+          description: |
+            An allow-list. **Empty means "any configured provider"**, which is different
+            from "none" — that is what `externalModelAllowed: false` is for.
+        piiRedactionRequired:    { type: boolean }
+        monthlyBudgetMicros:     { type: integer, format: int64 }
+        currentMonthSpendMicros:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Moved by usage only. Micros, never a decimal — money in a double
+            accumulates rounding error across a month of per-call increments.
+        budgetRemainingMicros:
+          type: integer
+          format: int64
+          readOnly: true
+          description: |
+            Can go slightly negative. Two concurrent calls can both pass the pre-call
+            budget check and jointly overshoot by up to one call's cost — a deliberate,
+            bounded race, accepted because closing it means serialising every model call
+            behind a lock. The recorded *total* is exact regardless: spend is an atomic
+            SQL increment, not a read-modify-write.
+        retentionDays:           { type: integer }
+
+    UpdateAiPolicyRequest:
+      type: object
+      required: [externalModelAllowed, piiRedactionRequired, monthlyBudgetMicros, retentionDays]
+      properties:
+        externalModelAllowed:  { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+        piiRedactionRequired:  { type: boolean }
+        monthlyBudgetMicros:   { type: integer, format: int64, minimum: 0 }
+        retentionDays:         { type: integer, minimum: 1 }
+
 
     # ── errors ────────────────────────────────────────────────────────────────
 

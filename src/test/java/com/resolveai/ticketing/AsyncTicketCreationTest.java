@@ -210,17 +210,16 @@ class AsyncTicketCreationTest extends IntegrationTestBase {
     }
 
     /**
-     * Prompt versions are global rather than per tenant: one catalogue for the whole
-     * system, so "which prompt produced this?" has the same answer everywhere and an
-     * eval run means the same thing across tenants.
+     * The live triage prompt, which V10 seeds.
+     *
+     * <p>Read rather than inserted: prompt versions are global, {@code uq_prompt_active}
+     * allows exactly one active version per name, and a test that inserts its own
+     * {@code triage@1} collides with the migration. Reading it also means this test
+     * exercises the real prompt row that production uses.
      */
     private Long seedPromptVersion() {
-        return jdbc.queryForObject("""
-                INSERT INTO prompt_version (name, version, template, model_id,
-                                            output_schema, is_active)
-                VALUES ('triage', 1, 'Classify the ticket.', 'gpt-4.1-mini',
-                        '{"type":"object"}'::jsonb, TRUE)
-                RETURNING id
-                """, Long.class);
+        return jdbc.queryForObject(
+                "SELECT id FROM prompt_version WHERE name = 'triage' AND is_active",
+                Long.class);
     }
 }

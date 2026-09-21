@@ -74,10 +74,12 @@ public class IamSeeder implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbc;
     private final TenantScope tenantScope;
+    private final com.resolveai.platform.ai.AiPolicyService aiPolicies;
 
     public IamSeeder(TenantRepository tenants, TeamRepository teams, AppUserRepository users,
                      AgentProfileRepository agentProfiles, PasswordEncoder passwordEncoder,
-                     JdbcTemplate jdbc, TenantScope tenantScope) {
+                     JdbcTemplate jdbc, TenantScope tenantScope,
+                     com.resolveai.platform.ai.AiPolicyService aiPolicies) {
         this.tenants = tenants;
         this.teams = teams;
         this.users = users;
@@ -85,6 +87,7 @@ public class IamSeeder implements CommandLineRunner {
         this.passwordEncoder = passwordEncoder;
         this.jdbc = jdbc;
         this.tenantScope = tenantScope;
+        this.aiPolicies = aiPolicies;
     }
 
     @Override
@@ -111,6 +114,11 @@ public class IamSeeder implements CommandLineRunner {
 
     private void seedTenant(TenantSpec spec, String passwordHash) {
         Tenant tenant = tenants.saveAndFlush(new Tenant(spec.name(), spec.slug(), spec.tier()));
+
+        // Every tenant gets an AI policy, because a tenant without one has AI disabled
+        // (AiPolicyService fails closed) and a locally seeded tenant that cannot be
+        // triaged would look like a broken pipeline rather than a missing row.
+        aiPolicies.ensureExists(tenant.getId());
 
         // Everything below writes tenant-scoped rows, and Hibernate takes the tenant from
         // the resolver rather than from any field we set - so this block has to run inside

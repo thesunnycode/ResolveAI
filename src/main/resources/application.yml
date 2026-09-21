@@ -39,6 +39,12 @@ spring:
       hibernate.order_updates: true
 
   flyway:
+    # Off, deliberately. Migrations here contain JSON, regex and dollar-quoted prompt
+    # text, and Flyway's ${...} substitution reads "$schema${" - a dollar-quote tag
+    # followed by a brace - as an unresolved placeholder and refuses to start. Nothing
+    # in this project needs the feature, and the failure it causes names a line number
+    # rather than a cause.
+    placeholder-replacement: false
     enabled: true
     locations: classpath:db/migration
     # `true` would tell Flyway to assume any non-empty database is already at the baseline
@@ -183,3 +189,58 @@ resolveai:
     coverage-threshold: ${DRAFT_COVERAGE_THRESHOLD:0.8}
   ai:
     monthly-budget-micros: ${MONTHLY_TOKEN_BUDGET_MICROS:5000000}
+    # The tenant-configurable order-reference shape the PII redactor looks for.
+    # Single-quoted, because YAML reads a bare backslash-b as a backspace character
+    # and then refuses to start with "unacceptable code point 0x8" - a message that
+    # names neither this file nor this key.
+    order-ref-pattern: '${AI_ORDER_REF_PATTERN:\bORD-\d{4,10}\b}'
+    # How often to check whether the month has turned. Hourly rather than one midnight
+    # fire, so a restart cannot step over the single instant it would happen at.
+    budget-reset-check-ms: ${AI_BUDGET_RESET_CHECK_MS:3600000}
+
+# ── Resilience ──────────────────────────────────────────────────────────────
+# One breaker instance per provider. Shared state across providers would mean a bad
+# minute at OpenAI stopping calls to Ollama, which is the opposite of a fallback.
+resilience4j:
+  circuitbreaker:
+    configs:
+      llm:
+        # Count-based rather than time-based: the call volume here is low enough that a
+        # time window can hold two calls, and a breaker that opens on "100% of 2 failures"
+        # trips on noise.
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 1
+        automatic-transition-from-open-to-half-open-enabled: true
+        # A parse failure is the model's fault, not the provider's - the socket worked
+        # perfectly. Counting it would open the breaker on a prompt problem and stop
+        # calls that would have succeeded.
+        ignore-exceptions:
+          - com.resolveai.platform.ai.model.LlmExceptions$LlmParseException
+          - com.resolveai.platform.ai.model.LlmExceptions$BudgetExhaustedException
+    instances:
+      openai:
+        base-config: llm
+      ollama:
+        base-config: llm
+  retry:
+    configs:
+      llm:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        # Retrying a 400 is pointless: a malformed request is malformed every time, and
+        # three attempts only means three identical rejections and three times the
+        # latency before the caller finds out.
+        ignore-exceptions:
+          - com.resolveai.platform.ai.model.LlmExceptions$LlmParseException
+          - com.resolveai.platform.ai.model.LlmExceptions$BudgetExhaustedException
+    instances:
+      openai:
+        base-config: llm

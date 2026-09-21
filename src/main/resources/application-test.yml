@@ -35,7 +35,10 @@ resolveai:
     access-token-ttl-minutes: 15
     refresh-token-ttl-days: 7
   security:
-    pii-encryption-key: dGVzdC1vbmx5LWFlcy1nY20ta2V5LTI1Ni1iaXRzLWxvbmch
+    # Exactly 32 bytes base64-encoded — AES-256 takes no other length. The previous
+    # value here decoded to 36 and would have failed at startup the moment anything
+    # read it, which is the kind of thing that only surfaces two phases later.
+    pii-encryption-key: dGVzdC1vbmx5LWFlcy0yNTYta2V5LTMyLWJ5dGVzISE=
     cors-allowed-origins: http://localhost:5173
   workers:
     # Pollers are driven explicitly in tests — a background thread firing mid-assertion is
