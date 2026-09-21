@@ -17,8 +17,9 @@ import org.springframework.stereotype.Component;
  * 202, every ticket lands, and nothing is ever triaged. From the outside that looks perfectly
  * healthy right up until someone notices the queue is cold.
  *
- * <p>Phase 6 fills in the threshold behaviour. The query below already works against the
- * empty table, so it returns {@code UP} with an age of zero rather than a stub.
+ * <p>Phase 6 filled in the threshold and added the matching Micrometer gauges in
+ * {@code WorkerRuntime}. The query works against an empty table, so a system with nothing
+ * queued reports {@code UP} with an age of zero rather than an error.
  */
 @Component("outboxLag")
 public class OutboxLagHealthIndicator implements HealthIndicator {
@@ -26,10 +27,20 @@ public class OutboxLagHealthIndicator implements HealthIndicator {
     private static final Logger log = LoggerFactory.getLogger(OutboxLagHealthIndicator.class);
 
     /**
-     * Above this, the poller is not keeping up. TODO Phase 6: move to configuration and
-     * calibrate against the measured poll interval rather than this placeholder.
+     * Above this, the pipeline is not keeping up.
+     *
+     * <p>Five minutes, calibrated against what the queue actually does rather than
+     * against a round number: workers poll every second and a triage takes a handful of
+     * seconds, so a healthy oldest-pending age is measured in seconds. Five minutes is
+     * far enough above that to survive a burst or a restart, and far enough below a
+     * customer noticing that the alert still arrives first.
+     *
+     * <p><b>Age, not depth.</b> A depth of five hundred draining steadily is a healthy
+     * system under load; a depth of three where the oldest is twenty minutes old is
+     * something wedged in a retry loop. Only one of those is worth waking somebody for,
+     * and depth cannot tell them apart.
      */
-    private static final long DEGRADED_AFTER_SECONDS = 120;
+    private final long degradedAfterSeconds;
 
     /**
      * Written against the real schema rather than from memory of the design: outbox_event
@@ -50,8 +61,12 @@ public class OutboxLagHealthIndicator implements HealthIndicator {
 
     private final JdbcTemplate jdbc;
 
-    public OutboxLagHealthIndicator(JdbcTemplate jdbc) {
+    public OutboxLagHealthIndicator(JdbcTemplate jdbc,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${resolveai.workers.lag-degraded-after-seconds:300}")
+            long degradedAfterSeconds) {
         this.jdbc = jdbc;
+        this.degradedAfterSeconds = degradedAfterSeconds;
     }
 
     @Override
@@ -61,10 +76,10 @@ public class OutboxLagHealthIndicator implements HealthIndicator {
             Long dead = jdbc.queryForObject(DEAD_COUNT, Long.class);
             long age = ageSeconds == null ? 0L : ageSeconds;
 
-            Health.Builder builder = age > DEGRADED_AFTER_SECONDS ? Health.down() : Health.up();
+            Health.Builder builder = age > degradedAfterSeconds ? Health.down() : Health.up();
             return builder
                     .withDetail("oldestPendingEventAgeSeconds", age)
-                    .withDetail("degradedAfterSeconds", DEGRADED_AFTER_SECONDS)
+                    .withDetail("degradedAfterSeconds", degradedAfterSeconds)
                     .withDetail("deadLetterCount", dead == null ? 0L : dead)
                     .build();
         } catch (Exception e) {
