@@ -261,6 +261,57 @@ public class SlaClockService {
         records.saveAndFlush(record);
     }
 
+    // -- Task 27: retarget after a human priority override --------------------
+
+    /**
+     * Re-points every live clock on a ticket at the policy for its new priority.
+     *
+     * <p>Called after a human override, and only then. Three things have to be true at
+     * once for this to be correct, and each of them is a way of getting it wrong:
+     *
+     * <ol>
+     *   <li><b>Elapsed carries over.</b> The records keep their segments, so a ticket
+     *       ninety minutes into a P3 clock is ninety minutes into its new P1 clock.
+     *       Starting fresh would hand back the time already spent and make every
+     *       escalation-to-P1 look like an improvement in SLA performance.
+     *   <li><b>The new deadline is computed from the remaining budget</b>, via
+     *       {@link #deadlineForRemaining}, not from the full new target. A P1 target of
+     *       sixty minutes on a clock that has already run ninety is <i>overdue</i>, and
+     *       the poller must see it that way on its very next pass.
+     *   <li><b>Terminal records are left alone.</b> A first-response clock that was met
+     *       yesterday stays met. Retargeting it would rewrite history and could flip a
+     *       met promise to a breached one long after the fact.
+     * </ol>
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<SlaRecord> retarget(Ticket ticket, PlanTier planTier, OffsetDateTime now) {
+        if (!ticket.getPriority().isTriaged()) {
+            return List.of();
+        }
+
+        SlaPolicy policy = policyResolver.resolve(ticket.getPriority(), planTier, now);
+        CalendarSpec calendar = calendars.current();
+        List<SlaRecord> changed = new ArrayList<>(2);
+
+        for (SlaRecord record : records.findByTicketId(ticket.getId())) {
+            if (record.isTerminal() || record.getState() == SlaState.CANCELLED) {
+                continue;
+            }
+            int newTarget = policy.targetMinutesFor(record.getKind());
+            long elapsed = calculator.elapsedBusinessMinutes(record.getId(), calendar, now);
+            short rung = record.getNextRung() == null ? 100 : record.getNextRung();
+
+            record.retarget(policy.getId(), policy.getVersionLabel(), newTarget,
+                    deadlineForRemaining(now, newTarget, rung, elapsed, calendar));
+            records.saveAndFlush(record);
+            changed.add(record);
+            log.info("SLA {} on ticket {} retargeted to {} minutes ({}), next deadline {}",
+                    record.getKind(), ticket.getId(), newTarget, policy.getVersionLabel(),
+                    record.getNextDeadlineAt());
+        }
+        return changed;
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** When the clock will next need attention: the rung's share of the target. */

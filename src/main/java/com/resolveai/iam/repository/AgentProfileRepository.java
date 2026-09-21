@@ -69,4 +69,57 @@ public interface AgentProfileRepository extends JpaRepository<AgentProfile, Long
              WHERE user_id = :userId AND tenant_id = :tenantId
             """, nativeQuery = true)
     int decrementOpenCount(@Param("userId") Long userId, @Param("tenantId") Long tenantId);
+
+    /**
+     * The least loaded available agent in a team, locked for this transaction.
+     *
+     * <h2>{@code SKIP LOCKED} is what makes this correct under a burst</h2>
+     *
+     * <p>A plain {@code ORDER BY open_count LIMIT 1 FOR UPDATE} looks equivalent and is
+     * not. Twenty concurrent routers all evaluate the ORDER BY against the same
+     * committed snapshot, all pick the <i>same</i> least-loaded agent, and nineteen of
+     * them block on that one row lock. They then wake one at a time and each assigns to
+     * that same agent, because each re-reads a row that is now one busier but still, as
+     * far as its own already-decided choice goes, the winner. The result is a pile-up on
+     * one desk while everyone else sits idle — and every request returns 200, so nothing
+     * reports it.
+     *
+     * <p>{@code SKIP LOCKED} makes each concurrent router step over the rows its peers
+     * have locked and take the next one down the list. Twenty routers reach twenty
+     * different agents in one pass. That is not an optimisation; it is the difference
+     * between the load distribution the product promises and a queue of one.
+     *
+     * <p>Returns the {@code user_id}, not the profile. The caller needs the user to set
+     * {@code ticket.assignee_id}, and mapping a locked row to a managed entity here
+     * would put a Hibernate first-level cache between the lock and the update.
+     *
+     * @param localTime the tenant's local wall-clock time, passed in rather than read
+     *                  from the database: an agent's shift is expressed in their own
+     *                  business hours, and {@code NOW()::time} is UTC on the server.
+     *                  Getting that wrong shifts every shift window by the tenant's
+     *                  offset and only ever shows up as "the night shift never gets
+     *                  tickets".
+     */
+    @Query(value = """
+            SELECT ap.user_id
+              FROM agent_profile ap
+             WHERE ap.tenant_id = :tenantId
+               AND ap.is_available = TRUE
+               AND ap.open_count < ap.max_concurrent
+               AND ap.user_id IN (
+                     SELECT u.id FROM app_user u
+                      WHERE u.team_id = :teamId
+                        AND u.tenant_id = :tenantId
+                        AND u.deleted_at IS NULL
+                        AND u.is_active = TRUE
+                        AND u.role IN ('AGENT', 'TEAM_LEAD'))
+               AND (ap.shift_start IS NULL
+                    OR CAST(:localTime AS time) BETWEEN ap.shift_start AND ap.shift_end)
+             ORDER BY ap.open_count ASC, ap.id ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    Optional<Long> claimLeastLoadedAgent(@Param("tenantId") Long tenantId,
+                                         @Param("teamId") Long teamId,
+                                         @Param("localTime") String localTime);
 }

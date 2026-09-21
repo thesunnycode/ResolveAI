@@ -6,10 +6,15 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * @param reason required, and recorded as a label. An override with no reason is
- *               unanalysable: doc 05 makes the point that the value of this endpoint is
- *               being able to tell later whether the model misread the ticket or the
- *               policy is wrong, and without a reason both look identical.
+ * @param reason required, at least ten characters, and recorded as a label.
+ *               <b>The minimum length is the point, not the required-ness.</b> A
+ *               {@code @NotBlank} reason field becomes a speed bump that everyone types
+ *               "x" into within a week, and a table of "x" is a table of nothing. Ten
+ *               characters does not guarantee a considered answer, but it does stop the
+ *               field degrading into one keystroke - and this row is training data.
+ *               <p>The value of the endpoint is being able to tell later whether the
+ *               model misread the ticket or the policy is wrong. Without a reason, the
+ *               two look identical for ever.
  */
 public record PriorityOverrideRequest(
 
@@ -17,6 +22,7 @@ public record PriorityOverrideRequest(
         Priority priority,
 
         @NotBlank(message = "A reason is required for a priority override")
-        @Size(max = 500, message = "Reason must be at most 500 characters")
+        @Size(min = 10, max = 500,
+              message = "Reason must be between 10 and 500 characters")
         String reason) {
 }

@@ -61,19 +61,36 @@ public class SlaRecord {
     @Column(name = "tenant_id", nullable = false)
     private Long tenantId;
 
-    @Column(name = "sla_policy_id", nullable = false, updatable = false)
+    @Column(name = "sla_policy_id", nullable = false)
     private Long slaPolicyId;
 
     /** Snapshot of {@code SlaPolicy.versionLabel}. See the class comment. */
-    @Column(name = "policy_version", nullable = false, length = 30, updatable = false)
+    @Column(name = "policy_version", nullable = false, length = 30)
     private String policyVersion;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20, updatable = false)
     private SlaKind kind;
 
-    /** Snapshot. Never re-read from the policy. */
-    @Column(name = "target_minutes", nullable = false, updatable = false)
+    /**
+     * Snapshot. Never re-read from the policy, and changed only by {@link #retarget}.
+     *
+     * <p>The column lost its {@code updatable = false} guard when priority override
+     * arrived, and the reason is worth being precise about, because the guard was there
+     * for a good reason and this is not a relaxation of it. The snapshot protects
+     * against a <b>policy edit</b>: an admin shortening the P2 resolution target in
+     * October must not retroactively breach a P2 ticket raised in September, which had
+     * been promised the older, longer target. That is still true and still enforced -
+     * nothing re-reads the policy on a running clock.
+     *
+     * <p>A human deliberately overriding this ticket's priority is the opposite case.
+     * The promise itself has changed, on purpose, for this ticket, by somebody who had
+     * to type a reason to do it. Leaving the old target in place there would mean a
+     * ticket escalated to P1 keeps being judged against a P3 deadline and reported as
+     * comfortably within SLA while it burns - the exact failure the snapshot exists to
+     * prevent, arrived at from the other direction.
+     */
+    @Column(name = "target_minutes", nullable = false)
     private int targetMinutes;
 
     @Enumerated(EnumType.STRING)
@@ -177,6 +194,31 @@ public class SlaRecord {
      * {@code uq_sla_ticket_kind} - which excludes {@code CANCELLED} - lets a fresh one be
      * created, and the old one stays on the record as history.
      */
+    /**
+     * Re-points a running clock at a different policy, keeping everything it has spent.
+     *
+     * <p>The segments are untouched, so the elapsed total carries over exactly: a ticket
+     * that has burned ninety minutes before being escalated to P1 has still burned
+     * ninety minutes, and the caller computes the new deadline from the remaining
+     * budget rather than from the full one. Recreating the record instead would reset
+     * elapsed to zero and quietly hand the ticket its whole budget back - which would
+     * make an override look like it improved SLA performance.
+     *
+     * <p>Terminal records are not retargeted. A clock that has already been met or
+     * breached is a historical fact, and moving its target would rewrite the past.
+     */
+    public void retarget(Long policyId, String policyVersion, int targetMinutes,
+                         OffsetDateTime nextDeadline) {
+        if (isTerminal()) {
+            throw new IllegalStateException(
+                    "Cannot retarget a " + state + " " + kind + " clock");
+        }
+        this.slaPolicyId = policyId;
+        this.policyVersion = policyVersion;
+        this.targetMinutes = targetMinutes;
+        this.nextDeadlineAt = nextDeadline;
+    }
+
     public void cancel() {
         this.state = SlaState.CANCELLED;
         this.nextDeadlineAt = null;

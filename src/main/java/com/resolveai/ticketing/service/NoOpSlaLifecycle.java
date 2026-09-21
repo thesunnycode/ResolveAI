@@ -59,6 +59,11 @@ public class NoOpSlaLifecycle {
             }
 
             @Override
+            public void retarget(Ticket ticket) {
+                // Phase 5B.
+            }
+
+            @Override
             public void restartResolution(Ticket ticket) {
                 // Phase 5B.
             }

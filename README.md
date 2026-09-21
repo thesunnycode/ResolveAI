@@ -506,7 +506,7 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 | 50 tickets, 5 agents, concurrent | load skew **1** |
 | reply vs. breach poller | **50/50 runs consistent** — never both, never neither |
 | poller batch | 50 due clocks, one pass, **1.8–2.0 s (37–41 ms/record)** |
-| whole suite | **281 tests** from an empty database |
+| whole suite (at Phase 5) | **334 tests** from an empty database |
 
 > The ~40 ms per record is a *per-record transaction*, not a row read: claim, re-lock,
 > recompute elapsed from the segment history, insert the escalation, write the
@@ -530,7 +530,53 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 > were claimed by a query comparing against the database's, so a due rung went unclaimed
 > whenever the container drifted — now every timestamp comes from `DatabaseClock`.
 
-**Next: Phase 6 — async pipeline, transactional outbox and AI triage.**
+**Phase 6 — Async Pipeline & AI Triage · 🚧 6A–6C complete, 6D in progress**
+
+| Task | |
+|---|---|
+| 1–6 Outbox, worker runtime, retry, reaper, metrics | ✅ `FOR UPDATE SKIP LOCKED` claim-and-return in one statement |
+| 7 Admin DLQ endpoints | ⏭️ deferred to Phase 10 with the rest of the ops surface |
+| 8–10 Worker tests, `202` on create, `/analysis` | ✅ the ticket and its triage job commit together |
+| 11–14 Tenant AI policy, PII redaction, rehydration, prompt versions | ✅ fail-closed policy, AES-GCM, `triage@1` seeded as a migration |
+| 15–20 `TriageSignals`, router, breaker, budgets, embeddings, WireMock | ✅ **no `priority` field, and a comment at each end saying why** |
+| 21 `TriageWorker` | ✅ short read → no transaction → short write |
+| 22–23 `PriorityPolicy` | ✅ pure function, **45 cases in 49 ms**, no Spring context |
+| 24–25 Routing and `claimLeastLoadedAgent` | ✅ GIN skill overlap, most-specific team, `SKIP LOCKED` claim |
+| 26–27 `/priority-rationale`, `/priority-override` | ✅ inputs split `fromModel` / `fromSystem`; override retargets the clocks |
+| 28 SLA start moved into triage | ✅ **plus the fallback sweeper for the hole that opened** |
+| 29 `/retriage` | ✅ new attempt, old analysis kept, `409` while one is queued |
+| 30–35 Failure-mode and distribution tests, eval harness, tag | ⏳ Phase 6D |
+
+**The argument, in one endpoint.** `GET /tickets/{id}/priority-rationale` returns the
+model's observations and the system's facts as two separate objects, then the eight
+policy rules in evaluation order with `matched` on each — including the ones that did
+*not* fire, because "PLAN_TIER_BUMP, matched: false, ENTERPRISE would" is what an agent
+needs to decide whether to override. A design where the model returns
+`"priority": "P2"` cannot produce any of it, and cannot tell you afterwards whether the
+model misread the ticket or the policy is wrong.
+
+> **The gap that only appears when a call moves between transactions.** 6A took
+> `sla.start()` out of ticket creation, because a clock measures a promise and the
+> promise is not known until the priority is. 6C put it at the end of the triage
+> transaction. Both steps are right; together they mean **a ticket whose triage never
+> succeeds has no SLA at all** — no clocks, nothing in the at-risk list, no escalation,
+> ever. Completely silent: the ticket looks ordinary and the dashboard looks *greener*,
+> because untracked tickets cannot breach. A two-hour provider outage would make every
+> ticket raised in it permanently invisible to the SLA engine. `SlaFallbackSweeper`
+> closes it — P3 defaults after a ten-minute grace, with an audit event saying the
+> system defaulted it rather than implying somebody decided.
+
+> **And one the test was wrong about, not the code.** The obvious "no connection is held
+> across the model call" assertion is on the *peak* active pool connections. It fails at
+> five for five concurrent triages — and so would a correct implementation, because five
+> workers starting together genuinely overlap their short read transactions. Peak cannot
+> distinguish the two; it is bounded by the batch size either way. Duration can: with
+> ~600 ms of network per event and single-digit milliseconds of transaction, the **mean**
+> active count is a fraction of one, where a `@Transactional` around `process()` would
+> hold all five for the whole call and sit just under five. The assertion is on the mean.
+
+**Next: Phase 6D — duplicate-claim and crash-redelivery tests, load distribution, the
+minimal eval harness, and the phase tag.**
 
 Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with

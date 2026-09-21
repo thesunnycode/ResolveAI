@@ -77,13 +77,15 @@ public class TicketService {
     private final SlaLifecycle sla;
     private final DatabaseClock clock;
     private final OutboxPublisher outbox;
+    private final PriorityOverrideRecorder priorityOverrides;
 
     public TicketService(TicketRepository tickets, TicketMessageRepository messages,
                          TicketQueryRepository ticketQuery, AppUserRepository users,
                          TeamRepository teams, AgentProfileRepository agentProfiles,
                          ReferenceGenerator references, TicketEventRecorder eventRecorder,
                          TicketAccess access, TicketMapper mapper, SlaLifecycle sla,
-                         DatabaseClock clock, OutboxPublisher outbox) {
+                         DatabaseClock clock, OutboxPublisher outbox,
+                         PriorityOverrideRecorder priorityOverrides) {
         this.tickets = tickets;
         this.messages = messages;
         this.ticketQuery = ticketQuery;
@@ -97,6 +99,7 @@ public class TicketService {
         this.sla = sla;
         this.clock = clock;
         this.outbox = outbox;
+        this.priorityOverrides = priorityOverrides;
     }
 
     // ── Create ──────────────────────────────────────────────────────────────
@@ -290,11 +293,23 @@ public class TicketService {
                 request.priority().name(),
                 Map.of("reason", request.reason(), "source", "HUMAN_OVERRIDE"));
 
-        // Idempotent: a second override does not create a second pair of clocks, and the
-        // targets already snapshotted onto the first pair are not rewritten. Changing the
-        // target of a clock that is already running would move the goalposts mid-game -
-        // Phase 9's admin surface is where a deliberate re-target belongs, if ever.
+        // The override row, separate from the timeline event. It exists because it is
+        // training data: "enterprise customer, contract says P1 for any payment issue"
+        // is a label, and a table of labels paired with the model signals that produced
+        // the original decision is the only honest way to tell later whether the model
+        // is misreading tickets or the policy is wrong. The timeline event is for
+        // humans reading one ticket; this is for querying across thousands.
+        priorityOverrides.record(principal.tenantId(), ticketId, from, request.priority(),
+                request.reason(), principal.userId());
+
+        // Two calls, because the ticket may be in either of two states. An untriaged
+        // ticket has no clocks at all, so start() creates them against the new priority;
+        // an already-triaged one has running clocks pointed at the OLD target, and
+        // leaving them there would mean a P3 escalated to P1 keeps being judged on a P3
+        // deadline - within SLA right up to the point somebody notices. start() is
+        // idempotent, so calling both is safe in either state.
         sla.start(ticket);
+        sla.retarget(ticket);
 
         tickets.saveAndFlush(ticket);
         return mapper.toSummary(ticket, messages.countByTicketId(ticketId));

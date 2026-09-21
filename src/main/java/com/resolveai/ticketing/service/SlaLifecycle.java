@@ -55,6 +55,20 @@ public interface SlaLifecycle {
     /** Terminal. Judges the resolution clock {@code MET} or {@code BREACHED} and stops it. */
     Map<String, Object> stopResolution(Ticket ticket);
 
+    /**
+     * A human changed the priority; re-point the live clocks at the new target.
+     *
+     * <p>Separate from {@link #start} because they answer different questions. Starting
+     * is idempotent and must never move an existing clock's goalposts - a second call
+     * after triage must not rewrite what was promised. Retargeting is the one case where
+     * moving them is the intent, and it happens only behind a human decision that
+     * required a written reason.
+     *
+     * <p>Elapsed time carries over, so an override does not hand a ticket its spent
+     * budget back.
+     */
+    void retarget(Ticket ticket);
+
     /** A reopened ticket gets a fresh resolution clock; the old one stays terminal. */
     void restartResolution(Ticket ticket);
 

@@ -202,6 +202,27 @@ public class SlaLifecycleService implements SlaLifecycle {
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
+    /**
+     * Re-points the live clocks after a priority override, and says so in the timeline.
+     *
+     * <p>The audit event is not decoration. An SLA deadline that moves with no visible
+     * cause is the kind of thing that gets reported as a bug in the SLA engine, and the
+     * investigation ends at "somebody overrode the priority" an hour later. One event
+     * per clock, carrying the old and new targets, ends it immediately.
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void retarget(Ticket ticket) {
+        for (SlaRecord record : clocks.retarget(ticket, planTierOf(ticket), clock.now())) {
+            eventRecorder.record(ticket, TicketEventType.SLA_STARTED,
+                    record.getKind().name(), record.getKind().name(),
+                    Map.of("reason", "PRIORITY_OVERRIDE",
+                            "targetMinutes", record.getTargetMinutes(),
+                            "policyVersion", record.getPolicyVersion(),
+                            "nextDeadlineAt", String.valueOf(record.getNextDeadlineAt())));
+        }
+    }
+
     private Optional<SlaRecord> active(Ticket ticket, SlaKind kind) {
         return records.findByTicketIdAndKindAndStateNot(ticket.getId(), kind,
                 SlaState.CANCELLED);
