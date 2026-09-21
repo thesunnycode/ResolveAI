@@ -8,8 +8,6 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -34,6 +32,21 @@ import org.testcontainers.utility.DockerImageName;
  * {@code WHERE} clause was dropped, a trigger that was never created, a default only the
  * migration sets.
  *
+ * <h2>Why there is no {@code @Testcontainers} annotation</h2>
+ *
+ * <p>This is the <b>singleton container</b> pattern: the containers start once in a static
+ * initialiser and are never explicitly stopped, so they live for the whole JVM and Ryuk
+ * reaps them when the build exits.
+ *
+ * <p>The obvious alternative - {@code @Testcontainers} with {@code @Container} on a static
+ * field - <b>does not survive a suite</b>, and it fails in a way that looks like something
+ * else entirely. The JUnit extension ties a static container to the <i>declaring test
+ * class</i>, so the containers stop when the first test class finishes and every class
+ * after it fails with {@code Connection is not available, request timed out} against an
+ * empty pool. That message reads like pool exhaustion or a connection leak and sends you to
+ * read Hikari settings; the real cause is that the database is no longer running. It cost a
+ * detour here, which is why it is written down.
+ *
  * <p>Three coordinates here moved under Boot 4 / Testcontainers 2 and are worth naming,
  * because each one fails at compile time with a message that points at the symbol rather
  * than at the reason: {@code TestRestTemplate} moved to
@@ -48,10 +61,8 @@ import org.testcontainers.utility.DockerImageName;
 // "add an annotation".
 @AutoConfigureTestRestTemplate
 @ActiveProfiles("test")
-@Testcontainers
 public abstract class IntegrationTestBase {
 
-    @Container
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer(DockerImageName.parse("pgvector/pgvector:pg16")
@@ -74,12 +85,20 @@ public abstract class IntegrationTestBase {
      * targets the 1.x API. Boot resolves the connection details from the name, so this costs
      * two extra lines and removes a third-party dependency from the build.
      */
-    @Container
     @ServiceConnection(name = "redis")
     static final GenericContainer<?> REDIS =
             new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
                     .withExposedPorts(6379)
                     .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1));
+
+    static {
+        // Started once for the JVM. Starting an already-started container is a no-op, so
+        // this is safe however many subclasses exist. Nothing stops them: Ryuk removes them
+        // when the build process exits, and stopping them per test class is precisely the
+        // bug described above.
+        POSTGRES.start();
+        REDIS.start();
+    }
 
     @Autowired
     protected TestRestTemplate rest;

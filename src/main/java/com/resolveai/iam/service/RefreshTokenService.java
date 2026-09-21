@@ -1,6 +1,5 @@
 package com.resolveai.iam.service;
 
-import com.resolveai.common.error.ApiException;
 import com.resolveai.common.error.ErrorCode;
 import com.resolveai.iam.domain.AppUser;
 import com.resolveai.iam.domain.RefreshToken;
@@ -12,6 +11,7 @@ import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,15 +47,12 @@ public class RefreshTokenService {
     private static final int TOKEN_BYTES = 32;
 
     private final RefreshTokenRepository repository;
-    private final RefreshTokenFamilyRevoker familyRevoker;
     private final SecureRandom random = new SecureRandom();
     private final int refreshTtlDays;
 
     public RefreshTokenService(RefreshTokenRepository repository,
-                               RefreshTokenFamilyRevoker familyRevoker,
                                @Value("${resolveai.auth.refresh-token-ttl-days:7}") int refreshTtlDays) {
         this.repository = repository;
-        this.familyRevoker = familyRevoker;
         this.refreshTtlDays = refreshTtlDays;
     }
 
@@ -63,8 +60,26 @@ public class RefreshTokenService {
     public record IssuedToken(String rawToken, UUID familyId) {
     }
 
-    /** Result of a successful rotation. */
-    public record RotatedToken(AppUser user, String rawToken, UUID familyId) {
+    /**
+     * The outcome of a rotation attempt.
+     *
+     * <p><b>A result type rather than an exception, and that is not a style choice.</b> The
+     * reuse branch has to <i>persist</i> a family revocation and <i>report</i> a failure.
+     * Throwing from inside the transaction does both — and the rollback then undoes the
+     * first. That bug shipped here briefly: the response said every session had been
+     * revoked as a precaution, the successor token kept working, and the security control
+     * reported success while doing nothing.
+     *
+     * <p>Returning instead lets the transaction commit the revocation; the caller turns
+     * {@link Rejected} into an {@code ApiException} once it is outside.
+     */
+    public sealed interface RotationResult {
+
+        record Rotated(AppUser user, String rawToken, UUID familyId) implements RotationResult {
+        }
+
+        record Rejected(ErrorCode errorCode, String detail) implements RotationResult {
+        }
     }
 
     @Transactional
@@ -108,32 +123,37 @@ public class RefreshTokenService {
      * reuse detection entirely depends - would be a suggestion rather than a fact.
      */
     @Transactional(propagation = Propagation.REQUIRED)
-    public RotatedToken rotate(String rawToken) {
+    public RotationResult rotate(String rawToken) {
         String hash = sha256Hex(rawToken);
         OffsetDateTime now = OffsetDateTime.now();
 
-        RefreshToken token = repository.findByTokenHash(hash)
-                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REFRESH_TOKEN,
-                        "Refresh token is not recognised. Sign in again."));
+        // FOR UPDATE. Concurrent refreshes of the same token serialise here; the losers
+        // wake up to find used_at already set, which is exactly the reuse branch below.
+        Optional<RefreshToken> found = repository.findByTokenHashForUpdate(hash);
+        if (found.isEmpty()) {
+            return new RotationResult.Rejected(ErrorCode.INVALID_REFRESH_TOKEN,
+                    "Refresh token is not recognised. Sign in again.");
+        }
+        RefreshToken token = found.get();
 
         if (token.isRevoked()) {
-            throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN,
+            return new RotationResult.Rejected(ErrorCode.INVALID_REFRESH_TOKEN,
                     "This refresh token has been revoked. Sign in again.");
         }
 
         if (token.isExpired(now)) {
-            throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN,
+            return new RotationResult.Rejected(ErrorCode.INVALID_REFRESH_TOKEN,
                     "This refresh token has expired. Sign in again.");
         }
 
         // ── the reuse case ───────────────────────────────────────────────────
         if (token.isUsed()) {
-            // In its own transaction, so the revocation commits before the exception below
-            // rolls this one back. See RefreshTokenFamilyRevoker.
-            int revoked = familyRevoker.revokeNow(token.getFamilyId(), now);
+            int revoked = repository.revokeFamily(token.getFamilyId(), now);
             log.warn("Refresh token reuse detected for user {} — revoked {} tokens in family {}",
                     token.getUser().getId(), revoked, token.getFamilyId());
-            throw new ApiException(ErrorCode.TOKEN_REUSE_DETECTED,
+            // Returned, not thrown: the revocation above has to commit with this
+            // transaction. See RotationResult.
+            return new RotationResult.Rejected(ErrorCode.TOKEN_REUSE_DETECTED,
                     "This refresh token was already used. Every session from that sign-in has "
                     + "been revoked as a precaution. Sign in again.");
         }
@@ -142,14 +162,15 @@ public class RefreshTokenService {
         repository.saveAndFlush(token);
 
         IssuedToken successor = issue(token.getUser(), token.getFamilyId());
-        return new RotatedToken(token.getUser(), successor.rawToken(), successor.familyId());
+        return new RotationResult.Rotated(token.getUser(), successor.rawToken(),
+                successor.familyId());
     }
 
     /** Logout. Revokes every token descended from the same sign-in. */
     @Transactional
     public int revokeFamilyOf(String rawToken) {
         return repository.findByTokenHash(sha256Hex(rawToken))
-                .map(t -> familyRevoker.revokeNow(t.getFamilyId(), OffsetDateTime.now()))
+                .map(t -> repository.revokeFamily(t.getFamilyId(), OffsetDateTime.now()))
                 // Revoking an unknown token is a no-op, not an error: logout must be
                 // idempotent, and telling a caller that a token does not exist is free
                 // information about which tokens do.

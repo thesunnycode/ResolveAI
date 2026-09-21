@@ -135,17 +135,26 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REFRESH_TOKEN,
                         "Refresh token is not recognised. Sign in again."));
 
-        return tenantScope.inTenant(tenantId, () -> {
-            var rotated = refreshTokens.rotate(rawRefreshToken);
-            AppUser user = rotated.user();
-
-            String slug = tenants.findById(user.getTenantId()).map(Tenant::getSlug).orElse(null);
-            String access = jwtService.generateAccessToken(
-                    user.getId(), user.getTenantId(), slug, user.getRole());
-
-            return TokenResponse.of(access, rotated.rawToken(),
-                    jwtService.accessTtl().toSeconds(), UserResponse.from(user, slug));
+        var outcome = tenantScope.inTenant(tenantId, () -> {
+            var result = refreshTokens.rotate(rawRefreshToken);
+            if (result instanceof RefreshTokenService.RotationResult.Rotated rotated) {
+                AppUser user = rotated.user();
+                String slug = tenants.findById(user.getTenantId())
+                        .map(Tenant::getSlug).orElse(null);
+                String access = jwtService.generateAccessToken(
+                        user.getId(), user.getTenantId(), slug, user.getRole());
+                return (Object) TokenResponse.of(access, rotated.rawToken(),
+                        jwtService.accessTtl().toSeconds(), UserResponse.from(user, slug));
+            }
+            return (Object) result;
         });
+
+        // Thrown out here, after the transaction has committed. Throwing inside it would
+        // roll back the family revocation that the reuse branch just performed.
+        if (outcome instanceof RefreshTokenService.RotationResult.Rejected rejected) {
+            throw new ApiException(rejected.errorCode(), rejected.detail());
+        }
+        return (TokenResponse) outcome;
     }
 
     /**

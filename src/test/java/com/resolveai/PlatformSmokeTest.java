@@ -7,6 +7,8 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +27,18 @@ class PlatformSmokeTest extends IntegrationTestBase {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    AuthTestSupport auth;
+
+    private String token;
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedAndLogIn() {
+        auth.wipe();
+        auth.seedTenant("smoke");
+        token = auth.accessToken(rest, "smoke", "agent");
+    }
 
     @Test
     @DisplayName("health reports UP with db, redis and outboxLag")
@@ -69,8 +83,10 @@ class PlatformSmokeTest extends IntegrationTestBase {
     void validationErrorReturnsProblemJson() {
         // Blank subject, missing body: two violations, so errors[] cannot pass by accident
         // with a single-element array.
-        ResponseEntity<Map> response = rest.postForEntity(
-                "/api/v1/__test__/echo", Map.of("subject", "  "), Map.class);
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/__test__/echo", HttpMethod.POST,
+                new HttpEntity<>(Map.of("subject", "  "), AuthTestSupport.bearer(token)),
+                Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getHeaders().getContentType())
@@ -102,7 +118,9 @@ class PlatformSmokeTest extends IntegrationTestBase {
     @Test
     @DisplayName("an unmatched path returns problem+json, not a Spring 404 page")
     void unmatchedPathReturnsProblemJson() {
-        ResponseEntity<Map> response = rest.getForEntity("/api/v1/does-not-exist", Map.class);
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/does-not-exist", HttpMethod.GET,
+                new HttpEntity<>(AuthTestSupport.bearer(token)), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
@@ -113,6 +131,9 @@ class PlatformSmokeTest extends IntegrationTestBase {
     @Test
     @DisplayName("every response carries X-Request-Id, and each one is distinct")
     void requestIdsAreUniquePerRequest() {
+        // Unauthenticated on purpose: MdcFilter runs before security, so even a 401 must
+        // carry the header. If it did not, the responses hardest to debug would be the ones
+        // with no correlation id.
         String first = rest.getForEntity("/api/v1/does-not-exist", Map.class)
                 .getHeaders().getFirst("X-Request-Id");
         String second = rest.getForEntity("/api/v1/does-not-exist", Map.class)
@@ -124,5 +145,22 @@ class PlatformSmokeTest extends IntegrationTestBase {
         // which is worse than no id at all: it is confidently wrong and sends whoever is
         // debugging to read the wrong request.
         assertThat(first).isNotEqualTo(second);
+    }
+
+    @Test
+    @DisplayName("an unauthenticated API call is 401 problem+json, not a container error page")
+    void unauthenticatedRequestIsProblemJson() {
+        ResponseEntity<Map> response = rest.getForEntity("/api/v1/auth/me", Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getHeaders().getContentType()).isNotNull();
+        assertThat(response.getHeaders().getContentType().isCompatibleWith(
+                MediaType.APPLICATION_PROBLEM_JSON)).isTrue();
+        // Spring Security rejects inside the filter chain, before any controller and so
+        // before @RestControllerAdvice. Without a custom entry point this one status - the
+        // one a client meets first - would be the only place the error contract did not hold.
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("errorCode")).isEqualTo("UNAUTHORIZED");
+        assertThat((String) response.getBody().get("traceId")).isNotBlank();
     }
 }

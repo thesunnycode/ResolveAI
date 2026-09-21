@@ -4,7 +4,9 @@ import com.resolveai.iam.domain.RefreshToken;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +14,22 @@ import org.springframework.data.repository.query.Param;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);
+
+    /**
+     * The same lookup, holding a row lock until the transaction ends.
+     *
+     * <p><b>Without this, single use is not actually enforced.</b> Checking
+     * {@code used_at IS NULL} and then setting it is a read-modify-write, and eight
+     * concurrent refreshes of one token all read {@code null} and all rotate. Measured:
+     * three of eight succeeded. Reuse detection is built entirely on a token being
+     * exchangeable exactly once, so without the lock the defence rests on a race.
+     *
+     * <p>{@code SELECT ... FOR UPDATE} makes the losers block and then see {@code used_at}
+     * already set - which is the reuse path, and the correct answer for them.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM RefreshToken t WHERE t.tokenHash = :hash")
+    Optional<RefreshToken> findByTokenHashForUpdate(@Param("hash") String hash);
 
     /**
      * The tenant that owns a refresh token, found without needing a tenant context.
