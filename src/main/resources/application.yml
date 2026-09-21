@@ -70,7 +70,22 @@ spring:
 
   mvc:
     problemdetails:
-      enabled: true                      # RFC 7807 from Spring's own handlers too
+      # Off. Boot's handler also emits RFC 7807, but without errorCode, timestamp or
+      # traceId - the three fields doc 05 makes contractual. Two producers of error bodies
+      # means the shape of a response depends on which advice ran first, which is not a
+      # contract. GlobalExceptionHandler owns every error path, and it is ordered
+      # HIGHEST_PRECEDENCE so this setting is belt as well as braces.
+      enabled: false
+    # Without this, an unmatched path is served by Spring's own 404 handling and never
+    # reaches @RestControllerAdvice - one of the few remaining ways a response that is not
+    # application/problem+json can escape this API.
+    throw-exception-if-no-handler-found: true
+
+  web:
+    resources:
+      # No static resources are served. Leaving the default mapping on means the resource
+      # handler answers unmatched paths before the exception above can be thrown.
+      add-mappings: false
 
   threads:
     virtual:
@@ -101,6 +116,15 @@ management:
       show-details: always
       probes:
         enabled: true
+      group:
+        # Readiness gates traffic, so it includes only what a request actually needs. The
+        # outbox is deliberately absent: a lagging poller means async work is behind, not
+        # that this instance should be pulled out of the load balancer - and removing it
+        # would remove the very capacity that has to drain the backlog.
+        readiness:
+          include: db, redis
+        liveness:
+          include: livenessState
   metrics:
     tags:
       application: ${spring.application.name}
