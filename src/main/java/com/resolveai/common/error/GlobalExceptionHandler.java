@@ -169,6 +169,24 @@ public class GlobalExceptionHandler {
      * Anything a service threw on purpose. The code carries its own status, so there is no
      * mapping table here to fall out of sync with the enum.
      */
+    /**
+     * The state machine rejected a move.
+     *
+     * <p>Declared separately from {@link ApiException} so the response can carry
+     * {@code allowedTransitions}. <b>Returning the permitted set is what makes the 409
+     * actionable:</b> without it a client has to hold its own copy of the transition table
+     * to know what to offer next, and that copy goes stale the first time the table
+     * changes. Spring resolves by closest exception type, so this wins over the handler
+     * below without any ordering annotation.
+     */
+    @ExceptionHandler(com.resolveai.ticketing.service.TicketService.IllegalTransitionException.class)
+    ResponseEntity<ApiProblem> onIllegalTransition(
+            com.resolveai.ticketing.service.TicketService.IllegalTransitionException ex,
+            HttpServletRequest request) {
+        return problem(ApiProblem.of(ex.errorCode(), ex.getMessage(), path(request), traceId())
+                .withAllowedTransitions(ex.allowedTransitions()));
+    }
+
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiProblem> onApiException(ApiException ex, HttpServletRequest request) {
         ErrorCode code = ex.errorCode();

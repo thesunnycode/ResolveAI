@@ -66,6 +66,18 @@ public enum ErrorCode {
     ILLEGAL_TRANSITION(HttpStatus.CONFLICT, "illegal-transition"),
     AGENT_AT_CAPACITY(HttpStatus.UNPROCESSABLE_ENTITY, "agent-at-capacity"),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "version-conflict"),
+    /**
+     * {@code If-Match} was absent or unparseable on a mutation that requires it.
+     *
+     * <p>Doc 05 Phase 5 Task 12 leaves the choice between this and a 400 open and asks for
+     * one to be picked and documented. <b>428 is the pick.</b> A 400 says the request was
+     * malformed, which invites a client to fix the body; 428 says precisely what happened -
+     * the request was well-formed and is being refused until it is made conditional - and
+     * RFC 6585 defines it for exactly this. A stale ETag remains a
+     * {@link #VERSION_CONFLICT}, because that request <i>was</i> conditional and the
+     * condition failed.
+     */
+    PRECONDITION_REQUIRED(HttpStatus.PRECONDITION_REQUIRED, "precondition-required"),
 
     // ── Triage and drafting ─────────────────────────────────────────────────
     TRIAGE_IN_PROGRESS(HttpStatus.CONFLICT, "triage-in-progress"),
@@ -85,6 +97,16 @@ public enum ErrorCode {
 
     // ── SLA ─────────────────────────────────────────────────────────────────
     SLA_ALREADY_TERMINAL(HttpStatus.CONFLICT, "sla-already-terminal"),
+    /**
+     * No {@code sla_policy} row covers this (tenant, priority, plan tier) at this instant.
+     *
+     * <p>Loud, rather than falling back to a default. A missing policy is a configuration
+     * error, and a silent default would give a ticket a plausible-looking deadline that
+     * nobody agreed to - which is discovered only when somebody disputes a breach.
+     */
+    SLA_POLICY_NOT_FOUND(HttpStatus.UNPROCESSABLE_ENTITY, "sla-policy-not-found"),
+    /** A clock was asked for on a ticket that has none - typically an untriaged one. */
+    SLA_NOT_STARTED(HttpStatus.NOT_FOUND, "sla-not-started"),
     INVALID_PAUSE_REASON(HttpStatus.UNPROCESSABLE_ENTITY, "invalid-pause-reason"),
     OVERLAPPING_POLICY(HttpStatus.CONFLICT, "overlapping-policy"),
     EFFECTIVE_DATE_IN_PAST(HttpStatus.UNPROCESSABLE_ENTITY, "effective-date-in-past"),

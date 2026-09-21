@@ -32,12 +32,74 @@ public class AuthTestSupport {
                                Long customerId, Long teamId) {
     }
 
-    /** Removes every IAM row. Called by tests that need a known starting point. */
+    /**
+     * Removes every row a test could have written, in dependency order.
+     *
+     * <p><b>One shared wipe, not a per-test cleanup.</b> Hand-rolled teardown in each class
+     * is how a suite comes to pass only in a favourable order: Phase 4 had exactly that,
+     * missing {@code business_calendar}, and the failure looked like a flaky test rather
+     * than a missing DELETE. Everything a test can create is deleted here, including the
+     * tables a test never touches directly - {@code sla_clock_segment} arrives by cascade,
+     * but naming it makes the list checkable against the schema.
+     */
     public void wipe() {
+        // The append-only tables cannot be deleted from while their guards are active -
+        // trg_ticket_event_immutable and trg_escalation_immutable raise on DELETE, and a
+        // cascade from the parent fires them too. Turning them off for the duration of the
+        // wipe is the honest way to do this: an audit table you can empty by accident is
+        // not append-only, and a test fixture is exactly the place where the exception
+        // should have to be written down rather than assumed.
+        withAppendOnlyGuardsDisabled(this::deleteEverything);
+    }
+
+    /**
+     * Runs {@code work} with the append-only guards suspended.
+     *
+     * <p>Exposed because deleting a ticket is not possible without it: {@code ticket_event}
+     * cascades from {@code ticket}, and a cascaded DELETE fires the row trigger just as a
+     * direct one does. That is the guard working - an audit trail you can drop by deleting
+     * its parent is not append-only - and any test that needs to remove a ticket has to say
+     * so out loud, here.
+     */
+    public void withoutAppendOnlyGuards(Runnable work) {
+        withAppendOnlyGuardsDisabled(work);
+    }
+
+    private void withAppendOnlyGuardsDisabled(Runnable work) {
+        jdbc.execute("ALTER TABLE ticket_event DISABLE TRIGGER trg_ticket_event_immutable");
+        jdbc.execute("ALTER TABLE sla_escalation DISABLE TRIGGER trg_escalation_immutable");
+        jdbc.execute("ALTER TABLE sla_clock_segment DISABLE TRIGGER trg_segment_close_once");
+        try {
+            work.run();
+        } finally {
+            jdbc.execute("ALTER TABLE ticket_event ENABLE TRIGGER trg_ticket_event_immutable");
+            jdbc.execute("ALTER TABLE sla_escalation ENABLE TRIGGER trg_escalation_immutable");
+            jdbc.execute("ALTER TABLE sla_clock_segment ENABLE TRIGGER trg_segment_close_once");
+        }
+    }
+
+    private void deleteEverything() {
+        jdbc.update("DELETE FROM sla_escalation");
+        jdbc.update("DELETE FROM sla_clock_segment");
+        jdbc.update("DELETE FROM sla_record");
+        jdbc.update("DELETE FROM sla_policy");
+        jdbc.update("DELETE FROM notification");
+        jdbc.update("DELETE FROM incident_ticket");
+        jdbc.update("DELETE FROM incident");
+        jdbc.update("DELETE FROM attachment");
+        jdbc.update("DELETE FROM ticket_event");
+        jdbc.update("DELETE FROM ticket_entity");
+        jdbc.update("DELETE FROM ticket_message");
+        jdbc.update("DELETE FROM draft");
+        jdbc.update("DELETE FROM ticket");
+        jdbc.update("DELETE FROM idempotency_record");
+        jdbc.update("DELETE FROM outbox_event");
+        jdbc.update("DELETE FROM tenant_sequence");
         jdbc.update("DELETE FROM refresh_token");
         jdbc.update("DELETE FROM agent_profile");
         jdbc.update("DELETE FROM app_user");
         jdbc.update("DELETE FROM team");
+        jdbc.update("DELETE FROM business_holiday");
         jdbc.update("DELETE FROM business_calendar");
         jdbc.update("DELETE FROM tenant");
     }
