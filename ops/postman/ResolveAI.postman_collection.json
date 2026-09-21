@@ -403,11 +403,18 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('202 accepted (201 before Phase 6)', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([201, 202]);",
+                  "pm.test('202 Accepted - triage runs asynchronously', function () {",
+                  "    // 202 rather than 201: the ticket exists, but priority, category, assignee and",
+                  "    // team are all still empty and will fill in with no further client action.",
+                  "    pm.expect(pm.response.code).to.eql(202);",
                   "});",
                   "",
                   "const b = pm.response.json();",
+                  "",
+                  "pm.test('the response says what is pending, and where to watch it', function () {",
+                  "    pm.expect(b.analysisStatus).to.eql('PROCESSING');",
+                  "    pm.expect(b.links.analysis).to.be.a('string');",
+                  "});",
                   "",
                   "pm.test('nothing is triaged yet', function () {",
                   "    pm.expect(b.priority).to.eql('UNTRIAGED');",
@@ -416,7 +423,7 @@
                   "",
                   "pm.environment.set('ticketId', b.id);",
                   "pm.environment.set('ticketRef', b.reference);",
-                  "console.log(`created ${b.reference} (id ${b.id})`);"
+                  "console.log(`created ${b.reference} (id ${b.id}) - poll ${b.links.analysis}`);"
                 ]
               }
             }

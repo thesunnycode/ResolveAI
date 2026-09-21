@@ -6,6 +6,7 @@ import com.resolveai.common.pagination.Cursor;
 import com.resolveai.common.pagination.CursorPage;
 import com.resolveai.common.pagination.PageRequests;
 import com.resolveai.iam.domain.Role;
+import com.resolveai.common.security.IsAgentOrAbove;
 import com.resolveai.iam.security.ResolvePrincipal;
 import com.resolveai.platform.idempotency.Idempotent;
 import com.resolveai.ticketing.repository.TicketQueryRepository;
@@ -20,6 +21,9 @@ import com.resolveai.ticketing.web.dto.ReopenRequest;
 import com.resolveai.ticketing.web.dto.ResolveRequest;
 import com.resolveai.ticketing.web.dto.StatusChangeRequest;
 import com.resolveai.ticketing.web.dto.StatusChangeResponse;
+import com.resolveai.ticketing.service.AnalysisReadService;
+import com.resolveai.ticketing.web.dto.AnalysisResponse;
+import com.resolveai.ticketing.web.dto.TicketCreatedResponse;
 import com.resolveai.ticketing.web.dto.TicketSummaryResponse;
 import com.resolveai.ticketing.web.dto.UpdateTicketRequest;
 import jakarta.validation.Valid;
@@ -67,27 +71,52 @@ public class TicketController {
 
     private final TicketService tickets;
     private final TicketAccess access;
+    private final AnalysisReadService analyses;
 
-    public TicketController(TicketService tickets, TicketAccess access) {
+    public TicketController(TicketService tickets, TicketAccess access,
+                            AnalysisReadService analyses) {
         this.tickets = tickets;
         this.access = access;
+        this.analyses = analyses;
     }
 
     /**
-     * {@code 201} in Phase 5, {@code 202} from Phase 6. See {@code TicketService.create}.
+     * {@code 202 Accepted} — the ticket exists, its triage is queued, and several of the
+     * fields in the response will fill in on their own. See {@code TicketService.create}
+     * for why the status code changed from {@code 201} when triage became asynchronous.
      *
      * <p>The {@code Idempotency-Key} header is declared here as well as enforced by the
      * aspect, so that it appears in the generated documentation and in the method
      * signature. The aspect is what actually rejects a bad one.
      */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     @Idempotent
-    public TicketSummaryResponse create(
+    public TicketCreatedResponse create(
             @AuthenticationPrincipal ResolvePrincipal principal,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateTicketRequest request) {
-        return tickets.create(principal, request);
+        return TicketCreatedResponse.accepted(tickets.create(principal, request));
+    }
+
+    /**
+     * The triage status resource.
+     *
+     * <p>{@code 200} in all three states, including {@code UNAVAILABLE} — see
+     * {@link com.resolveai.ticketing.web.dto.AnalysisResponse}. Agent-and-above, because
+     * the signals are internal reasoning: a customer has no use for
+     * {@code linguisticUrgency: HIGH} being recorded about their message, and every
+     * reason to object to it.
+     */
+    @GetMapping("/{id}/analysis")
+    @IsAgentOrAbove
+    public AnalysisResponse analysis(
+            @AuthenticationPrincipal ResolvePrincipal principal,
+            @PathVariable Long id) {
+        // Through TicketAccess first: a ticket the caller cannot see is a 404 here too,
+        // rather than an analysis response that confirms it exists.
+        access.loadVisible(principal, id);
+        return analyses.forTicket(id);
     }
 
     /**

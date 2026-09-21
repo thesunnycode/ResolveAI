@@ -343,10 +343,11 @@ paths:
         all still null and **will change without any further client action**. `202` tells the
         client to poll the status resource; `201` would imply the representation is final.
 
-        > **Phase-dependent status code.** This endpoint returns **`201` in Phase 5** and
-        > **`202` from Phase 6 onward**. In Phase 5 there is no outbox and no async triage, so
-        > the representation returned *is* final and `202` would be a lie. The change lands in
-        > its own commit.
+        > **This endpoint returned `201` in Phase 5 and returns `202` from Phase 6.** In
+        > Phase 5 there was no outbox and no async triage, so the representation *was*
+        > final and `202` would have been a lie. The change landed in its own commit, which
+        > is the point: the status code follows the semantics rather than being chosen once
+        > and defended afterwards.
 
         **`body` is capped at 20,000 characters as a security control**, not a tidiness rule.
         Every ticket triggers an LLM call, so an uncapped body is a token-cost denial of

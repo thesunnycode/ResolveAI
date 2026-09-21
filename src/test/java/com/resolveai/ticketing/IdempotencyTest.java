@@ -55,10 +55,10 @@ class IdempotencyTest extends IntegrationTestBase {
         ResponseEntity<Map> first = post(body, key);
         ResponseEntity<Map> second = post(body, key);
 
-        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         // Same status, not just same body: a replay that came back 200 where the original
-        // was 201 would break any client keying off the status code.
-        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        // was 202 would break any client keying off the status code.
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(second.getBody().get("id")).isEqualTo(first.getBody().get("id"));
         assertThat(second.getBody().get("reference")).isEqualTo(first.getBody().get("reference"));
 
@@ -119,7 +119,7 @@ class IdempotencyTest extends IntegrationTestBase {
 
         ResponseEntity<Map> replayed = post(body, key);
 
-        assertThat(replayed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(replayed.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(count("SELECT count(*) FROM ticket")).isEqualTo(1);
         assertThat(count("SELECT count(*) FROM idempotency_record")).isEqualTo(1);
     }
@@ -138,7 +138,7 @@ class IdempotencyTest extends IntegrationTestBase {
         // twenty-four hours.
         ResponseEntity<Map> retried = post(Map.of("subject", "Fixed", "body", "Sensible"), key);
 
-        assertThat(retried.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(retried.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
     }
 
     /**

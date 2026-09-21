@@ -11,6 +11,8 @@ import com.resolveai.iam.repository.AgentProfileRepository;
 import com.resolveai.iam.repository.AppUserRepository;
 import com.resolveai.iam.repository.TeamRepository;
 import com.resolveai.iam.security.ResolvePrincipal;
+import com.resolveai.platform.outbox.EventType;
+import com.resolveai.platform.outbox.OutboxPublisher;
 import com.resolveai.platform.sequence.ReferenceGenerator;
 import com.resolveai.ticketing.domain.Priority;
 import com.resolveai.ticketing.domain.SlaEffect;
@@ -74,13 +76,14 @@ public class TicketService {
     private final TicketMapper mapper;
     private final SlaLifecycle sla;
     private final DatabaseClock clock;
+    private final OutboxPublisher outbox;
 
     public TicketService(TicketRepository tickets, TicketMessageRepository messages,
                          TicketQueryRepository ticketQuery, AppUserRepository users,
                          TeamRepository teams, AgentProfileRepository agentProfiles,
                          ReferenceGenerator references, TicketEventRecorder eventRecorder,
                          TicketAccess access, TicketMapper mapper, SlaLifecycle sla,
-                         DatabaseClock clock) {
+                         DatabaseClock clock, OutboxPublisher outbox) {
         this.tickets = tickets;
         this.messages = messages;
         this.ticketQuery = ticketQuery;
@@ -93,20 +96,25 @@ public class TicketService {
         this.mapper = mapper;
         this.sla = sla;
         this.clock = clock;
+        this.outbox = outbox;
     }
 
     // ── Create ──────────────────────────────────────────────────────────────
 
     /**
-     * Creates a ticket.
+     * Creates a ticket and queues its triage, in one transaction.
      *
-     * <p><b>Returns {@code 201} in Phase 5, and will return {@code 202} from Phase 6.</b>
-     * There is no outbox and no async triage yet, so the representation returned <i>is</i>
-     * final — {@code priority} will not change on its own, and {@code 202} would be telling
-     * the client to poll something that will never move. When triage becomes asynchronous
-     * the status code changes in its own commit, and that diff is worth having in the
-     * history: it shows the status code following the semantics rather than being picked
-     * once and defended forever.
+     * <p><b>{@code 202} from Phase 6, where Phase 5 returned {@code 201}.</b> The resource
+     * is created, which normally argues for {@code 201} — but {@code priority},
+     * {@code category}, {@code assignee} and {@code team} are all still empty and
+     * <i>will change with no further client action</i>. {@code 201} claims the
+     * representation is final; {@code 202} says the work has been accepted and points at
+     * where to watch it. The status code follows the semantics, and the semantics changed.
+     *
+     * <p><b>The ticket and its outbox event commit together.</b> That single transaction
+     * is the whole reason the outbox exists: there is no window where a ticket exists
+     * without a triage job, and none where a job exists for a ticket that rolled back.
+     * See {@link com.resolveai.platform.outbox.OutboxPublisher}.
      */
     @Transactional
     public TicketSummaryResponse create(ResolvePrincipal principal, CreateTicketRequest request) {
@@ -127,9 +135,17 @@ public class TicketService {
                 Map.of("reference", ticket.getReference(),
                         "onBehalfOf", request.onBehalfOf() != null));
 
-        // No-op until Phase 5B, and moves into the triage transaction in Phase 6: a clock
-        // should start when the priority it is measured against becomes known.
-        sla.start(ticket);
+        // The triage job, in this transaction. Its payload is identifying rather than
+        // descriptive - the worker re-reads the ticket, because by the time it runs the
+        // subject may have been edited and a copy in the payload would be stale.
+        outbox.publish("TICKET", ticket.getId(), EventType.TICKET_CREATED,
+                Map.of("ticketId", ticket.getId(), "reference", ticket.getReference()));
+
+        // sla.start() deliberately does NOT happen here any more. A clock measures a
+        // promise, and the promise is not known until the priority is - so the clocks
+        // start inside the triage transaction instead. The gap between creation and
+        // triage is a few seconds in which a ticket has no SLA; that is a deliberate
+        // consequence of the promise being unknown, not a hole.
 
         if (request.attachmentIds() != null && !request.attachmentIds().isEmpty()) {
             // Attachments are Task 17, which was cut. Rejecting is the honest answer:

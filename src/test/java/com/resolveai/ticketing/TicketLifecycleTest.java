@@ -51,7 +51,13 @@ class TicketLifecycleTest extends IntegrationTestBase {
                 "Payment deducted but order still pending",
                 "I paid via UPI at 14:03 and the money left my account.");
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        // 202, not 201: the ticket exists but priority, category, assignee and team are
+        // all still empty and will fill in without the client doing anything. 201 would
+        // claim this representation is final.
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody().get("analysisStatus")).isEqualTo("PROCESSING");
+        assertThat((Map<String, Object>) response.getBody().get("links"))
+                .containsKeys("self", "analysis");
         assertThat((String) response.getBody().get("reference")).startsWith("TKT-");
         assertThat(response.getBody().get("status")).isEqualTo("OPEN");
         assertThat(response.getBody().get("priority")).isEqualTo("UNTRIAGED");
@@ -107,7 +113,7 @@ class TicketLifecycleTest extends IntegrationTestBase {
                         TicketTestSupport.authed(agentToken)),
                 Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         Map<String, Object> requester = (Map<String, Object>) response.getBody().get("requester");
         assertThat(((Number) requester.get("id")).longValue()).isEqualTo(tenant.customerId());
     }
