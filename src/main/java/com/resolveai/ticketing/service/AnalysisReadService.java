@@ -55,8 +55,18 @@ public class AnalysisReadService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * @param tenantId <b>not redundant, even though the controller has already called
+     *                 {@code TicketAccess.loadVisible}.</b> Both queries below are
+     *                 native, and {@code @TenantId} does not reach native SQL — so the
+     *                 only thing standing between a foreign ticket id and another
+     *                 tenant's classification is that every caller remembered to check
+     *                 first. That is a property that holds until the first caller that
+     *                 does not, and the signals are a summary of somebody's private
+     *                 support ticket.
+     */
     @Transactional(readOnly = true)
-    public AnalysisResponse forTicket(Long ticketId) {
+    public AnalysisResponse forTicket(Long tenantId, Long ticketId) {
         // Mapped by hand rather than through queryForList: that helper hands back
         // java.sql.Timestamp for a timestamptz, and the cast to OffsetDateTime then fails
         // at runtime on a line that reads as though it could not. rs.getObject(_, Class)
@@ -67,7 +77,7 @@ public class AnalysisReadService {
                        p.name AS prompt_name, p.version AS prompt_version
                   FROM ai_analysis a
                   JOIN prompt_version p ON p.id = a.prompt_version_id
-                 WHERE a.ticket_id = ?
+                 WHERE a.ticket_id = ? AND a.tenant_id = ?
                  ORDER BY a.created_at DESC
                  LIMIT 1
                 """,
@@ -86,7 +96,7 @@ public class AnalysisReadService {
                         rs.getInt("attempt"),
                         rs.getObject("created_at", OffsetDateTime.class),
                         rs.getString("prompt_name") + "@" + rs.getInt("prompt_version")),
-                ticketId);
+                ticketId, tenantId);
 
         if (!analyses.isEmpty()) {
             AnalysisRow row = analyses.get(0);
@@ -99,24 +109,24 @@ public class AnalysisReadService {
             return AnalysisResponse.unavailable(ticketId, row.status(), row.attempt());
         }
 
-        return fromQueueState(ticketId);
+        return fromQueueState(tenantId, ticketId);
     }
 
     /**
      * No result yet, so the answer depends on whether anything is still trying.
      */
-    private AnalysisResponse fromQueueState(Long ticketId) {
+    private AnalysisResponse fromQueueState(Long tenantId, Long ticketId) {
         List<QueueRow> events = jdbc.query("""
                 SELECT status, attempts, created_at
                   FROM outbox_event
-                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ?
+                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ? AND tenant_id = ?
                    AND event_type IN ('TICKET_CREATED', 'TICKET_RETRIAGE_REQUESTED')
                  ORDER BY id DESC
                  LIMIT 1
                 """,
                 (rs, rowNum) -> new QueueRow(rs.getString("status"), rs.getInt("attempts"),
                         rs.getObject("created_at", OffsetDateTime.class)),
-                ticketId);
+                ticketId, tenantId);
 
         if (events.isEmpty()) {
             // Nothing was ever queued. A ticket created before the async pipeline

@@ -84,7 +84,7 @@ public class RetriageService {
         access.requireAgentOrAbove(principal, "retriage a ticket");
         Ticket ticket = access.loadVisible(principal, ticketId);
 
-        if (triage.hasPendingTriage(ticketId)) {
+        if (triage.hasPendingTriage(principal.tenantId(), ticketId)) {
             // 409 rather than silently succeeding. Queueing a second job would mean two
             // workers classifying the same ticket concurrently, paying twice, and one of
             // them losing the insert — all to produce the answer the first one was about
@@ -93,14 +93,15 @@ public class RetriageService {
                     "Triage is already queued for this ticket.");
         }
 
-        int recent = triage.countRetriagesSince(ticketId, clock.now().minus(Duration.ofHours(1)));
+        int recent = triage.countRetriagesSince(principal.tenantId(), ticketId,
+                clock.now().minus(Duration.ofHours(1)));
         if (recent >= MAX_PER_HOUR) {
             throw new ApiException(ErrorCode.RATE_LIMITED,
                     "This ticket has been retriaged " + recent + " times in the last hour. "
                     + "Wait before trying again.");
         }
 
-        int attempt = triage.nextAttempt(ticketId);
+        int attempt = triage.nextAttempt(principal.tenantId(), ticketId);
         outbox.publish("TICKET", ticketId, EventType.TICKET_RETRIAGE_REQUESTED,
                 Map.of("ticketId", ticketId, "attempt", attempt,
                         "requestedBy", principal.userId()));

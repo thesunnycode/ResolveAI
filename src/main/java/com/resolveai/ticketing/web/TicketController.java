@@ -116,7 +116,7 @@ public class TicketController {
         // Through TicketAccess first: a ticket the caller cannot see is a 404 here too,
         // rather than an analysis response that confirms it exists.
         access.loadVisible(principal, id);
-        return analyses.forTicket(id);
+        return analyses.forTicket(principal.tenantId(), id);
     }
 
     /**

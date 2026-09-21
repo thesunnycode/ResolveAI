@@ -541,6 +541,7 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 | 15–20 `TriageSignals`, router, breaker, budgets, embeddings, WireMock | ✅ **no `priority` field, and a comment at each end saying why** |
 | 21 `TriageWorker` | ✅ short read → no transaction → short write |
 | 22–23 `PriorityPolicy` | ✅ pure function, **45 cases in 49 ms**, no Spring context |
+| — Cross-tenant table extended | ✅ 23 endpoints × 2 roles, **verified by breaking `@TenantId`** |
 | 24–25 Routing and `claimLeastLoadedAgent` | ✅ GIN skill overlap, most-specific team, `SKIP LOCKED` claim |
 | 26–27 `/priority-rationale`, `/priority-override` | ✅ inputs split `fromModel` / `fromSystem`; override retargets the clocks |
 | 28 SLA start moved into triage | ✅ **plus the fallback sweeper for the hole that opened** |
@@ -574,6 +575,20 @@ model misread the ticket or the policy is wrong.
 > ~600 ms of network per event and single-digit milliseconds of transaction, the **mean**
 > active count is a fraction of one, where a `@Transactional` around `process()` would
 > hold all five for the whole call and sit just under five. The assertion is on the mean.
+
+> **A security test that was passing for the wrong reason.** The cross-tenant table was
+> extended with the ticket, SLA and triage endpoints, and then — as Phase 4 did — the
+> `@TenantId` annotation was removed from `Ticket` to check the suite would notice. **It
+> did not.** Every row stayed green, because an alpha *agent* is refused a beta ticket by
+> `isVisibleTo`, the role-and-team predicate, long before tenancy is consulted. The file
+> was proving team scoping and reporting it as tenant isolation. `isVisibleTo` returns
+> `true` unconditionally for `ADMIN`, so the whole table now runs a second time with an
+> admin token — where the discriminator is the only control left — and that run fails
+> immediately when `@TenantId` is removed. Generally: a negative security test is only as
+> strong as the weakest control that can satisfy it. The native reads behind `/analysis`
+> and `/priority-rationale` also grew their own `AND tenant_id = ?`, because
+> `@TenantId` does not reach native SQL and "safe because every caller checks first" holds
+> only until the first caller that does not.
 
 **Next: Phase 6D — duplicate-claim and crash-redelivery tests, load distribution, the
 minimal eval harness, and the phase tag.**

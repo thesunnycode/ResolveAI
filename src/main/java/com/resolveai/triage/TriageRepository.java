@@ -87,12 +87,22 @@ public class TriageRepository {
                 inputSignalsJson, priority.name(), rationaleJson);
     }
 
-    /** The decision currently in force, which is the most recent one. */
-    public Optional<DecisionRow> latestDecision(Long ticketId) {
+    /**
+     * The decision currently in force, which is the most recent one.
+     *
+     * <p><b>The tenant predicate is explicit and is not redundant.</b> Callers reach
+     * this through {@code TicketAccess.loadVisible}, which already 404s a foreign
+     * ticket — so today the predicate changes no behaviour. It is here because
+     * {@code @TenantId} does not reach native SQL, and "safe because every caller
+     * remembers to check first" is a property that holds until the first caller that
+     * does not. A leak of a priority rationale is a leak of another tenant's ticket
+     * text, and the cost of the predicate is one line.
+     */
+    public Optional<DecisionRow> latestDecision(Long tenantId, Long ticketId) {
         List<DecisionRow> rows = jdbc.query("""
                 SELECT policy_version, input_signals, computed_priority, rationale, decided_at
                   FROM priority_decision
-                 WHERE ticket_id = ?
+                 WHERE ticket_id = ? AND tenant_id = ?
                  ORDER BY decided_at DESC, id DESC
                  LIMIT 1
                 """,
@@ -102,7 +112,7 @@ public class TriageRepository {
                         Priority.valueOf(rs.getString("computed_priority")),
                         rs.getString("rationale"),
                         rs.getObject("decided_at", OffsetDateTime.class)),
-                ticketId);
+                ticketId, tenantId);
         return rows.stream().findFirst();
     }
 
@@ -117,32 +127,33 @@ public class TriageRepository {
     }
 
     /** Whether a triage job for this ticket is still in the queue. */
-    public boolean hasPendingTriage(Long ticketId) {
+    public boolean hasPendingTriage(Long tenantId, Long ticketId) {
         Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM outbox_event
-                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ?
+                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ? AND tenant_id = ?
                    AND event_type IN ('TICKET_CREATED', 'TICKET_RETRIAGE_REQUESTED')
                    AND status IN ('PENDING', 'IN_FLIGHT')
-                """, Integer.class, ticketId);
+                """, Integer.class, ticketId, tenantId);
         return count != null && count > 0;
     }
 
     /** The next attempt number for a retriage: one past the highest already recorded. */
-    public int nextAttempt(Long ticketId) {
+    public int nextAttempt(Long tenantId, Long ticketId) {
         Integer max = jdbc.queryForObject("""
-                SELECT COALESCE(MAX(attempt), 0) FROM ai_analysis WHERE ticket_id = ?
-                """, Integer.class, ticketId);
+                SELECT COALESCE(MAX(attempt), 0) FROM ai_analysis
+                 WHERE ticket_id = ? AND tenant_id = ?
+                """, Integer.class, ticketId, tenantId);
         return (max == null ? 0 : max) + 1;
     }
 
     /** How many retriages were asked for since {@code since}, for the rate limit. */
-    public int countRetriagesSince(Long ticketId, OffsetDateTime since) {
+    public int countRetriagesSince(Long tenantId, Long ticketId, OffsetDateTime since) {
         Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM outbox_event
-                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ?
+                 WHERE aggregate_type = 'TICKET' AND aggregate_id = ? AND tenant_id = ?
                    AND event_type = 'TICKET_RETRIAGE_REQUESTED'
                    AND created_at >= ?
-                """, Integer.class, ticketId, since);
+                """, Integer.class, ticketId, tenantId, since);
         return count == null ? 0 : count;
     }
 

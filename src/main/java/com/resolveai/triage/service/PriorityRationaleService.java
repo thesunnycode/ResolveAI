@@ -54,7 +54,8 @@ public class PriorityRationaleService {
     @Transactional(readOnly = true)
     public PriorityRationaleResponse forTicket(ResolvePrincipal principal, Long ticketId) {
         Ticket ticket = access.loadVisible(principal, ticketId);
-        Optional<TriageRepository.DecisionRow> decision = triage.latestDecision(ticketId);
+        Optional<TriageRepository.DecisionRow> decision =
+                triage.latestDecision(principal.tenantId(), ticketId);
 
         if (decision.isEmpty()) {
             return new PriorityRationaleResponse(ticketId, ticket.getPriority().name(),
