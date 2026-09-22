@@ -19,6 +19,7 @@ import com.resolveai.incidents.web.dto.IncidentDetailResponse;
 import com.resolveai.incidents.web.dto.IncidentDetailResponse.DeliverySummary;
 import com.resolveai.incidents.web.dto.IncidentDetailResponse.LinkedTicketView;
 import com.resolveai.incidents.web.dto.IncidentDetailResponse.UpdateView;
+import com.resolveai.incidents.web.dto.DeliveryStatusResponse;
 import com.resolveai.incidents.web.dto.IncidentSummaryResponse;
 import com.resolveai.ticketing.domain.Ticket;
 import com.resolveai.ticketing.repository.TicketRepository;
@@ -151,6 +152,32 @@ public class IncidentReadService {
         return new UpdateView(update.getId(), update.getBody(), update.getVisibility().name(),
                 author == null ? null : author.fullName(), update.getPublishedAt(),
                 new DeliverySummary(total, sent, pending, failed));
+    }
+
+    /** {@code GET /incidents/{id}/updates/{updateId}/deliveries}, doc 12 Task 20. */
+    public DeliveryStatusResponse deliveryStatus(Long updateId) {
+        incidentUpdates.findById(updateId).orElseThrow(() -> new ApiException(
+                ErrorCode.INCIDENT_UPDATE_NOT_FOUND, "Incident update " + updateId + " was not found."));
+
+        var rows = deliveries.findByIncidentUpdateId(updateId);
+        int sent = 0;
+        int pending = 0;
+        int failed = 0;
+        List<DeliveryStatusResponse.Failure> failures = new java.util.ArrayList<>();
+        for (var d : rows) {
+            switch (d.getStatus()) {
+                case SENT -> sent++;
+                case PENDING -> pending++;
+                case FAILED -> {
+                    failed++;
+                    failures.add(new DeliveryStatusResponse.Failure(d.getTicketId(),
+                            d.getAttempts(), d.getLastError()));
+                }
+                default -> { }
+            }
+        }
+        return new DeliveryStatusResponse(updateId,
+                new DeliveryStatusResponse.Summary(rows.size(), sent, pending, failed), failures);
     }
 
     private static Incident rowById(List<Incident> rows, Long id) {

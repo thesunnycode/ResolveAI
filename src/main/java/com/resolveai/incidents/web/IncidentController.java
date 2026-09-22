@@ -9,14 +9,19 @@ import com.resolveai.iam.security.ResolvePrincipal;
 import com.resolveai.incidents.domain.Incident;
 import com.resolveai.incidents.service.IncidentLifecycleService;
 import com.resolveai.incidents.service.IncidentReadService;
+import com.resolveai.incidents.service.IncidentUpdatePublisher;
 import com.resolveai.incidents.web.dto.ConfirmIncidentRequest;
 import com.resolveai.incidents.web.dto.ConfirmIncidentResponse;
+import com.resolveai.incidents.web.dto.DeliveryStatusResponse;
 import com.resolveai.incidents.web.dto.IncidentDetailResponse;
 import com.resolveai.incidents.web.dto.IncidentSummaryResponse;
 import com.resolveai.incidents.web.dto.LinkTicketRequest;
+import com.resolveai.incidents.web.dto.PublishUpdateRequest;
+import com.resolveai.incidents.web.dto.PublishUpdateResponse;
 import com.resolveai.incidents.web.dto.RejectIncidentRequest;
 import com.resolveai.incidents.web.dto.ResolveIncidentRequest;
 import com.resolveai.incidents.web.dto.ResolveIncidentResponse;
+import com.resolveai.platform.idempotency.Idempotent;
 import com.resolveai.ticketing.service.EtagSupport;
 import jakarta.validation.Valid;
 import java.util.LinkedHashSet;
@@ -44,10 +49,13 @@ public class IncidentController {
 
     private final IncidentReadService reads;
     private final IncidentLifecycleService lifecycle;
+    private final IncidentUpdatePublisher updates;
 
-    public IncidentController(IncidentReadService reads, IncidentLifecycleService lifecycle) {
+    public IncidentController(IncidentReadService reads, IncidentLifecycleService lifecycle,
+                              IncidentUpdatePublisher updates) {
         this.reads = reads;
         this.lifecycle = lifecycle;
+        this.updates = updates;
     }
 
     @GetMapping
@@ -125,6 +133,25 @@ public class IncidentController {
         ResolveIncidentResponse response = lifecycle.resolve(principal, id, request);
         return ResponseEntity.ok().eTag(response.etag())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store").body(response);
+    }
+
+    @PostMapping("/{id}/updates")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Idempotent
+    @IsTeamLeadOrAbove
+    public PublishUpdateResponse publishUpdate(
+            @AuthenticationPrincipal ResolvePrincipal principal,
+            @PathVariable Long id,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody PublishUpdateRequest request) {
+        return updates.publish(principal, id, request.body(), request.visibilityOrDefault(),
+                request.forceOrDefault());
+    }
+
+    @GetMapping("/{id}/updates/{updateId}/deliveries")
+    @IsAgentOrAbove
+    public DeliveryStatusResponse deliveries(@PathVariable Long id, @PathVariable Long updateId) {
+        return reads.deliveryStatus(updateId);
     }
 
     private void requireIfMatch(Long incidentId, String ifMatch) {

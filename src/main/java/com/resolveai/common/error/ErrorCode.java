@@ -116,6 +116,13 @@ public enum ErrorCode {
     INVALID_INCIDENT_STATE(HttpStatus.CONFLICT, "invalid-incident-state"),
     TICKET_ALREADY_LINKED(HttpStatus.CONFLICT, "ticket-already-linked"),
     LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "link-not-found"),
+    /**
+     * Publishing an update to more than 500 linked tickets without {@code force: true}.
+     * An accidental fan-out to thousands of customers is not recoverable, so the default
+     * is to refuse rather than to send.
+     */
+    TOO_MANY_LINKED_TICKETS(HttpStatus.UNPROCESSABLE_ENTITY, "too-many-linked-tickets"),
+    INCIDENT_UPDATE_NOT_FOUND(HttpStatus.NOT_FOUND, "incident-update-not-found"),
 
     // ── Knowledge ───────────────────────────────────────────────────────────
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "document-not-found"),
