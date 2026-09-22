@@ -48,6 +48,26 @@ public class IncidentTestSupport {
                 """, ticketId, tenantId, type.name(), value);
     }
 
+    /** A PROPOSED incident, seeded directly rather than via a sweep, for lifecycle tests. */
+    public Long seedIncident(Long tenantId, String reference, int clusterSize,
+                             OffsetDateTime firstTicketAt) {
+        return jdbc.queryForObject("""
+                INSERT INTO incident (tenant_id, reference, title, detection_method,
+                                      cluster_size_at_detection, arrival_rate_multiple,
+                                      first_ticket_at)
+                VALUES (?, ?, ?, 'CLUSTER', ?, 10.0, ?)
+                RETURNING id
+                """, Long.class, tenantId, reference, clusterSize + " related tickets",
+                clusterSize, firstTicketAt);
+    }
+
+    public void linkTicket(Long incidentId, Long ticketId, Double linkConfidence) {
+        jdbc.update("""
+                INSERT INTO incident_ticket (incident_id, ticket_id, link_confidence)
+                VALUES (?, ?, ?)
+                """, incidentId, ticketId, linkConfidence);
+    }
+
     public void refreshBaseline() {
         // CONCURRENTLY needs the view already populated once; ordinary REFRESH is fine
         // inside a test where nothing else reads it concurrently.
