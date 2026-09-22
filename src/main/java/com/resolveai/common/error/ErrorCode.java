@@ -119,6 +119,13 @@ public enum ErrorCode {
 
     // ── Knowledge ───────────────────────────────────────────────────────────
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "document-not-found"),
+    /**
+     * A knowledge document cannot be deleted because a draft's citation still points at
+     * one of its chunks. {@code draft_claim_citation.chunk_id} is {@code ON DELETE
+     * RESTRICT} for exactly this reason; this code is what turns that constraint into a
+     * response naming the citing drafts instead of a raw integrity error.
+     */
+    DOCUMENT_CITED(HttpStatus.CONFLICT, "document-cited"),
 
     // ── Attachments ─────────────────────────────────────────────────────────
     ATTACHMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "attachment-not-found"),

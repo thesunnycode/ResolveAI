@@ -91,6 +91,12 @@ public class AuthTestSupport {
         jdbc.update("DELETE FROM ticket_entity");
         jdbc.update("DELETE FROM ticket_message");
         jdbc.update("DELETE FROM draft");
+        // Before ticket, so any RESOLVED_TICKET knowledge_document's source_ticket_id
+        // (ON DELETE SET NULL) never has to worry about ordering, and before tenant so
+        // fk_kb_tenant (ON DELETE RESTRICT) does not block it below. Cascades away its
+        // own chunks, which is also what lets it run after draft: draft's cascade has
+        // already removed any citations pointing at those chunks.
+        jdbc.update("DELETE FROM knowledge_document");
         jdbc.update("DELETE FROM ticket");
         jdbc.update("DELETE FROM idempotency_record");
         jdbc.update("DELETE FROM outbox_event");

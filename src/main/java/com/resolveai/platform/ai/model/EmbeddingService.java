@@ -138,8 +138,15 @@ public class EmbeddingService {
                 toVectorLiteral(vector), ticketId);
     }
 
-    /** {@code [0.1,0.2,…]} — pgvector's own input format. */
-    static String toVectorLiteral(float[] vector) {
+    /**
+     * {@code [0.1,0.2,…]} — pgvector's own input format.
+     *
+     * <p>Public because Phase 7's knowledge chunks need the identical literal for the
+     * same reason tickets do: one formatting routine for every vector this system ever
+     * writes, so a ticket's embedding and a chunk's embedding cannot quietly disagree on
+     * precision or separators.
+     */
+    public static String toVectorLiteral(float[] vector) {
         StringBuilder out = new StringBuilder(vector.length * 8 + 2).append('[');
         for (int i = 0; i < vector.length; i++) {
             if (i > 0) {

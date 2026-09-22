@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "The committed floor for the RETRIEVAL suite. mvn verify fails below it.",
+    "",
+    "Set well below what a live provider should score, for a reason specific to this",
+    "suite: LlmStub.returnsEmbedding() returns the SAME vector for every query, because",
+    "a stub cannot compute a real embedding. That makes the vector half of every search",
+    "a tie-break with no signal in CI, and the CI-measured score is therefore a lexical-",
+    "only score wearing a hybrid label. The IDENTIFIER group -- the group hybrid search",
+    "exists for -- still scores well here, because plainto_tsquery matches an exact",
+    "error code exactly. The PARAPHRASE group is where a live run's number will be",
+    "meaningfully higher than CI's, because that is the group vector search is supposed",
+    "to win on and CI cannot exercise that win at all.",
+    "",
+    "The number worth quoting in the README is a LIVE run's, dated, with the three-way",
+    "lexical/vector/hybrid comparison from Task 11 -- not this floor, which exists only",
+    "to catch a genuine regression (a broken query, a dropped tenant filter) in CI."
+  ],
+  "minRecallAt5": 0.55,
+  "minMrr": 0.45
+}
