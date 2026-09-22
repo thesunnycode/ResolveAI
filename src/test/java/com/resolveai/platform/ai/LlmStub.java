@@ -1,6 +1,7 @@
 package com.resolveai.platform.ai;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
@@ -170,6 +171,37 @@ public final class LlmStub {
 
     public static int embeddingCallCount() {
         return start().findAll(postRequestedFor(urlPathMatching(EMBEDDINGS_PATH))).size();
+    }
+
+    /**
+     * Answers differently per eval case, keyed on a marker in the request body.
+     *
+     * <h2>How a stub can score an eval suite at all</h2>
+     *
+     * <p>Every classification goes to the same URL with a different body, so a
+     * per-request answer needs something in the body to match on. Each eval case
+     * carries a {@code Case reference EVALCASE###} sentence for exactly this purpose —
+     * stated in {@code EvalCase}'s javadoc rather than hidden, because a fixture
+     * mechanism that looks like production data is how a test ends up measuring itself.
+     *
+     * <p><b>What this measures is the harness, not the prompt.</b> The stub returns
+     * whatever this method tells it to, so a "correct" run scores 1.0 by construction.
+     * That is still worth having: it proves the suite executes, scores, persists and
+     * gates. The accuracy number that means something comes from a run against a live
+     * provider, and the gate is what makes that number enforceable.
+     *
+     * @param answers marker to category, e.g. {@code EVALCASE001 -> PAYMENT}
+     */
+    public static void classifiesPerCase(Map<String, String> answers) {
+        answers.forEach((marker, category) -> {
+            String signals = """
+                    {"category":"%s","reportedImpact":"SINGLE_USER","serviceDownClaimed":false,                    "dataLossClaimed":false,"paymentAffected":false,"linguisticUrgency":"LOW",                    "extractedEntities":{},"confidence":0.9}""".formatted(category);
+            start().stubFor(post(urlPathMatching(CHAT_PATH))
+                    .withRequestBody(containing(marker))
+                    .willReturn(aResponse().withStatus(200)
+                            .withHeader("Content-Type", "application/json")
+                            .withBody(chatBody(signals))));
+        });
     }
 
     // ── Plumbing ────────────────────────────────────────────────────────────

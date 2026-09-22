@@ -317,14 +317,9 @@ public class TriageWorker implements Worker {
         ticket.setPriority(decision.priority());
         ticket.setCategory(signals.category().name());
 
-        // Routing and assignment, in that order: an agent is chosen from the owning
-        // team, so the team has to be settled first.
+        // Team routing settles first: an agent is chosen from the owning team.
         Optional<Team> team = routing.selectTeam(context.tenantId(), signals.category().name());
         team.ifPresent(ticket::setTeam);
-
-        Optional<Long> assignee = assigner.claim(context.tenantId(),
-                team.map(Team::getId).orElse(null), clock.now());
-        assignee.flatMap(users::findById).ifPresent(ticket::setAssignee);
 
         eventRecorder.record(ticket, TicketEventType.TRIAGED, previousPriority.name(),
                 decision.priority().name(),
@@ -334,8 +329,6 @@ public class TriageWorker implements Worker {
                         "policyVersion", decision.policyVersion(),
                         "confidence", signals.confidence(),
                         "team", team.map(Team::getName).orElse("UNROUTED")));
-        assignee.ifPresent(userId -> eventRecorder.record(ticket, TicketEventType.ASSIGNED,
-                null, String.valueOf(userId), Map.of("source", "AUTO_ROUTING")));
 
         // ── Task 28: the clocks start here, not at creation ─────────────────
         //
@@ -343,7 +336,24 @@ public class TriageWorker implements Worker {
         // is. Starting at creation would measure every ticket against a default target
         // and then quietly keep measuring against it after triage decided otherwise —
         // a P1 tracked on a P3 deadline, reported as comfortably within SLA.
+        //
+        // Deliberately BEFORE the agent claim below. Neither the SLA clocks nor the
+        // TRIAGED event need to know who is assigned, and each of sla.start()'s several
+        // inserts is a DB round trip that would otherwise happen while holding the
+        // agent_profile row FOR UPDATE SKIP LOCKED acquired. Under a burst that is
+        // exactly team-sized — five tickets landing on five agents at once, the case
+        // Task 32's load test drives on purpose — every extra round trip inside that
+        // window is exposure that a sibling transaction's own SKIP LOCKED query has to
+        // race against. Doing the row-agnostic work first and the contended claim last
+        // shrinks that window to the minimum: acquire, increment, commit.
         sla.start(ticket);
+
+        // The agent claim, now the last substantial write before commit.
+        Optional<Long> assignee = assigner.claim(context.tenantId(),
+                team.map(Team::getId).orElse(null), clock.now());
+        assignee.flatMap(users::findById).ifPresent(ticket::setAssignee);
+        assignee.ifPresent(userId -> eventRecorder.record(ticket, TicketEventType.ASSIGNED,
+                null, String.valueOf(userId), Map.of("source", "AUTO_ROUTING")));
 
         tickets.saveAndFlush(ticket);
         embeddings.storeTicketEmbedding(context.ticketId(), embedding);

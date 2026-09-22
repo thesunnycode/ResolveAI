@@ -102,4 +102,35 @@ public abstract class IntegrationTestBase {
 
     @Autowired
     protected TestRestTemplate rest;
+
+    /**
+     * The provider circuit breaker, closed again before every test.
+     *
+     * <h2>Why this lives in the base class</h2>
+     *
+     * <p>The Spring context is shared across every test class in the suite, and so is
+     * the {@code CircuitBreakerRegistry} inside it. A class that deliberately fails the
+     * provider — and three of them now do, because that is the interesting half of an
+     * AI integration — leaves the breaker {@code OPEN}, and the next class to run gets
+     * its calls refused locally with no network request. The symptom is a test that
+     * passes alone and fails in the suite, reporting something entirely unrelated: a
+     * load-distribution test asserting 37 assignments instead of 50, for instance,
+     * because thirteen triages were refused by a breaker a different file opened.
+     *
+     * <p>Resetting per class as it came up would work and would be forgotten by the
+     * next person to write a failure test, so it is done once, here, for everyone.
+     *
+     * <p>{@code required = false} because a slice test without the AI configuration has
+     * no registry, and this should not be the reason such a test cannot start.
+     */
+    @Autowired(required = false)
+    private io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry breakerRegistry;
+
+    @org.junit.jupiter.api.BeforeEach
+    void resetCircuitBreakers() {
+        if (breakerRegistry != null) {
+            breakerRegistry.getAllCircuitBreakers().forEach(
+                    io.github.resilience4j.circuitbreaker.CircuitBreaker::reset);
+        }
+    }
 }

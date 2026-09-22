@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "The committed floor for the CLASSIFICATION suite. mvn verify fails below it.",
+    "Raise these IN THE SAME COMMIT as the prompt change that earned the gain, so the",
+    "pull request shows the improvement as a diff next to its cause. Lowering them is",
+    "allowed and is meant to be conspicuous: it is how you say 'we accepted a",
+    "regression', out loud, in front of a reviewer.",
+    "",
+    "These figures are measured against the deterministic WireMock fixture, so they",
+    "describe the HARNESS, not a live model: with a stub that answers correctly the",
+    "suite scores 1.0, and the floor is set below that to leave room for the handful of",
+    "cases a real provider gets wrong. The number worth quoting from a live run belongs",
+    "in the README, dated, next to the model id it was measured on."
+  ],
+  "minAccuracy": 0.9,
+  "minMacroF1": 0.88
+}

@@ -1,0 +1,485 @@
+{
+  "suite": "CLASSIFICATION",
+  "cases": [
+    {
+      "name": "CLS-001",
+      "subject": "Failed to finalize  INV-2026-1857 in ap-south-1 due to idempotency conflict",
+      "body": "While processing invoice INV-2026-1857 under GST period, system shows ERR_IDEMPOTENCY_CONFLICT error preventing confirmation. Issue occurred in ap-south-1 region. This blocks reconciliation and ledger updates. Case reference EVALCASE001.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00002"
+    },
+    {
+      "name": "CLS-002",
+      "subject": "Keeps getting logged out from dashboard, session ends abruptly",
+      "body": "I keep facing constant logout from the system interface. Tried restarting browser, but session expiry happens fast and does not remember me. No reset messages come to email either, very frustrating. Case reference EVALCASE002.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00007"
+    },
+    {
+      "name": "CLS-003",
+      "subject": "query about our subscription invoices and plan modifications",
+      "body": "We changed plans recently but the invoice for new plan is unclear and subscription charges look duplicated on portal. Need explanation and proper invoice reflecting latest plan as per agreements. Case reference EVALCASE003.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00037"
+    },
+    {
+      "name": "CLS-004",
+      "subject": "Missing entries in reports and exports, repeated rows observed",
+      "body": "Our exported transaction files and GST reports show missing and duplicated entries randomly. Data export is inconsistent causing problems in filing and reconciliation. Need immediate help resolving data quality problems. Case reference EVALCASE004.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00010"
+    },
+    {
+      "name": "CLS-005",
+      "subject": "Unable to sync invoice INV-2026-1110 records properly, reconciliation impacted",
+      "body": "Invoice INV-2026-1110 data is not reflected correctly in system ledger. Ledger and invoice data mismatch after latest update. Request close review to identify sync issue sources and update ledger accordingly. Case reference EVALCASE005.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00005"
+    },
+    {
+      "name": "CLS-006",
+      "subject": "Delay processing invoice INV-2026-4754 through kyc-service, docs stuck",
+      "body": "Invoice INV-2026-4754 verification stalled in the kyc-service. Document review not progressing causing account activation delay. Need update on verification steps and estimated completion. Case reference EVALCASE006.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00008"
+    },
+    {
+      "name": "CLS-007",
+      "subject": "Settlement delays causing ledger discrepancy, please investigate urgently",
+      "body": "Transactions expected in ledger reconciliation show missing settlements. Delay between invoice issuance and cleared amounts causing mismatch. Immediate action needed to resolve settlement timeline issues. Case reference EVALCASE007.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00003"
+    },
+    {
+      "name": "CLS-008",
+      "subject": "403 errors and ERR_QUERY_TIMEOUT with api-gateway, need debug",
+      "body": "api-gateway throws error ERR_QUERY_TIMEOUT, HTTP status 403 on several attempts. Endpoint is unresponsive; requests fail to complete and hang indefinitely. Need logs or fix for query execution timeouts. Case reference EVALCASE008.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00001"
+    },
+    {
+      "name": "CLS-009",
+      "subject": "422 error ERR_IDEMPOTENCY_CONFLICT with invoice INV-2026-9956, fix needed",
+      "body": "Error ERR_IDEMPOTENCY_CONFLICT received with HTTP 422 on invoice INV-2026-9956 during request processing. Duplicate or conflicting submission detected, blocking invoice lifecycle progression. Case reference EVALCASE009.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00006"
+    },
+    {
+      "name": "CLS-010",
+      "subject": "Locked out immediately after login attempts, cannot access account",
+      "body": "After entering credentials, the system forces logout. No reset emails received, two-factor always fails to verify. This sudden lockout must be resolved urgently. Case reference EVALCASE010.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00019"
+    },
+    {
+      "name": "CLS-011",
+      "subject": "subscription plan change after downgrade still showing previous charges",
+      "body": "After downgrading my subscription, I noticed the next cycle shows charges as if I never changed the plan. I was expecting the new lower amount but invoice still reflects older higher amount. Please look into this. Case reference EVALCASE011.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00042"
+    },
+    {
+      "name": "CLS-012",
+      "subject": "export report missing expected invoice lines, urgent issue",
+      "body": "Hi, when I download monthly sales export, several invoice entries are missing unexpectedly. This distorts GST computations and reconciliation effort. Need investigation why these records are absent from exports. Case reference EVALCASE012.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00032"
+    },
+    {
+      "name": "CLS-013",
+      "subject": "sync-service ERR_ZOHO_AUTH_EXPIRED error stops syncing invoice INV-2026-3366",
+      "body": "sync-service reports ERR_ZOHO_AUTH_EXPIRED on invoice INV-2026-3366 causing bank feed ingestion failures. Connector breaks sync flow intermittently. Please renew token or advise on recovery. Case reference EVALCASE013.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00011"
+    },
+    {
+      "name": "CLS-014",
+      "subject": "KYC delays affecting invoice INV-2026-6289 in kyc-service, assistance required",
+      "body": "For invoice INV-2026-6289, kyc-service is taking longer than expected to finish business verification and document checks. This is causing process to halt and ledger entry to be deferred. Case reference EVALCASE014.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00009"
+    },
+    {
+      "name": "CLS-015",
+      "subject": "Funds of 51336 INR stuck in payment-service, urgent resolution required",
+      "body": "amount 51336 INR via payment-service not transferring as expected; money debited from bank account but not credited to counterparty. Settlement delay causing operational halt. Please escalate immediately. Case reference EVALCASE015.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00004"
+    },
+    {
+      "name": "CLS-016",
+      "subject": "Pages hang and crash during invoice creation, need quick fix",
+      "body": "System UI becomes unresponsive and crashes when trying to create new invoices. No errors shown, just stuck loading for extended time before browser tab closes on its own. Case reference EVALCASE016.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00016"
+    },
+    {
+      "name": "CLS-017",
+      "subject": "api-gateway causing invoice INV-2026-1693 to stall, requests fail",
+      "body": "Invoice INV-2026-1693 processing hangs at the API gateway layer frequently. Transactions do not proceed and remain in pending state. Please check api-gateway logs and fix backend issues. Case reference EVALCASE017.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00013"
+    },
+    {
+      "name": "CLS-018",
+      "subject": "cannot login to my account, keep getting stuck on verification for INV-2026-0038",
+      "body": "Hi, I am trying to access my invoices and I keep getting logged out or my 2FA never accepts the code. I even tried resetting password but the reset link never comes. Please fix verification process issues so I can see invoice INV-2026-0038. Case reference EVALCASE018.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00022"
+    },
+    {
+      "name": "CLS-019",
+      "subject": "request clarification on latest Ledgerly subscription invoicing",
+      "body": "we noticed double charges for last month and plan upgrade wasn't reflected correctly in recent invoice. please provide detailed breakdown of charges and next cycle details. Case reference EVALCASE019.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00092"
+    },
+    {
+      "name": "CLS-020",
+      "subject": "export fails with ERR_EXPORT_INCOMPLETE from report-service, help needed",
+      "body": "During export attempts for GST returns, I receive error ERR_EXPORT_INCOMPLETE from report-service API. This aborts the process midway. Request debugging this for correct full exports delivery. Case reference EVALCASE020.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00034"
+    },
+    {
+      "name": "CLS-021",
+      "subject": "ledger-service ERR_TALLY_CONN causing ledger sync failures",
+      "body": "ledger-service raises ERR_TALLY_CONN, unable to connect to Tally service for current cycle. Sync fails without retries, no updates pushed to client ledger leading to mismatch. Case reference EVALCASE021.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00018"
+    },
+    {
+      "name": "CLS-022",
+      "subject": "kyc-service failure ERR_GSTIN_INVALID with HTTP 500, system crash",
+      "body": "During GSTIN validation in kyc-service, error ERR_GSTIN_INVALID is triggered with 500 status. This results in crash of document processing pipeline and blocks KYC completion. Case reference EVALCASE022.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00012"
+    },
+    {
+      "name": "CLS-023",
+      "subject": "card declined or funds not transferred for 156207 INR through payment-service",
+      "body": "Attempted to send 156207 INR using payment-service but amount did not reach recipient. Bank shows deduction but no confirmation in system. Urgent investigation required to complete money flow. Case reference EVALCASE023.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00014"
+    },
+    {
+      "name": "CLS-024",
+      "subject": "api-gateway pages not responding properly, loading just hangs",
+      "body": "I'm using the app and when I try to handle some tasks, the pages from api-gateway just freeze. Nothing loads and it becomes unresponsive at random times. I tried different browsers but same. Can you check why service is hanging? Case reference EVALCASE024.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00024"
+    },
+    {
+      "name": "CLS-025",
+      "subject": "api-gateway shows frequent request blocks and delayed webhooks",
+      "body": "Multiple webhook notifications do not arrive and requests frequently blocked at api-gateway. This disrupts invoice status updates and causes delays in downstream processes. Case reference EVALCASE025.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00020"
+    },
+    {
+      "name": "CLS-026",
+      "subject": "cannot login due to repeated failures at auth-service during 2FA, urgent",
+      "body": "After password reset, the 2FA codes generated are always rejected by auth-service and login does not succeed. This locks me out of the system and I cannot access accounting data. Please resolve immediately. Case reference EVALCASE026.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00033"
+    },
+    {
+      "name": "CLS-027",
+      "subject": "subscription payment for Ledgerly renewed without my consent urgently fix",
+      "body": "Why was I charged again for the Ledgerly plan I thought I had canceled? This unauthorized recurring charge is causing serious cash flow problems for my business, please reverse it immediately and confirm cancellation, I need this fixed urgently. Case reference EVALCASE027.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00104"
+    },
+    {
+      "name": "CLS-028",
+      "subject": "report-service throws error ERR_GST_RECONCILE_FAIL 409 in ap-southeast-1",
+      "body": "The report-service in ap-southeast-1 fails to generate GST reconciliation exports. It throws 409 conflict error ERR_GST_RECONCILE_FAIL blocking the data needed for filing. Immediate investigation requested. Case reference EVALCASE028.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00073"
+    },
+    {
+      "name": "CLS-029",
+      "subject": "ledger-service sync fails constantly with Tally and Zoho Books, data not syncing",
+      "body": "When using ledger-service to connect with Tally or Zoho Books, sync operations fail repeatedly without transferring latest invoice and ledger entries. This disruption blocks my accurate bookkeeping and GST filing. Please assist urgently. Case reference EVALCASE029.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00040"
+    },
+    {
+      "name": "CLS-030",
+      "subject": "waited long but no update on account verification, documents pending",
+      "body": "I sent my business documents a while back but nothing changed in account setup. Please tell me kya karu now? This delay is holding my transactions and billing cycle. Case reference EVALCASE030.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00015"
+    },
+    {
+      "name": "CLS-031",
+      "subject": "Inbound collections and settlements delayed, ledger entries missing",
+      "body": "Receipts expected to reflect in ledger are not showing for last 48 hours. This is causing mismatch in account balances. Please assist in checking settlement and reconciliation flows. Case reference EVALCASE031.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00017"
+    },
+    {
+      "name": "CLS-032",
+      "subject": "app keeps freezing and timeouts occur when I try to work, very frustrating",
+      "body": "Hi team, the app is unresponsive many times during my usage—sometimes it crashes or hangs without loading pages. This makes me lose time and I can’t finish updating invoices or send requests. Please look into this matter. Case reference EVALCASE032.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00027"
+    },
+    {
+      "name": "CLS-033",
+      "subject": "ledger app crashes when sending invoices, no error message",
+      "body": "while creating multiple gst invoices, the app suddenly shuts down without warning and unsaved items are lost. logs do not show explicit errors. needs urgent attention or workaround. Case reference EVALCASE033.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00096"
+    },
+    {
+      "name": "CLS-034",
+      "subject": "cannot access account due to repeated login issues, need urgent help",
+      "body": "I have been locked out multiple times due to session expiry or errors and have not received reset instructions clearly. This causes big trouble in tracking finance tasks. Request quick resolution to restore access. Case reference EVALCASE034.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00039"
+    },
+    {
+      "name": "CLS-035",
+      "subject": "plan switched but invoices look wrong, please help asap",
+      "body": "I recently changed the subscription plan on Ledgerly for my service but the invoices generated for my customers don't look correct, amounts seem off or duplicated, not sure what happened but I need this fixed quickly before it causes any issue with my clients, please check and update me quickly. Case reference EVALCASE035.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00121"
+    },
+    {
+      "name": "CLS-036",
+      "subject": "invoice INV-2026-0337 syncing incomplete with sync-service",
+      "body": "Using sync-service for invoice INV-2026-0337 and notice that some details are missing or doubled up in exported reports causing GST filing discrepancies. Please rectify at earliest. Case reference EVALCASE036.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00077"
+    },
+    {
+      "name": "CLS-037",
+      "subject": "sync-service returns 403 err_tally_conn on invoice INV-2026-8617",
+      "body": "sync-service failed to communicate with Tally connector while processing invoice INV-2026-8617, HTTP 403 ERR_TALLY_CONN returned. Logs show forbidden access error, need resolution ASAP. Case reference EVALCASE037.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00041"
+    },
+    {
+      "name": "CLS-038",
+      "subject": "need help with completing initial account setup & document verification process",
+      "body": "I have submitted KYC documents but have not received confirmation or approval yet. Cannot proceed with invoicing or collection as account setup feels incomplete from my side. Please update on what else is pending for activation. Case reference EVALCASE038.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00026"
+    },
+    {
+      "name": "CLS-039",
+      "subject": "kya karu, money not leaving account as expected? gateway is just timing out",
+      "body": "Hello team, I tried sending money to my supplier but the system just halts and doesn't get through. It's very frustrating because I see the initiating step but no confirmation, also not sure if the transaction was even attempted. Please look into this issue urgently. Case reference EVALCASE039.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00021"
+    },
+    {
+      "name": "CLS-040",
+      "subject": "report-service ERR_QUERY_TIMEOUT with HTTP 503 blocking report generation",
+      "body": "Reports fail to load with error code ERR_QUERY_TIMEOUT, HTTP status 503. System log shows request IDs timing out. Need insights into this backend issue as it stops generating critical monthly summaries. Case reference EVALCASE040.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00028"
+    },
+    {
+      "name": "CLS-041",
+      "subject": "rate limit errors causing webhook failures in account sync",
+      "body": "webhook calls fail repeatedly with status 429 due to throttling, disrupting ledger updates and invoice status changes. logs attached. recommend increasing thresholds or alternative suggestions. Case reference EVALCASE041.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00098"
+    },
+    {
+      "name": "CLS-042",
+      "subject": "session expires immediately after login, cannot stay signed in",
+      "body": "I log in but system logs me out in seconds, cannot navigate or do tasks. No emails received for password or code resets, please help restore access. Case reference EVALCASE042.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00049"
+    },
+    {
+      "name": "CLS-043",
+      "subject": "changed plan a few days ago but customers got weird invoices",
+      "body": "Hello, I switched to a new subscription plan on Ledgerly and since then the invoices sent out don't match what I expected. Some have wrong totals or repeat charges, I'm confused and worried customers will complain. What should I do now? Need assistance urgently. Case reference EVALCASE043.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00122"
+    },
+    {
+      "name": "CLS-044",
+      "subject": "exported gst return report missing last month sales entries",
+      "body": "in our latest report extract, invoice numbers 2387 to 2395 are not included. this causes mismatch with our gst submissions. please help confirm if these records were dropped mistakenly. Case reference EVALCASE044.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00083"
+    },
+    {
+      "name": "CLS-045",
+      "subject": "urgent sync failures causing missing ledger entries for bank feed",
+      "body": "Our bank feed is not updating in ledger and syncing to accounts software is disrupted causing discrepancy in reconciliations. We need these transactions reflected correctly right away. Case reference EVALCASE045.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00044"
+    },
+    {
+      "name": "CLS-046",
+      "subject": "unable to complete KYC verification, account still not activated",
+      "body": "I completed the document submission and visited support but my account is yet not verified. This is delaying all my transactions and invoice processing. Kindly expedite this step so I can start using the features fully. Case reference EVALCASE046.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00030"
+    },
+    {
+      "name": "CLS-047",
+      "subject": "wallet collect initiation failed for INV-2026-9663, need help",
+      "body": "I wanted to collect from client using wallet but it shows an error ERR_UPI_COLLECT_FAILED and the collect request expired without success. This is annoying as I cannot complete invoice INV-2026-9663. Kindly assist me with resuming this process. Case reference EVALCASE047.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00023"
+    },
+    {
+      "name": "CLS-048",
+      "subject": "reports take very long to generate, causing delay in my daily work",
+      "body": "Generating GST summary reports and export files is lagging considerably. It freezes at loading stage and sometimes crashes. I am unable to meet deadlines due to these interface delays. Please advise or fix. Case reference EVALCASE048.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00029"
+    },
+    {
+      "name": "CLS-049",
+      "subject": "api-gateway returns 429 errors when checking invoices",
+      "body": "When submitting multiple requests to api-gateway endpoint for invoice status checks, HTTP 429 Too Many Requests errors occur causing delayed processing and failures to fetch current statuses, block quota seems insufficient, please suggest mitigation. Case reference EVALCASE049.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00114"
+    },
+    {
+      "name": "CLS-050",
+      "subject": "auth-service causing repeated logouts and session expiry",
+      "body": "Sessions expire repeatedly forcing re-login. auth-service seems unstable. Interrupts workflow severely, please check session management immediately. Case reference EVALCASE050.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00050"
+    },
+    {
+      "name": "CLS-051",
+      "subject": "error ERR_CARD_ON_FILE_EXPIRED seen on payment-service invoice attempts",
+      "body": "While trying to process subscription invoices this month, the payment-service keeps showing error ERR_CARD_ON_FILE_EXPIRED during merchant runs. Please advise on card update procedures so our subscription charges don’t fail next month. Case reference EVALCASE051.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00133"
+    },
+    {
+      "name": "CLS-052",
+      "subject": "sync-service exports missing entries and duplicate invoice numbers",
+      "body": "exported statement from sync-service for gst return includes duplicate entries for invoice INV-1834 and omits totals for invoice INV-1837. totals do not reconcile with ledger balance. assistance needed. Case reference EVALCASE052.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00086"
+    },
+    {
+      "name": "CLS-053",
+      "subject": "ledger-service error 500 ERR_ZOHO_AUTH_EXPIRED on sync attempt",
+      "body": "Received HTTP 500 from ledger-service with ERR_ZOHO_AUTH_EXPIRED while syncing Zoho Books data. Sync halted and needs token renewal or fix to continue processing. Case reference EVALCASE053.",
+      "expectedCategory": "INTEGRATION",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00046"
+    },
+    {
+      "name": "CLS-054",
+      "subject": "KYC verification no update since submission, documentation review pending?",
+      "body": "I completed KYC and provided all necessary documents 3 days ago but status still shows as pending. This holds back my account activation and business usage. Please inform me what is missing or the expected timeline. Case reference EVALCASE054.",
+      "expectedCategory": "ONBOARDING",
+      "expectedTeam": "Customer Success",
+      "sourceId": "GEN-00036"
+    },
+    {
+      "name": "CLS-055",
+      "subject": "urgent: money not leaving account during checkout, gateway not working",
+      "body": "Team, every time I try to send money for invoices, the process never completes the final step. It stays in pending and the bank doesn't reflect outbound transactions. This delay keeps my vendors waiting badly. Please prioritize. Case reference EVALCASE055.",
+      "expectedCategory": "PAYMENT",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00025"
+    },
+    {
+      "name": "CLS-056",
+      "subject": "app responsiveness issues causing frustrating delays frequently",
+      "body": "Using the platform, the interface freezes and times out intermittently. This interrupts workflow especially during invoice creation and ledger sync. Need recommendation on how to reduce these interruptions. Case reference EVALCASE056.",
+      "expectedCategory": "PERFORMANCE",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00038"
+    },
+    {
+      "name": "CLS-057",
+      "subject": "webhook never fired for my recent transaction, need fix",
+      "body": "Attempted to trigger transaction process using your SDK. The endpoint returns HTTP 429 Too Many Requests errors repeatedly at 2024-06-15T12:34:56Z with request ID 89f7c. Additionally, the webhook for transaction update never delivered to our listener for last two requests. Case reference EVALCASE057.",
+      "expectedCategory": "API",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00143"
+    },
+    {
+      "name": "CLS-058",
+      "subject": "api-gateway causing login disruptions and session timeout",
+      "body": "Login sessions stop working intermittently due to issues with api-gateway, forcing repeated login attempts. Please investigate session token handling. Case reference EVALCASE058.",
+      "expectedCategory": "AUTH",
+      "expectedTeam": "Platform",
+      "sourceId": "GEN-00056"
+    },
+    {
+      "name": "CLS-059",
+      "subject": "ERR_PRORATION_MISMATCH found on payment-service for subscription adjustments",
+      "body": "During my subscription plan changes, payment-service APIs return ERR_PRORATION_MISMATCH errors resulting in no invoice updates. I need logs and solutions quickly to fix subscription handling on our dev environment. Case reference EVALCASE059.",
+      "expectedCategory": "BILLING",
+      "expectedTeam": "Payments",
+      "sourceId": "GEN-00136"
+    },
+    {
+      "name": "CLS-060",
+      "subject": "ledger-service export inconsistencies: week 12 missing ledger lines",
+      "body": "ledger-service report export for week 12 excludes multiple credit entries, totals off by ₹52,000. repeated attempts to refresh data yield no correction. please verify ledger accuracy. Case reference EVALCASE060.",
+      "expectedCategory": "DATA",
+      "expectedTeam": "Integrations",
+      "sourceId": "GEN-00090"
+    }
+  ]
+}
