@@ -1007,13 +1007,18 @@
                 "exec": [
                   "pm.test('200 in every state, including failure', () => pm.response.to.have.status(200));",
                   "const b = pm.response.json();",
-                  "pm.test('status is one of the four', function () {",
-                  "    pm.expect(b.status).to.be.oneOf(['PENDING', 'PROCESSING', 'READY', 'UNAVAILABLE']);",
+                  "pm.test('status is one of the three the endpoint actually returns', function () {",
+                  "    pm.expect(b.status).to.be.oneOf(['PROCESSING', 'READY', 'UNAVAILABLE']);",
                   "});",
                   "if (b.status === 'READY') {",
                   "    pm.test('the model returned signals, not a priority', function () {",
                   "        pm.expect(b.signals).to.be.an('object');",
                   "        pm.expect(b.signals).to.not.have.property('priority');",
+                  "    });",
+                  "}",
+                  "if (b.status === 'PROCESSING') {",
+                  "    pm.test('a still-processing response tells the client when to poll again', function () {",
+                  "        pm.expect(b.retryAfterSeconds).to.be.a('number');",
                   "    });",
                   "}"
                 ]
@@ -1036,8 +1041,33 @@
                 "{{ticketId}}",
                 "retriage"
               ]
+            },
+            "description": "Queues a fresh triage attempt without touching the ticket's version -- this starts a background job rather than mutating the ticket, so there is no ETag to conflict on."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202, or a documented refusal', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([202, 409, 429]);",
+                  "});",
+                  "if (pm.response.code === 202) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('points at the analysis resource to poll', function () {",
+                  "        pm.expect(b.links.analysis).to.include('/analysis');",
+                  "    });",
+                  "}",
+                  "if (pm.response.code === 409) {",
+                  "    pm.test('409 means a triage is already queued', function () {",
+                  "        pm.expect(pm.response.json().errorCode).to.eql('TRIAGE_IN_PROGRESS');",
+                  "    });",
+                  "}"
+                ]
+              }
             }
-          }
+          ]
         },
         {
           "name": "Priority rationale",
@@ -1085,6 +1115,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
               }
             ],
             "url": {
@@ -1103,7 +1137,27 @@
               "raw": "{\n  \"priority\": \"P1\",\n  \"reason\": \"Enterprise customer with a contractual 1-hour response on payment faults.\"\n}"
             },
             "description": "The only human path to a priority. Every override is stored as a label, which is what makes the policy improvable rather than merely arguable."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, or 428 if the collection has no etag yet', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 428]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('the priority actually changed', function () {",
+                  "        pm.expect(b.priority).to.eql('P1');",
+                  "    });",
+                  "}",
+                  "if (pm.response.headers.get('ETag')) pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Request draft",
@@ -2346,7 +2400,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/admin/eval/runs?page=0&size=25",
+              "raw": "{{baseUrl}}/admin/eval/runs?suite=CLASSIFICATION&limit=25",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2357,21 +2411,16 @@
               ],
               "query": [
                 {
-                  "key": "page",
-                  "value": "0"
-                },
-                {
-                  "key": "size",
-                  "value": "25"
-                },
-                {
                   "key": "suite",
-                  "value": "GROUNDING",
-                  "disabled": true
+                  "value": "CLASSIFICATION"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
                 }
               ]
             },
-            "description": "Claim-level and response-level groundedness are reported side by side. The gap between them is the finding — response-level averaging hides unsupported claims inside otherwise-good answers."
+            "description": "One classification suite exists so far (Phase 6); GROUNDING and REFUSAL arrive with the drafting suite in Phase 7. The response is a plain array, newest run first -- accuracy and macroF1 are reported separately because accuracy alone hides a single dead category behind the other seven's average."
           },
           "event": [
             {
@@ -2379,10 +2428,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const runs = pm.response.json().data || [];",
-                  "pm.test('the refusal gate is all-or-nothing', function () {",
-                  "    runs.filter(r => r.suite === 'REFUSAL' && r.passed).forEach(r => {",
-                  "        pm.expect(r.metrics.refusalRate, `run ${r.id}`).to.eql(1.0);",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const runs = pm.response.json();",
+                  "pm.test('response is a plain array of runs, newest first', function () {",
+                  "    pm.expect(runs).to.be.an('array');",
+                  "});",
+                  "runs.forEach(r => {",
+                  "    pm.test(`run ${r.id} reports both accuracy and macroF1`, function () {",
+                  "        pm.expect(r.metrics.accuracy).to.be.a('number');",
+                  "        pm.expect(r.metrics.macroF1).to.be.a('number');",
                   "    });",
                   "});"
                 ]

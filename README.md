@@ -399,6 +399,131 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 
 ---
 
+## The async pipeline & AI triage
+
+### The dual-write problem, and why a broker does not fix it
+
+```java
+ticketRepository.save(ticket);      // committed
+eventPublisher.publish(event);      // network call — what if this fails?
+// → the ticket exists, is never triaged, silently, forever.
+
+// and the reverse:
+eventPublisher.publish(event);      // succeeded
+ticketRepository.save(ticket);      // transaction rolls back
+// → a worker processes a ticket that does not exist.
+```
+
+Two systems, no shared transaction. A message broker does not close this gap — it
+**is** this gap, with a different vendor name on it. The fix is to make the event a row
+in the same database, written in the same transaction as the ticket, and dispatched
+afterwards: the transactional outbox. `TicketService.create()` inserts the ticket and
+publishes `TICKET_CREATED` in one `@Transactional` method; either both commit or neither
+does.
+
+### Why there is no Kafka, no RabbitMQ
+
+Once the outbox exists, the honest question is what a broker still adds on top of it:
+
+| Requirement | Outbox + `SKIP LOCKED` | + a broker |
+|---|---|---|
+| Durable queueing, at-least-once delivery | ✅ | ✅ |
+| Retry with backoff, dead-letter queue | ✅ `attempts`, `next_attempt_at`, `status=DEAD` | ✅ |
+| Visibility timeout, multi-consumer partitioning | ✅ `locked_until`, `SKIP LOCKED` | ✅ |
+| **Atomic with the domain write** | ✅ | ❌ — still needs the outbox |
+| Operational surface | zero — already have Postgres | one more container, one more failure mode |
+| Fan-out to independent consumer groups, offset replay, cross-service decoupling | ❌ | ✅ |
+
+Peak load here is roughly one ticket a second. None of the three things only a broker
+gives you — independent consumer groups, replay from an arbitrary offset,
+cross-service decoupling — apply at one service and one write per second. A Kafka
+container in `docker-compose.yml` would be an extra failure mode bought for nothing;
+this table is the argument for leaving it out, and it is true regardless of scale until
+the day one of those three rows actually matters.
+
+### Three phases, and the one rule that makes virtual threads safe
+
+```
+tx1  short read    the ticket's text, the active prompt, the tenant's plan
+---  no tx         2–8 seconds: redact → embed → classify
+tx2  short write    analysis, decision, priority, routing, assignment, SLA
+```
+
+A worker must never hold a database connection across the network call. The tempting
+version — one `@Transactional` around the whole method — reads perfectly well and is
+the single most damaging line a worker can contain: the pool caps at ten, ten
+concurrent triages hold all ten connections for the seconds each classification takes,
+and the entire application stops serving HTTP while every unrelated request queues on
+`getConnection()`. The logs show pool exhaustion, which points at Hikari settings; the
+actual cause is a network call sitting inside a transaction, three layers away.
+
+**Virtual threads make this easier to hit, not harder.** A platform-thread pool of eight
+used to cap concurrency at eight almost by accident; virtual threads remove that
+accidental ceiling, so the first real load test after adopting them is the one that
+discovers the transaction was never safe. `TriageWorker` is structured as
+short-read → no-transaction → short-write for exactly this reason, and
+`holdsNoConnectionDuringTheCall` proves it by measuring the **mean**, not the peak,
+active pool connections during five concurrent classifications — the peak is bounded by
+batch size either way and cannot tell a correct implementation from a broken one; the
+mean can, because a held connection stays checked out for the whole simulated network
+delay and a released one does not.
+
+### Signals, never decisions — the whole argument in one sentence
+
+`TriageSignals` has no `priority` field, and a comment in the class, a banner in the
+migration that seeds the prompt, and a table-driven test all say why. The model reports
+what a ticket *says*: its category, whether it claims an outage, whether money is
+involved, how the message is worded. `PriorityPolicy` — a pure function with no Spring,
+no JPA, and no network call anywhere in its dependency graph — turns those observations
+into a priority through eight named, ordered, versioned rules, and returns the full
+trace of what matched and what did not.
+
+That split is what makes `GET /tickets/{id}/priority-rationale` answer a question no
+`"priority": "P2"` field could ever answer: when an agent overrides a decision, did the
+**model misread the ticket**, or is the **policy wrong**? Two different bugs, fixed two
+different ways, and the endpoint's `inputs.fromModel` / `inputs.fromSystem` split is
+built to make the distinction visible rather than argued over. 45 policy tests run in
+under 50ms with no model, no Spring context, and no bill — the cheapest, most exhaustive
+proof in the codebase that this system's most consequential number is not an LLM's
+opinion.
+
+### PII redaction: deterministic, and cached on the redacted text
+
+Every ticket body is redacted before it leaves for a model: card numbers (Luhn-checked),
+Aadhaar and PAN numbers, phone numbers, email addresses, IP addresses and known names all
+become stable placeholders — `«CARD_1»`, `«PERSON_2»` — with the mapping encrypted
+(AES-GCM) and stored per-ticket, so an authorised human can rehydrate the original text
+but nothing else can. Redaction has to be **deterministic**: the embedding cache key is
+a hash of the *redacted* text, and an unstable placeholder means a new cache key on every
+run, a cache that never hits, and an embedding bill quietly double what it should be with
+nothing anywhere reporting the difference.
+
+### What is real and what is a fixture
+
+Every number below marked **measured** came from this machine's test suite against the
+stubbed provider; none of it is a live-model benchmark, and none of it is presented as
+one.
+
+| | |
+|---|---|
+| Agent load distribution, 50 tickets / 5 agents, real triage pipeline | **measured** — `[10, 10, 10, 10, 10]`, skew **0** |
+| `SKIP LOCKED` vs. plain `FOR UPDATE`, 8 routers / 10 agents, lock held under simulated work | **measured** — 267 ms, loads `[1,1,1,1,1,1,1,1,0,0]` vs. 907 ms, loads `[8,0,0,0,0,0,0,0,0,0]` |
+| Mean / peak Hikari connections during 5 concurrent classifications | **measured** — mean **0.97**, peak **5** (pool max 10) |
+| Cost of one classification call | **measured, against the stub's fixed token counts** — 744 micros (≈ $0.00074), from published `gpt-4.1-mini` list pricing applied to the stub's `1187`/`168` token response |
+| Classification eval suite, 60 cases, stubbed provider | **measured, and honestly not meaningful as an accuracy number** — accuracy 1.0, macroF1 1.0, because the stub is told the right answer for a "correct" run by construction |
+| Whole suite from an empty database | **measured** — 475 tests, 0 failures, ~14 minutes |
+| Triage latency, cost per ticket against a live model, classification accuracy against real tickets | **not measured** — the provider here is a WireMock stub with fixed delays and fixed token counts; a number from it would describe the fixture, not the system |
+
+The eval suite's own honesty is worth stating plainly, because it is easy to
+over-claim: `ClassificationEvalTest` proves the harness works end to end — the policy
+gate, redaction, cost accounting, scoring, persistence and the gate itself all run for
+real, and one test deliberately degrades the classifier and watches the gate fail. What
+none of it proves is that the prompt is good. That number comes only from a run
+against a live model, and `docs/planning` records this as the honest boundary rather
+than a promise about model quality this repository cannot back up with a stub.
+
+---
+
 ## Build status
 
 **Phase 1 — Environment Setup · ✅ complete** (`phase-1-complete`)
@@ -530,7 +655,7 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 > were claimed by a query comparing against the database's, so a due rung went unclaimed
 > whenever the container drifted — now every timestamp comes from `DatabaseClock`.
 
-**Phase 6 — Async Pipeline & AI Triage · 🚧 6A–6C complete, 6D in progress**
+**Phase 6 — Async Pipeline & AI Triage · ✅ complete** (`phase-6-complete`)
 
 | Task | |
 |---|---|
@@ -546,7 +671,11 @@ concurrency test is flaky, gets `@Disabled` within a week, and then protects not
 | 26–27 `/priority-rationale`, `/priority-override` | ✅ inputs split `fromModel` / `fromSystem`; override retargets the clocks |
 | 28 SLA start moved into triage | ✅ **plus the fallback sweeper for the hole that opened** |
 | 29 `/retriage` | ✅ new attempt, old analysis kept, `409` while one is queued |
-| 30–35 Failure-mode and distribution tests, eval harness, tag | ⏳ Phase 6D |
+| 30–31 Duplicate-claim, crash-redelivery | ✅ one analysis, one model call, no partial state under any crash point |
+| 32 Load-distribution test | ✅ skew **0** over the fixed run — `[10,10,10,10,10]`; `@Disabled` negative control measures `SKIP LOCKED` against plain `FOR UPDATE` |
+| 33 Failure-mode tests | ✅ **a full ticket lifecycle completes with the provider 503-ing on every call** |
+| 34 Classification eval harness | ✅ 60 hand-labelled cases, accuracy + macro-F1, committed baseline gates `mvn verify`, watched failing on purpose |
+| 35 Cleanup, README, Postman, tag | ✅ this section |
 
 **The argument, in one endpoint.** `GET /tickets/{id}/priority-rationale` returns the
 model's observations and the system's facts as two separate objects, then the eight
@@ -590,8 +719,17 @@ model misread the ticket or the policy is wrong.
 > `@TenantId` does not reach native SQL and "safe because every caller checks first" holds
 > only until the first caller that does not.
 
-**Next: Phase 6D — duplicate-claim and crash-redelivery tests, load distribution, the
-minimal eval harness, and the phase tag.**
+> **One flake, and the fix that actually mattered.** The load-distribution test lost
+> tickets to "no agent available" once, in a long full-suite run, never in isolation —
+> five workers claiming five agents at once is the tightest possible ratio for
+> `SKIP LOCKED`, and `AgentAssigner`'s row lock was held through several *more* writes
+> (SLA records, event rows) after the claim before the transaction committed. Moving the
+> claim to be the last write before commit shrinks that window to acquire → increment →
+> commit; held clean across five stress runs and a full verify afterwards. Worth stating
+> plainly: this was found by a test failing once in fourteen minutes and not chased away
+> by re-running it until it passed.
+
+**Next: Phase 7 — knowledge base, retrieval and grounded draft replies.**
 
 Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with
