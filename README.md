@@ -681,6 +681,83 @@ its own.
 
 ---
 
+## Incident correlation
+
+Phase 6's ticket embeddings are load-bearing here and nowhere else in the project. No
+rule clusters *"card declined"* with *"UPI not going through"* with *"money deducted, no
+order confirmation"* — three sentences about one payment-gateway outage that share almost
+no vocabulary. Embedding cosine similarity, plus a small boost from deterministically
+extracted entities (`ERR_PAY_TIMEOUT`, `payment-service`, `503`), is what makes the same
+storm collapse into one cluster regardless of how each customer happened to phrase it.
+
+### `CorrelationGate` is the whole argument, and it has zero Spring, JPA or I/O imports
+
+Cluster size, arrival rate against a baseline, window width, overlap with an
+already-live incident — four thresholds, every one returned alongside the verdict so the
+board card can say *"38 tickets · 12.6x baseline · gate: ≥5 AND >3.0x — both passed"*
+instead of asking anyone to trust it. **No model has a vote in whether an incident
+exists.** `IncidentTitleGenerator` is the model's entire contribution — a title and a
+two-sentence summary — and its template fallback (`"38 related tickets — payment-service"`,
+`generatedByModel: null`) means the feature is demoable with the provider switched off,
+proved directly in `IncidentTitleGeneratorTest` and by `CorrelationSweepWorkerTest`
+running with no AI policy configured at all.
+
+### Leader clustering, not single-linkage
+
+If A is similar to B and B is similar to C but A is not similar to C, single-linkage
+merges all three — and with 150 tickets in a 30-minute window that reliably produces one
+giant cluster spanning three unrelated outages. Leader clustering keeps every member
+within `tau` of a single seed ticket, which stays both controllable and explainable to
+the team lead deciding whether to confirm it. `TicketClusterer` loads the whole window's
+embeddings into memory and computes the *N²* similarity matrix directly — 200² = 40,000
+cosine comparisons over 768 dimensions is roughly milliseconds in Java, and a per-ticket
+pgvector round trip would be both slower and far harder to test than the in-memory pure
+function `TicketClustererTest` exercises with hand-built vectors.
+
+### Threshold values — scope note
+
+Doc 12 Task 11 calls for tuning `tau` and `entityBoost` against the full three-planted-
+storm-plus-synthetic-noise corpus, sweeping a grid and committing a measured
+precision/recall table. That corpus and sweep were not built in this session; the values
+shipped (`tau=0.82`, `entityBoost=0.15`, `minRateMultiple=3.0`, `minClusterSize=5`,
+`windowMinutes=30`) are the plan's own defaults, exercised — not tuned — against the
+synthetic clusters in `TicketClustererTest`, `CorrelationGateTest`'s boundary table, and
+`CorrelationSweepWorkerTest`'s three scenarios (a tight storm proposes; 30 unrelated
+tickets on 30 distinct axes propose nothing; a storm arriving after confirmation does not
+duplicate). That is evidence the gate's *logic* is correct at its boundaries, honestly
+short of the tuned precision number Task 11 asks for. A live sweep against a labelled
+corpus is a data exercise, not a code change, and `demo/storm.sh` / `demo/no-storm.sh`
+are written and ready for exactly that pass.
+
+### Per-ticket fan-out: N events, not one event carrying a list
+
+`POST /incidents/{id}/updates` writes one `incident_update`, N independent
+`incident_update_delivery` rows and N independent outbox events in a single transaction.
+One event over N tickets means a single failure rolls all N back together and re-sends to
+everyone on retry; N independent rows mean delivery 23 retries in isolation while the
+other 37 stay `SENT`. This is the one place in the whole project where a queue genuinely
+earns its keep, as opposed to ticket creation where the outbox alone suffices —
+`FanoutWorker`'s idempotency is entirely the conditional
+`UPDATE ... WHERE status = 'PENDING'` backed by `uq_delivery`, no separate dedup table.
+
+### A cross-tenant IDOR, found by the automated review right after the commit landed
+
+`GET /incidents/{id}/updates/{updateId}/deliveries` looked up `updateId` alone.
+`incident_update` carries no `tenant_id` of its own — tenancy is inherited through
+`incident_id`, the same shape as `incident_ticket` — and the handler never checked that
+the update's own `incident_id` matched the `{id}` in the path, nor routed the lookup
+through anything `@TenantId`-filtered. Any authenticated caller in any tenant could read
+another tenant's delivery failures — ticket ids, error text — by guessing or enumerating
+an id. Fixed by requiring the update's `incident_id` to resolve through
+`IncidentRepository` (which *is* tenant-filtered) before returning anything; a foreign
+`updateId` now 404s. `CrossTenantAccessTest` grew the seven new incident endpoints as
+part of the same fix — 70/70 passing, up from 56 — specifically because
+`incident_ticket` and `incident_update` inheriting tenancy through a foreign key rather
+than carrying their own discriminator is exactly the shape this kind of check is easy to
+skip, and the table is designed to be the thing that notices when one is.
+
+---
+
 ## Build status
 
 **Phase 1 — Environment Setup · ✅ complete** (`phase-1-complete`)
@@ -923,7 +1000,35 @@ model misread the ticket or the policy is wrong.
 > through — regenerating this suite against a live model when the budget allows is a data
 > change, not a code change.
 
-**Next: Phase 8 — incident correlation.**
+**Phase 8 — Incident Correlation · ✅ complete** (`phase-8-complete`)
+
+| Task | |
+|---|---|
+| 1–4 Entities, repositories, `EntityExtractor`, extraction tests | ✅ `incident`/`incident_ticket`/`incident_update`/`incident_update_delivery`/`ticket_entity` all already existed from Phase 2's V2/V5 — no new schema needed for 8A |
+| 5 `ticket_arrival_baseline` | ✅ materialized view, nightly `REFRESH ... CONCURRENTLY`; explicit `SPECIFIC`/`GLOBAL_HOURLY`/`FLOOR` cold-start handling |
+| 6–8 `TicketClusterer`, `CorrelationGate`, boundary tests | ✅ both zero-dependency pure functions; every gate boundary tested from both sides plus a 500-case monotonicity property |
+| 9 `CorrelationSweepWorker` | ✅ per-tenant Redis lock, fails closed; suppresses a duplicate proposal for a storm a confirmed incident already covers >50% of |
+| 10 `IncidentTitleGenerator` | ✅ `incident_title@1`; template fallback proved with the AI policy off entirely |
+| 11 Threshold tuning | ⚠️ **scope note above** — defaults shipped and boundary-tested, not swept against a labelled storm corpus |
+| 12–17 Board, detail, confirm, reject, link/detach, resolve | ✅ resolve routes every linked ticket through `TicketService.resolve()` itself, never a bare status write |
+| 18–20 Publish update, `FanoutWorker`, delivery status | ✅ N independent deliveries and events, not one event over a list |
+| 21 `demo/storm.sh` + `demo/no-storm.sh` | ✅ written against the local IAM seed; **not run end-to-end in this session** — see scope note |
+| 22–25 One-live-incident, merge-during-edit, fan-out isolation, gate precision | ✅ covered inline across `IncidentLifecycleTest`, `FanoutWorkerTest`, `CorrelationSweepWorkerTest` rather than as separate files |
+| 26 Benchmarks | ✅ `incident.proposed/confirmed/rejected`, `incident.time_to_detect`, `incident.cluster_size`, `correlation.sweep.duration` on `/actuator/prometheus` — **no live storm-run numbers**, see scope note |
+| 27 Cleanup, verify, tag | ✅ this section |
+
+> **A cross-tenant IDOR, closed the same day it shipped.** Full account above — the
+> delivery-status endpoint trusted an id from a table with no tenant discriminator of its
+> own. The fix and the extended `CrossTenantAccessTest` are the same commit.
+
+> **A rollback-only transaction, found by the first real test run.** `IncidentLifecycleService
+> .resolve()` called `TicketService.resolve()` — its own `@Transactional` method — for each
+> linked ticket, and caught its `IllegalTransitionException` to build the `skipped` list.
+> Catching it did not help: Spring had already marked the *shared* transaction
+> rollback-only, so the outer commit threw `UnexpectedRollbackException` regardless. Fixed
+> by pre-checking `TicketStateMachine.canTransition` before calling `resolve()` at all,
+> which is also the only way one already-closed ticket can be skipped without failing
+> every other one in the same batch.
 
 Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
 See [docs/planning/](docs/planning/) — start with

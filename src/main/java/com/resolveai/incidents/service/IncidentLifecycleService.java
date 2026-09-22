@@ -54,6 +54,7 @@ public class IncidentLifecycleService {
     private final IncidentEvalCaseWriter evalCases;
     private final TicketService ticketService;
     private final DatabaseClock clock;
+    private final io.micrometer.core.instrument.MeterRegistry metrics;
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     public IncidentLifecycleService(IncidentRepository incidents,
@@ -61,7 +62,8 @@ public class IncidentLifecycleService {
                                     TicketRepository tickets, SlaLifecycle sla,
                                     TicketEventRecorder eventRecorder,
                                     IncidentEvalCaseWriter evalCases, TicketService ticketService,
-                                    DatabaseClock clock) {
+                                    DatabaseClock clock,
+                                    io.micrometer.core.instrument.MeterRegistry metrics) {
         this.incidents = incidents;
         this.incidentTickets = incidentTickets;
         this.tickets = tickets;
@@ -70,6 +72,7 @@ public class IncidentLifecycleService {
         this.evalCases = evalCases;
         this.ticketService = ticketService;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public Incident requireVisible(Long incidentId) {
@@ -121,6 +124,7 @@ public class IncidentLifecycleService {
 
         log.info("Incident {} confirmed by user {}: {} ticket(s), {} clock(s) paused",
                 incident.getReference(), principal.userId(), links.size(), paused);
+        metrics.counter("incident.confirmed").increment();
 
         return new ConfirmIncidentResponse(incident.getId(), incident.getStatus().name(),
                 new ConfirmIncidentResponse.Effects(links.size(), paused, links.size(), true),
@@ -156,6 +160,7 @@ public class IncidentLifecycleService {
 
         log.info("Incident {} rejected by user {}: {}", incident.getReference(),
                 principal.userId(), reason);
+        metrics.counter("incident.rejected").increment();
     }
 
     /** Manual link. {@code uq_incident_ticket_live} is the real guard; this is the readable error. */

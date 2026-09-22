@@ -1524,9 +1524,6 @@ paths:
             items: { $ref: '#/components/schemas/IncidentStatus' }
           style: form
           explode: true
-        - name: since
-          in: query
-          schema: { type: string, format: date-time }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Size'
       responses:
@@ -1548,26 +1545,32 @@ paths:
                     reference: INC-204
                     title: UPI and card payment failures at checkout
                     status: CONFIRMED
-                    detectionMethod: CLUSTER
                     linkedTicketCount: 38
-                    arrivalRateMultiple: 12.6
                     timeToDetectSeconds: 37
-                    firstTicketAt: '2026-09-20T14:02:11Z'
-                    detectedAt: '2026-09-20T14:02:48Z'
-                    confirmedAt: '2026-09-20T14:04:02Z'
-                    resolvedAt: null
+                    detection:
+                      method: CLUSTER
+                      clusterSizeAtDetection: 38
+                      arrivalRateMultiple: 12.6
+                      baselineNote: Baseline 3 tickets for Friday 14:00, 4-week average
+                      gateThresholds: { minClusterSize: 5, minRateMultiple: 3.0, windowMinutes: 30 }
+                      firstTicketAt: '2026-09-20T14:02:11Z'
+                      detectedAt: '2026-09-20T14:02:48Z'
+                      timeToDetectSeconds: 37
                   - id: 413
                     reference: INC-205
                     title: Login failures after password reset
                     status: PROPOSED
-                    detectionMethod: CLUSTER
                     linkedTicketCount: 22
-                    arrivalRateMultiple: 5.4
                     timeToDetectSeconds: 61
-                    firstTicketAt: '2026-09-20T16:40:00Z'
-                    detectedAt: '2026-09-20T16:41:01Z'
-                    confirmedAt: null
-                    resolvedAt: null
+                    detection:
+                      method: CLUSTER
+                      clusterSizeAtDetection: 22
+                      arrivalRateMultiple: 5.4
+                      baselineNote: Baseline 4 tickets for Sunday 16:30, 4-week average
+                      gateThresholds: { minClusterSize: 5, minRateMultiple: 3.0, windowMinutes: 30 }
+                      firstTicketAt: '2026-09-20T16:40:00Z'
+                      detectedAt: '2026-09-20T16:41:01Z'
+                      timeToDetectSeconds: 61
                 pagination: { size: 25, nextCursor: null, hasNext: false }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1592,6 +1595,10 @@ paths:
 
         `timeToDetectSeconds: 37` is a headline metric and it comes straight out of the
         schema rather than a stopwatch.
+
+        `detachedTickets` keeps the soft-detached links visible — a ticket that fell out of
+        the storm is still part of the record — separately from the currently-live
+        `linkedTickets`.
       responses:
         '200':
           description: Incident detail.
@@ -1618,6 +1625,7 @@ paths:
                 titleGeneratedBy: gpt-4.1-mini
                 confirmedBy: { id: 1198, fullName: Sana Qureshi }
                 confirmedAt: '2026-09-20T14:04:02Z'
+                rejectedReason: null
                 linkedTicketCount: 38
                 linkedTickets:
                   - ticketId: 88301
@@ -1625,7 +1633,8 @@ paths:
                     subject: card declined at checkout
                     linkConfidence: 0.91
                     linkedAt: '2026-09-20T14:02:48Z'
-                    linkedBy: null
+                    detachedAt: null
+                detachedTickets: []
                 updates:
                   - id: 77
                     body: We have identified an issue with our payment gateway and are working with the provider.
@@ -1633,7 +1642,7 @@ paths:
                     authorName: Sana Qureshi
                     publishedAt: '2026-09-20T14:09:00Z'
                     delivery: { total: 38, sent: 38, pending: 0, failed: 0 }
-                _etag: W/"4"
+                etag: W/"4"
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404':
@@ -1659,10 +1668,20 @@ paths:
 
         Every confirm and every reject writes an `eval_case` row, which is how the correlation
         gate acquires ground truth from ordinary use rather than from a labelling session.
-
-        TODO: schema. Body `{ pauseResolutionClocks }`, default `true`.
       parameters:
         - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmIncidentRequest' }
+            examples:
+              default:
+                summary: Omit the body entirely — clocks pause by default
+                value: {}
+              keepClocksRunning:
+                summary: Confirm without pausing linked tickets' resolution clocks
+                value: { pauseResolutionClocks: false }
       responses:
         '200':
           description: Confirmed, with the effects enumerated.
@@ -1670,6 +1689,7 @@ paths:
             ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
+              schema: { $ref: '#/components/schemas/ConfirmIncidentResponse' }
               example:
                 id: 412
                 status: CONFIRMED
@@ -1678,14 +1698,29 @@ paths:
                   resolutionClocksPaused: 38
                   firstResponseClocksUnaffected: 38
                   evalLabelRecorded: true
-                _etag: W/"5"
+                etag: W/"5"
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409':
-          description: '`INVALID_INCIDENT_STATE` — only a PROPOSED incident can be confirmed. Or `VERSION_CONFLICT`.'
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — only a PROPOSED incident can be confirmed. Or `VERSION_CONFLICT`, when `If-Match` is stale.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/invalid-incident-state
+                title: Invalid incident state
+                status: 409
+                errorCode: INVALID_INCIDENT_STATE
+                detail: Incident 412 is CONFIRMED and cannot be confirmed again.
+                instance: /api/v1/incidents/412/confirm
+                timestamp: '2026-09-20T14:04:02Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
 
   /incidents/{id}/reject:
     parameters:
@@ -1694,15 +1729,36 @@ paths:
       tags: [Incidents]
       operationId: rejectIncident
       summary: Reject a proposed incident, with a reason
-      description: 'TODO: schema. Body `{ reason }`. Unlinks every ticket, resumes their resolution clocks, and writes a negative eval label.'
+      description: |
+        Unlinks every ticket, resumes their resolution clocks, and writes a negative eval
+        label. `reason` is required and free text — it is the record of *why* a human
+        overruled the gate, which is what makes a false-positive rate measurable later.
       parameters:
         - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectIncidentRequest' }
+            example:
+              reason: These are unrelated tickets from a scheduled maintenance window, not a real correlated outage.
       responses:
         '200':
-          description: Rejected.
+          description: Rejected. No body.
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/VersionConflict' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — only a PROPOSED incident can be rejected. Or `VERSION_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
 
   /incidents/{id}/tickets:
     parameters:
@@ -1717,13 +1773,24 @@ paths:
 
         `uq_incident_ticket_live` permits exactly one live link per ticket; a previously
         detached link does not block a new one.
-
-        TODO: schema. Body `{ ticketId }`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LinkTicketRequest' }
+            example:
+              ticketId: 88301
       responses:
         '201':
-          description: Linked.
+          description: Linked. No body.
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND` or `TICKET_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '409':
           description: '`TICKET_ALREADY_LINKED` — the ticket has a live link to another incident.'
           content:
@@ -1756,6 +1823,56 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /incidents/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/IncidentId'
+    post:
+      tags: [Incidents]
+      operationId: resolveIncident
+      summary: Resolve the incident and optionally its linked tickets
+      description: |
+        Resumes every paused resolution clock. `resolveLinkedTickets` defaults to `true`,
+        which also moves every still-open linked ticket to `RESOLVED`; ticket resolution
+        failures do not fail the incident resolve — they come back in `skipped`.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveIncidentRequest' }
+            example:
+              resolutionNote: Payment gateway provider rolled back the bad deploy at 14:32 IST. All retries succeeding since.
+              resolveLinkedTickets: true
+      responses:
+        '200':
+          description: Resolved, with any tickets that could not be auto-resolved named in `skipped`.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolveIncidentResponse' }
+              example:
+                id: 412
+                status: RESOLVED
+                resolvedTicketCount: 37
+                skipped: [88322]
+                etag: W/"6"
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`INVALID_INCIDENT_STATE` — a `REJECTED` or already-`RESOLVED` incident cannot be resolved again. Or `VERSION_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '428': { $ref: '#/components/responses/PreconditionRequired' }
+
   /incidents/{id}/updates:
     parameters:
       - $ref: '#/components/parameters/IncidentId'
@@ -1764,24 +1881,44 @@ paths:
       operationId: publishIncidentUpdate
       summary: Publish an update; fans out to every linked ticket
       description: |
-        `202` because the fan-out is **queued**, not complete. The `deliveries` link is the
-        status resource.
+        `202` because the fan-out is **queued**, not complete. The `links.deliveries` link is
+        the status resource.
 
         **Fan-out is N independent, individually-retryable deliveries, not one broadcast.**
         Delivery 23 failing means ticket 88322 retries and the other 37 customers are not
         re-notified. `uq_delivery (incident_update_id, ticket_id)` guarantees that a
         redelivered outbox event cannot double-message a customer.
 
-        `Idempotency-Key` is **required** here because this sends messages to real people.
+        `visibility` defaults to `INTERNAL` — a message is team-facing until someone
+        deliberately marks it `PUBLIC` for fan-out to customers.
 
-        TODO: schema. Body `{ body, visibility }`.
+        `Idempotency-Key` is **required** here because this sends messages to real people.
+        `force: true` bypasses the `TOO_MANY_LINKED_TICKETS` guard on an incident linked to
+        more than 500 tickets, so an accidental fan-out to thousands of customers is not the
+        default.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublishUpdateRequest' }
+            examples:
+              publicUpdate:
+                summary: Customer-facing status update
+                value:
+                  body: We have identified an issue with our payment gateway and are working with the provider.
+                  visibility: PUBLIC
+              internalNote:
+                summary: Team-only note — visibility omitted, defaults to INTERNAL
+                value:
+                  body: Provider confirmed a bad deploy on their end; rollback in progress.
       responses:
         '202':
           description: Queued.
           content:
             application/json:
+              schema: { $ref: '#/components/schemas/PublishUpdateResponse' }
               example:
                 updateId: 77
                 incidentId: 412
@@ -1792,6 +1929,25 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`TOO_MANY_LINKED_TICKETS` — more than 500 linked tickets and `force` was not set.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://resolveai.dev/errors/too-many-linked-tickets
+                title: Too many linked tickets
+                status: 422
+                errorCode: TOO_MANY_LINKED_TICKETS
+                detail: Incident 412 has 612 linked tickets. Pass force:true to fan out anyway.
+                instance: /api/v1/incidents/412/updates
+                timestamp: '2026-09-20T14:09:00Z'
+                traceId: 0af7651916cd43dd8448eb211c80319c
 
   /incidents/{id}/updates/{updateId}/deliveries:
     parameters:
@@ -1813,6 +1969,7 @@ paths:
           description: Delivery status.
           content:
             application/json:
+              schema: { $ref: '#/components/schemas/DeliveryStatusResponse' }
               example:
                 updateId: 77
                 summary: { total: 38, sent: 37, pending: 0, failed: 1 }
@@ -1822,23 +1979,11 @@ paths:
                     lastError: 'notification insert failed: deadlock detected'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-
-  /incidents/{id}/resolve:
-    parameters:
-      - $ref: '#/components/parameters/IncidentId'
-    post:
-      tags: [Incidents]
-      operationId: resolveIncident
-      summary: Resolve the incident and optionally its linked tickets
-      description: 'TODO: schema. Body `{ resolutionSummary, resolveLinkedTickets }`. Resumes every paused resolution clock.'
-      parameters:
-        - $ref: '#/components/parameters/IfMatch'
-      responses:
-        '200':
-          description: Resolved.
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/VersionConflict' }
+        '404':
+          description: '`INCIDENT_NOT_FOUND` or `INCIDENT_UPDATE_NOT_FOUND`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   # ════════════════════════════════════════════════════════════════════════════
   # KNOWLEDGE
@@ -2811,6 +2956,21 @@ components:
             timestamp: '2026-09-20T11:42:07Z'
             traceId: 0af7651916cd43dd8448eb211c80319c
 
+    PreconditionRequired:
+      description: '`PRECONDITION_REQUIRED` — `If-Match` was absent or unparseable on a mutation that requires it.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://resolveai.dev/errors/precondition-required
+            title: Precondition required
+            status: 428
+            errorCode: PRECONDITION_REQUIRED
+            detail: This request must be conditional. Send the current ETag as If-Match.
+            instance: /api/v1/incidents/412/confirm
+            timestamp: '2026-09-20T14:04:02Z'
+            traceId: 0af7651916cd43dd8448eb211c80319c
+
     ValidationError:
       description: '`VALIDATION_ERROR` — one entry in `errors` per rejected field.'
       content:
@@ -3011,7 +3171,8 @@ components:
 
     IncidentStatus:
       type: string
-      enum: [PROPOSED, CONFIRMED, REJECTED, RESOLVED]
+      description: '`MITIGATED` sits between `CONFIRMED` and `RESOLVED`: a manual annotation that the cause is understood and traffic is recovering, before every linked ticket is individually closed.'
+      enum: [PROPOSED, CONFIRMED, REJECTED, MITIGATED, RESOLVED]
 
     AnalysisStatus:
       type: string
@@ -3535,6 +3696,27 @@ components:
 
     # ── incidents ─────────────────────────────────────────────────────────────
 
+    DetectionView:
+      type: object
+      description: |
+        **The deterministic gate's evidence.** `arrivalRateMultiple` against
+        `gateThresholds.minRateMultiple` is the record of why this was proposed, and it makes
+        clear that a statistical check — not a model — made that call.
+      properties:
+        method: { type: string, enum: [CLUSTER, MANUAL] }
+        clusterSizeAtDetection: { type: integer }
+        arrivalRateMultiple: { type: number }
+        baselineNote: { type: string }
+        gateThresholds:
+          type: object
+          properties:
+            minClusterSize: { type: integer }
+            minRateMultiple: { type: number }
+            windowMinutes: { type: integer }
+        firstTicketAt: { type: string, format: date-time }
+        detectedAt: { type: string, format: date-time }
+        timeToDetectSeconds: { type: integer }
+
     IncidentSummary:
       type: object
       properties:
@@ -3542,51 +3724,172 @@ components:
         reference: { type: string, examples: [INC-204] }
         title: { type: string }
         status: { $ref: '#/components/schemas/IncidentStatus' }
-        detectionMethod: { type: string, enum: [CLUSTER, MANUAL] }
         linkedTicketCount: { type: integer }
-        arrivalRateMultiple: { type: number }
         timeToDetectSeconds: { type: integer, description: A headline metric that comes straight out of the schema rather than a stopwatch. }
-        firstTicketAt: { type: string, format: date-time }
-        detectedAt: { type: string, format: date-time }
-        confirmedAt: { type: [string, 'null'], format: date-time }
-        resolvedAt: { type: [string, 'null'], format: date-time }
+        detection: { $ref: '#/components/schemas/DetectionView' }
 
     IncidentDetail:
-      allOf:
-        - $ref: '#/components/schemas/IncidentSummary'
-        - type: object
+      type: object
+      description: |
+        The full board-card-plus-everything view. Deliberately **not** composed with `allOf`
+        over `IncidentSummary` — the detail response has no top-level `timeToDetectSeconds`
+        (it lives inside `detection`, once) and adds fields a list row has no use for.
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string, examples: [INC-204] }
+        title: { type: string }
+        summary: { type: string }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        detection: { $ref: '#/components/schemas/DetectionView' }
+        titleGeneratedBy:
+          type: [string, 'null']
+          description: |
+            The model that wrote the **title, and nothing else**. `null` means the title
+            was templated because the LLM was unavailable — and the incident was still
+            detected, because detection never depended on the model.
+        confirmedBy: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }] }
+        confirmedAt: { type: [string, 'null'], format: date-time }
+        rejectedReason: { type: [string, 'null'] }
+        linkedTicketCount: { type: integer }
+        linkedTickets:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentLinkedTicket' }
+        detachedTickets:
+          type: array
+          description: Soft-detached links, kept for the audit trail and the evaluation set.
+          items: { $ref: '#/components/schemas/IncidentLinkedTicket' }
+        updates:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentUpdateView' }
+        etag: { type: string, examples: ['W/"4"'] }
+
+    IncidentLinkedTicket:
+      type: object
+      properties:
+        ticketId: { type: integer, format: int64, examples: [88301] }
+        reference: { type: string, examples: [TKT-10461] }
+        subject: { type: string }
+        linkConfidence: { type: [number, 'null'], description: 'Set for a gate-proposed link; `null` for a manual one.' }
+        linkedAt: { type: string, format: date-time }
+        linkedBy: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }], description: '`null` for a gate-proposed link.' }
+        detachedAt: { type: [string, 'null'], format: date-time }
+
+    IncidentDeliverySummary:
+      type: object
+      properties:
+        total: { type: integer }
+        sent: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+
+    IncidentUpdateView:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        body: { type: string }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        authorName: { type: string }
+        publishedAt: { type: string, format: date-time }
+        delivery: { $ref: '#/components/schemas/IncidentDeliverySummary' }
+
+    ConfirmIncidentRequest:
+      type: object
+      description: '`pauseResolutionClocks` defaults to `true` when the body is omitted entirely.'
+      properties:
+        pauseResolutionClocks: { type: boolean, default: true }
+
+    ConfirmIncidentResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        effects:
+          type: object
           properties:
-            summary: { type: string }
-            detection:
-              type: object
+            ticketsLinked: { type: integer }
+            resolutionClocksPaused: { type: integer }
+            firstResponseClocksUnaffected:
+              type: integer
               description: |
-                **The deterministic gate's evidence.** `arrivalRateMultiple` against
-                `gateThresholds.minRateMultiple` is the record of why this was proposed, and
-                it makes clear that a statistical check — not a model — made that call.
-              properties:
-                method: { type: string, enum: [CLUSTER, MANUAL] }
-                clusterSizeAtDetection: { type: integer }
-                arrivalRateMultiple: { type: number }
-                baselineNote: { type: string }
-                gateThresholds:
-                  type: object
-                  properties:
-                    minClusterSize: { type: integer }
-                    minRateMultiple: { type: number }
-                    windowMinutes: { type: integer }
-                firstTicketAt: { type: string, format: date-time }
-                detectedAt: { type: string, format: date-time }
-                timeToDetectSeconds: { type: integer }
-            titleGeneratedBy:
-              type: [string, 'null']
-              description: |
-                The model that wrote the **title, and nothing else**. `null` means the title
-                was templated because the LLM was unavailable — and the incident was still
-                detected, because detection never depended on the model.
-            confirmedBy: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }] }
-            linkedTickets: { type: array, items: { type: object } }
-            updates: { type: array, items: { type: object } }
-            _etag: { type: string }
+                Count of linked tickets whose first-response clock kept running, because the
+                customer still deserves an acknowledgement even during an outage.
+            evalLabelRecorded: { type: boolean }
+        etag: { type: string, examples: ['W/"5"'] }
+
+    RejectIncidentRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 10, maxLength: 500 }
+
+    LinkTicketRequest:
+      type: object
+      required: [ticketId]
+      properties:
+        ticketId: { type: integer, format: int64, examples: [88301] }
+
+    ResolveIncidentRequest:
+      type: object
+      required: [resolutionNote]
+      properties:
+        resolutionNote: { type: string, minLength: 1, maxLength: 5000 }
+        resolveLinkedTickets: { type: boolean, default: true }
+
+    ResolveIncidentResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        resolvedTicketCount: { type: integer }
+        skipped:
+          type: array
+          description: Ids of linked tickets that could not be auto-resolved; the incident still resolves.
+          items: { type: integer, format: int64 }
+        etag: { type: string, examples: ['W/"6"'] }
+
+    PublishUpdateRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+        visibility:
+          allOf: [{ $ref: '#/components/schemas/Visibility' }]
+          default: INTERNAL
+        force:
+          type: boolean
+          default: false
+          description: Bypasses `TOO_MANY_LINKED_TICKETS` for an incident linked to more than 500 tickets.
+
+    PublishUpdateResponse:
+      type: object
+      properties:
+        updateId: { type: integer, format: int64 }
+        incidentId: { type: integer, format: int64 }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        fanout:
+          type: object
+          properties:
+            total: { type: integer }
+            status: { type: string, examples: [QUEUED] }
+        links:
+          type: object
+          properties:
+            deliveries: { type: string }
+        publishedAt: { type: string, format: date-time }
+
+    DeliveryStatusResponse:
+      type: object
+      properties:
+        updateId: { type: integer, format: int64 }
+        summary: { $ref: '#/components/schemas/IncidentDeliverySummary' }
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketId: { type: integer, format: int64 }
+              attempts: { type: integer }
+              lastError: { type: string }
 
     # ── attachments, notifications, admin ─────────────────────────────────────
 

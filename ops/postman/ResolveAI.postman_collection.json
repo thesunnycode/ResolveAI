@@ -1545,7 +1545,7 @@
                   "if (data.length) {",
                   "    pm.environment.set('incidentId', data[0].id);",
                   "    pm.test('detection evidence is on the row', function () {",
-                  "        pm.expect(data[0]).to.have.property('arrivalRateMultiple');",
+                  "        pm.expect(data[0].detection).to.have.property('arrivalRateMultiple');",
                   "        pm.expect(data[0]).to.have.property('timeToDetectSeconds');",
                   "    });",
                   "}"
@@ -1829,7 +1829,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"resolutionSummary\": \"Provider restored capture at 15:12 IST. All debited payments reversed.\",\n  \"resolveLinkedTickets\": true\n}"
+              "raw": "{\n  \"resolutionNote\": \"Provider restored capture at 15:12 IST. All debited payments reversed.\",\n  \"resolveLinkedTickets\": true\n}"
             }
           }
         }

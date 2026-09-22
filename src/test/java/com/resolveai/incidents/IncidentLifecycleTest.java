@@ -14,8 +14,15 @@ import com.resolveai.triage.TriageWorker;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -242,6 +249,68 @@ class IncidentLifecycleTest extends IntegrationTestBase {
                 ticketIds.get(0))).isEqualTo("RESOLVED");
         assertThat(jdbc.queryForObject("SELECT status FROM incident WHERE id = ?", String.class,
                 incidentId)).isEqualTo("RESOLVED");
+    }
+
+    /**
+     * Doc 12 Task 22: {@code uq_incident_ticket_live} — a partial unique index on
+     * {@code ticket_id WHERE detached_at IS NULL} — is what enforces "one live incident
+     * per ticket", not an application-level check. Ten threads racing to link the same
+     * ticket to ten different incidents must produce exactly one {@code 201} and nine
+     * {@code 409}s, every time.
+     */
+    @RepeatedTest(5)
+    @DisplayName("ten concurrent links for the same ticket to different incidents produce exactly one winner")
+    void concurrentLinksHaveExactlyOneWinner() throws Exception {
+        List<Long> ticketIds = triagedTickets(1);
+        Long ticketId = ticketIds.get(0);
+        int contenders = 10;
+        List<Long> incidentIds = new java.util.ArrayList<>();
+        for (int i = 0; i < contenders; i++) {
+            incidentIds.add(fixtures.seedIncident(tenant.tenantId(), "INC-RACE-" + i + "-" + ticketId,
+                    0, OffsetDateTime.now()));
+        }
+
+        AtomicInteger created = new AtomicInteger();
+        AtomicInteger conflict = new AtomicInteger();
+        AtomicInteger other = new AtomicInteger();
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch release = new CountDownLatch(1);
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(contenders)) {
+            List<Future<?>> futures = new java.util.ArrayList<>();
+            for (Long incidentId : incidentIds) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    release.await(10, TimeUnit.SECONDS);
+                    ResponseEntity<Map> response = rest.exchange(
+                            "/api/v1/incidents/" + incidentId + "/tickets", HttpMethod.POST,
+                            new HttpEntity<>(Map.of("ticketId", ticketId), authed(adminToken)),
+                            Map.class);
+                    if (response.getStatusCode() == HttpStatus.CREATED) {
+                        created.incrementAndGet();
+                    } else if (response.getStatusCode() == HttpStatus.CONFLICT) {
+                        conflict.incrementAndGet();
+                    } else {
+                        other.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            assertThat(ready.await(20, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            for (Future<?> f : futures) {
+                f.get(60, TimeUnit.SECONDS);
+            }
+        }
+
+        assertThat(created.get()).as("exactly one link must succeed").isEqualTo(1);
+        assertThat(conflict.get()).isEqualTo(contenders - 1);
+        assertThat(other.get()).as("no 500s and no silent successes").isZero();
+
+        Integer liveLinks = jdbc.queryForObject(
+                "SELECT count(*) FROM incident_ticket WHERE ticket_id = ? AND detached_at IS NULL",
+                Integer.class, ticketId);
+        assertThat(liveLinks).isEqualTo(1);
     }
 
     private String incidentEtag(Long incidentId) {

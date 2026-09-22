@@ -22,6 +22,7 @@ import com.resolveai.ticketing.domain.Ticket;
 import com.resolveai.ticketing.domain.TicketEntity;
 import com.resolveai.ticketing.repository.TicketEntityRepository;
 import com.resolveai.ticketing.repository.TicketRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -84,6 +85,7 @@ public class CorrelationSweepWorker {
     private final DatabaseClock clock;
     private final int windowMinutes;
     private final Duration lockTtl;
+    private final MeterRegistry metrics;
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     public CorrelationSweepWorker(StringRedisTemplate redis,
@@ -99,7 +101,7 @@ public class CorrelationSweepWorker {
                                   @Value("${resolveai.correlation.window-minutes:30}")
                                   int windowMinutes,
                                   @Value("${resolveai.correlation.sweep-lock-ttl-seconds:55}")
-                                  long lockTtlSeconds) {
+                                  long lockTtlSeconds, MeterRegistry metrics) {
         this.redis = redis;
         this.candidates = candidates;
         this.ticketEntities = ticketEntities;
@@ -116,6 +118,7 @@ public class CorrelationSweepWorker {
         this.clock = clock;
         this.windowMinutes = windowMinutes;
         this.lockTtl = Duration.ofSeconds(lockTtlSeconds);
+        this.metrics = metrics;
     }
 
     @Scheduled(fixedDelayString = "${resolveai.correlation.sweep-interval-ms:60000}")
@@ -132,14 +135,20 @@ public class CorrelationSweepWorker {
 
     /** One pass over every tenant with recent activity. Public so tests can drive it directly. */
     public int sweepOnce() {
-        OffsetDateTime windowStart = clock.now().minusMinutes(windowMinutes);
-        List<Long> tenantIds = candidates.activeTenantIds(windowStart);
+        long startNanos = System.nanoTime();
+        try {
+            OffsetDateTime windowStart = clock.now().minusMinutes(windowMinutes);
+            List<Long> tenantIds = candidates.activeTenantIds(windowStart);
 
-        int proposed = 0;
-        for (Long tenantId : tenantIds) {
-            proposed += sweepTenantWithLock(tenantId, windowStart);
+            int proposed = 0;
+            for (Long tenantId : tenantIds) {
+                proposed += sweepTenantWithLock(tenantId, windowStart);
+            }
+            return proposed;
+        } finally {
+            metrics.timer("correlation.sweep.duration")
+                    .record(Duration.ofNanos(System.nanoTime() - startNanos));
         }
-        return proposed;
     }
 
     private int sweepTenantWithLock(Long tenantId, OffsetDateTime windowStart) {
@@ -266,6 +275,12 @@ public class CorrelationSweepWorker {
 
         log.info("Proposed incident {} ({} tickets, {}x baseline [{}], {})", reference,
                 cluster.size(), decision.arrivalRateMultiple(), baseline.source(), decision.reason());
+
+        metrics.counter("incident.proposed").increment();
+        metrics.summary("incident.cluster_size").record(cluster.size());
+        long timeToDetectSeconds = Duration.between(cluster.windowStart(), clock.now().toInstant())
+                .toSeconds();
+        metrics.timer("incident.time_to_detect").record(Duration.ofSeconds(timeToDetectSeconds));
     }
 
     private static BigDecimal linkConfidence(float[] seed, float[] member) {
