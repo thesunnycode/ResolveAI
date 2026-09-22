@@ -151,7 +151,7 @@ public class IncidentController {
     @GetMapping("/{id}/updates/{updateId}/deliveries")
     @IsAgentOrAbove
     public DeliveryStatusResponse deliveries(@PathVariable Long id, @PathVariable Long updateId) {
-        return reads.deliveryStatus(updateId);
+        return reads.deliveryStatus(id, updateId);
     }
 
     private void requireIfMatch(Long incidentId, String ifMatch) {

@@ -56,6 +56,8 @@ class CrossTenantAccessTest extends IntegrationTestBase {
     private Long betaTicketId;
     private Long betaDocumentId;
     private Long betaDraftId;
+    private Long betaIncidentId;
+    private Long betaIncidentUpdateId;
 
     @BeforeEach
     void seedTwoTenants() {
@@ -67,6 +69,43 @@ class CrossTenantAccessTest extends IntegrationTestBase {
         betaTicketId = seedFullyTriagedBetaTicket();
         betaDocumentId = seedBetaKnowledgeDocument();
         betaDraftId = seedBetaDraft(betaTicketId);
+        betaIncidentId = seedBetaIncident(betaTicketId);
+        betaIncidentUpdateId = seedBetaIncidentUpdate(betaIncidentId, betaTicketId);
+    }
+
+    /**
+     * Doc 12: {@code incident_ticket} and {@code incident_update} carry no
+     * {@code tenant_id} of their own — tenancy is inherited through {@code incident_id}
+     * and {@code ticket_id}. That makes this fixture the one that actually exercises the
+     * inheritance rather than a direct discriminator, which is exactly the shape a
+     * forgotten join predicate would slip past.
+     */
+    private Long seedBetaIncident(Long ticketId) {
+        Long incidentId = jdbc.queryForObject("""
+                INSERT INTO incident (tenant_id, reference, title, detection_method,
+                                      cluster_size_at_detection, arrival_rate_multiple,
+                                      first_ticket_at)
+                VALUES (?, 'INC-9001', 'Beta confidential incident', 'CLUSTER', 5, 10.0, NOW())
+                RETURNING id
+                """, Long.class, beta.tenantId());
+        jdbc.update("""
+                INSERT INTO incident_ticket (incident_id, ticket_id, link_confidence)
+                VALUES (?, ?, 0.9)
+                """, incidentId, ticketId);
+        return incidentId;
+    }
+
+    private Long seedBetaIncidentUpdate(Long incidentId, Long ticketId) {
+        Long updateId = jdbc.queryForObject("""
+                INSERT INTO incident_update (incident_id, author_id, body, visibility)
+                VALUES (?, ?, 'Beta confidential update body.', 'INTERNAL')
+                RETURNING id
+                """, Long.class, incidentId, beta.agentId());
+        jdbc.update("""
+                INSERT INTO incident_update_delivery (incident_update_id, ticket_id, status)
+                VALUES (?, ?, 'PENDING')
+                """, updateId, ticketId);
+        return updateId;
     }
 
     /**
@@ -233,8 +272,22 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                 // HybridSearchRepository) - which means the document/draft reads below
                 // are exactly where a forgotten predicate would cost the most.
                 Arguments.of(HttpMethod.GET,    "/api/v1/knowledge/documents/{documentId}", true),
-                Arguments.of(HttpMethod.GET,    "/api/v1/drafts/{draftId}", true)
-                // Phase 8 appends: /incidents/{id}, /incidents/{id}/confirm, ...
+                Arguments.of(HttpMethod.GET,    "/api/v1/drafts/{draftId}", true),
+
+                // ── Phase 8: incidents ─────────────────────────────────────
+                // incident_ticket and incident_update carry no tenant_id of their own -
+                // see seedBetaIncident's comment - so these rows are exactly where a
+                // forgotten join predicate in IncidentTicketRepository or
+                // IncidentUpdateRepository would leak.
+                Arguments.of(HttpMethod.GET,    "/api/v1/incidents/{incidentId}", true),
+                Arguments.of(HttpMethod.POST,   "/api/v1/incidents/{incidentId}/confirm", true),
+                Arguments.of(HttpMethod.POST,   "/api/v1/incidents/{incidentId}/reject", true),
+                Arguments.of(HttpMethod.POST,   "/api/v1/incidents/{incidentId}/tickets", true),
+                Arguments.of(HttpMethod.DELETE,
+                        "/api/v1/incidents/{incidentId}/tickets/{ticketId}", true),
+                Arguments.of(HttpMethod.POST,   "/api/v1/incidents/{incidentId}/resolve", true),
+                Arguments.of(HttpMethod.GET,
+                        "/api/v1/incidents/{incidentId}/updates/{updateId}/deliveries", true)
         );
     }
 
@@ -247,7 +300,9 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                 .replace("{id}", String.valueOf(beta.agentId()))
                 .replace("{ticketId}", String.valueOf(betaTicketId))
                 .replace("{documentId}", String.valueOf(betaDocumentId))
-                .replace("{draftId}", String.valueOf(betaDraftId));
+                .replace("{draftId}", String.valueOf(betaDraftId))
+                .replace("{incidentId}", String.valueOf(betaIncidentId))
+                .replace("{updateId}", String.valueOf(betaIncidentUpdateId));
 
         ResponseEntity<Map> response = rest.exchange(path, method,
                 new HttpEntity<>(Map.of(), AuthTestSupport.bearer(alphaAgentToken)), Map.class);
@@ -312,7 +367,9 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                 .replace("{id}", String.valueOf(beta.agentId()))
                 .replace("{ticketId}", String.valueOf(betaTicketId))
                 .replace("{documentId}", String.valueOf(betaDocumentId))
-                .replace("{draftId}", String.valueOf(betaDraftId));
+                .replace("{draftId}", String.valueOf(betaDraftId))
+                .replace("{incidentId}", String.valueOf(betaIncidentId))
+                .replace("{updateId}", String.valueOf(betaIncidentUpdateId));
 
         ResponseEntity<Map> response = rest.exchange(path, method,
                 new HttpEntity<>(Map.of(), AuthTestSupport.bearer(alphaAdminToken)), Map.class);

@@ -154,10 +154,23 @@ public class IncidentReadService {
                 new DeliverySummary(total, sent, pending, failed));
     }
 
-    /** {@code GET /incidents/{id}/updates/{updateId}/deliveries}, doc 12 Task 20. */
-    public DeliveryStatusResponse deliveryStatus(Long updateId) {
-        incidentUpdates.findById(updateId).orElseThrow(() -> new ApiException(
+    /**
+     * {@code GET /incidents/{id}/updates/{updateId}/deliveries}, doc 12 Task 20.
+     *
+     * <p><b>{@code incidentId} is not decoration here.</b> {@code IncidentUpdate} carries
+     * no {@code tenant_id} of its own — see its class comment — so a lookup by
+     * {@code updateId} alone would let any tenant read any other tenant's delivery
+     * failures (ticket ids, error text) simply by guessing an id. Routing the check
+     * through {@link #incidents}, which <i>is</i> {@code @TenantId}-filtered, is what
+     * makes a foreign {@code updateId} 404 rather than a cross-tenant read.
+     */
+    public DeliveryStatusResponse deliveryStatus(Long incidentId, Long updateId) {
+        IncidentUpdate update = incidentUpdates.findById(updateId).orElseThrow(() -> new ApiException(
                 ErrorCode.INCIDENT_UPDATE_NOT_FOUND, "Incident update " + updateId + " was not found."));
+        if (!update.getIncidentId().equals(incidentId) || incidents.findById(incidentId).isEmpty()) {
+            throw new ApiException(ErrorCode.INCIDENT_UPDATE_NOT_FOUND,
+                    "Incident update " + updateId + " was not found.");
+        }
 
         var rows = deliveries.findByIncidentUpdateId(updateId);
         int sent = 0;
