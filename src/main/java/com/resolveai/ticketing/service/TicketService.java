@@ -78,6 +78,7 @@ public class TicketService {
     private final DatabaseClock clock;
     private final OutboxPublisher outbox;
     private final PriorityOverrideRecorder priorityOverrides;
+    private final DraftReferenceValidator draftReferences;
 
     public TicketService(TicketRepository tickets, TicketMessageRepository messages,
                          TicketQueryRepository ticketQuery, AppUserRepository users,
@@ -85,7 +86,8 @@ public class TicketService {
                          ReferenceGenerator references, TicketEventRecorder eventRecorder,
                          TicketAccess access, TicketMapper mapper, SlaLifecycle sla,
                          DatabaseClock clock, OutboxPublisher outbox,
-                         PriorityOverrideRecorder priorityOverrides) {
+                         PriorityOverrideRecorder priorityOverrides,
+                         DraftReferenceValidator draftReferences) {
         this.tickets = tickets;
         this.messages = messages;
         this.ticketQuery = ticketQuery;
@@ -100,6 +102,7 @@ public class TicketService {
         this.clock = clock;
         this.outbox = outbox;
         this.priorityOverrides = priorityOverrides;
+        this.draftReferences = draftReferences;
     }
 
     // ── Create ──────────────────────────────────────────────────────────────
@@ -343,6 +346,12 @@ public class TicketService {
             throw new ApiException(ErrorCode.ATTACHMENT_NOT_FOUND,
                     "Attachments are not available in this build.");
         }
+        // Doc 15 Task 21: fromDraftId was accepted and stored unvalidated since Phase 5.
+        // Validated first, before anything is written, so an invalid reference is a 422
+        // with nothing persisted rather than a message saved and then found to be wrong.
+        if (request.fromDraftId() != null) {
+            draftReferences.requireValid(ticketId, request.fromDraftId());
+        }
 
         AppUser author = access.caller(principal);
         OffsetDateTime now = clock.now();
@@ -390,6 +399,16 @@ public class TicketService {
                 visibility.name(),
                 Map.of("messageId", message.getId(), "isFirstResponse", isFirst));
         tickets.saveAndFlush(ticket);
+
+        // Automatic capture is what makes SENT_AS_IS / EDITED rates trustworthy: relying
+        // on the frontend to call POST /drafts/{id}/action separately means it gets
+        // missed on the common path (an agent just hits "send"), and a rate computed
+        // from partial data is worse than no rate at all. Same transaction as the
+        // message, so a crash between the two cannot leave one without the other.
+        if (request.fromDraftId() != null) {
+            draftReferences.recordAutomaticAction(request.fromDraftId(), author.getId(),
+                    request.body());
+        }
 
         return MessageResponse.of(message, effect);
     }

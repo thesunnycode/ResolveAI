@@ -34,9 +34,20 @@ public class KnowledgeTestSupport {
                 () -> documents.create(source, title, body, null).id());
     }
 
-    /** Runs the index worker until nothing is left to process, bounded against a runaway loop. */
+    /**
+     * Runs the index worker until nothing is left to process, bounded against a runaway
+     * loop.
+     *
+     * <p>200 iterations at {@code IndexWorker.batchSize() == 3} covers up to 600
+     * documents — comfortably above the 75-document corpus the retrieval eval seeds, and
+     * high enough that the bound is a safety net rather than something a normal test can
+     * silently run into. Its first cut, 20, was exactly that: it capped out at 60
+     * documents and quietly left the last 15 of a 75-document corpus unindexed with no
+     * error, which read as four unrelated "case names no chunks" warnings until traced
+     * back to this loop terminating early.
+     */
     public void runIndexingUntilSettled() {
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 200; i++) {
             int handled = runtime.workers().stream()
                     .filter(w -> w.name().equals("IndexWorker"))
                     .mapToInt(runtime::runOnce)

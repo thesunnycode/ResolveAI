@@ -10,6 +10,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.resolveai.ticketing.domain.Category;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -162,6 +163,60 @@ public final class LlmStub {
                                 "embedding":[%s]}],"model":"text-embedding-3-small",\
                                 "usage":{"prompt_tokens":12,"total_tokens":12}}"""
                                 .formatted(values))));
+    }
+
+    // ── Drafting (Phase 7) ─────────────────────────────────────────────────
+    //
+    // draft@1 and entailment@1 share the same /chat/completions endpoint as triage's
+    // classification calls, so these stubs are distinguished by matching on a marker
+    // string unique to each prompt's own template rather than by path — see
+    // ClaimGenerator and EntailmentVerifier for where each marker comes from.
+
+    /** RETRIEVED PASSAGES: only appears in draft@1's rendered prompt. */
+    private static final String DRAFT_MARKER = "RETRIEVED PASSAGES";
+
+    /** SPAN:\n only appears in entailment@1's rendered prompt. */
+    private static final String ENTAILMENT_MARKER = "SPAN:";
+
+    /**
+     * @param claimsJson a JSON array of {@code {"text":..., "citationIds":[...]}}
+     *                   objects — exactly the shape {@code ClaimGenerator} expects back
+     */
+    public static void returnsDraftClaims(String claimsJson, String tone,
+                                          List<String> unresolvedAspects) {
+        String unresolvedJson = unresolvedAspects.stream()
+                .map(a -> "\"" + a.replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(","));
+        String body = "{\"claims\":" + claimsJson + ",\"suggestedTone\":\"" + tone
+                + "\",\"unresolvedAspects\":[" + unresolvedJson + "]}";
+        start().stubFor(post(urlPathMatching(CHAT_PATH))
+                .withRequestBody(containing(DRAFT_MARKER))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(chatBody(body))));
+    }
+
+    /** Every entailment call, regardless of claim or span, returns the same verdict. */
+    public static void returnsEntailmentVerdict(String verdict) {
+        start().stubFor(post(urlPathMatching(CHAT_PATH))
+                .withRequestBody(containing(ENTAILMENT_MARKER))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(chatBody("{\"verdict\":\"" + verdict + "\"}"))));
+    }
+
+    /**
+     * Different verdicts depending on a marker substring in the claim text — so a test
+     * can make one claim SUPPORTED and another NOT_SUPPORTED in the same draft.
+     */
+    public static void entailmentVerdictWhenClaimContains(String marker, String verdict) {
+        start().stubFor(post(urlPathMatching(CHAT_PATH))
+                .withRequestBody(containing(ENTAILMENT_MARKER))
+                .withRequestBody(containing(marker))
+                .atPriority(1)
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(chatBody("{\"verdict\":\"" + verdict + "\"}"))));
     }
 
     /** How many chat calls have been made — the assertion behind "the cache hit". */
