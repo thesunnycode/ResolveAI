@@ -56,14 +56,15 @@ class PlatformSmokeTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("Flyway applied all 12 migrations against a truly empty database")
+    @DisplayName("Flyway applied all 14 migrations against a truly empty database")
     void flywayAppliedAllMigrations() {
-        // 12, not 10: Phase 7 added V11 (draft/draft_claim columns plus
-        // draft_unresolved_aspect) and V12 (seeds draft@1 and entailment@1, no schema
-        // change). Same re-derive-it-every-phase discipline as ops/verify-migrations.sh.
+        // 14, not 12: Phase 8 added V13 (the ticket_arrival_baseline materialized view -
+        // a matview is not a table, so the table count below is unchanged) and V14 (seeds
+        // incident_title@1, no schema change). Same re-derive-it-every-phase discipline as
+        // ops/verify-migrations.sh.
         Integer applied = jdbc.queryForObject(
                 "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-        assertThat(applied).isEqualTo(12);
+        assertThat(applied).isEqualTo(14);
 
         Integer tables = jdbc.queryForObject("""
                 SELECT count(*) FROM pg_tables

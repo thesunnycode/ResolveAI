@@ -259,6 +259,13 @@ public final class LlmStub {
         });
     }
 
+    /** A well-formed {@code incident_title} response — doc 12 Task 10. */
+    public static void returnsIncidentTitle(String title, String summary) {
+        String signals = """
+                {"title":"%s","summary":"%s"}""".formatted(title, summary);
+        stubChat(200, chatBody(signals), Duration.ZERO);
+    }
+
     // ── Plumbing ────────────────────────────────────────────────────────────
 
     private static void stubChat(int status, String body, Duration delay) {

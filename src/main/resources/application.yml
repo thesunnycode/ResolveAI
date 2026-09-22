@@ -185,6 +185,17 @@ resolveai:
     window-minutes: ${CORRELATION_WINDOW_MINUTES:30}
     min-cluster-size: ${CORRELATION_MIN_CLUSTER_SIZE:5}
     rate-multiplier: ${CORRELATION_RATE_MULTIPLIER:3.0}
+    # Doc 12 Task 11 tunes these two against the seeded storms; the table is committed
+    # in the README. tau is the leader-clustering similarity threshold (cosine plus the
+    # entity boost); entity-boost weights the Jaccard overlap of extracted entities.
+    tau: ${CORRELATION_TAU:0.82}
+    entity-boost: ${CORRELATION_ENTITY_BOOST:0.15}
+    max-overlap-fraction: ${CORRELATION_MAX_OVERLAP_FRACTION:0.50}
+    baseline-floor: ${CORRELATION_BASELINE_FLOOR:2.0}
+    # How often the sweep wakes. A minute, like the SLA poller's ten seconds, is a
+    # resolution choice, not a latency budget - see CorrelationSweepWorker.
+    sweep-interval-ms: ${CORRELATION_SWEEP_INTERVAL_MS:60000}
+    sweep-lock-ttl-seconds: ${CORRELATION_SWEEP_LOCK_TTL_SECONDS:55}
   drafting:
     coverage-threshold: ${DRAFT_COVERAGE_THRESHOLD:0.8}
   ai:

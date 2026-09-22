@@ -21,6 +21,7 @@ import com.resolveai.platform.outbox.Worker;
 import com.resolveai.platform.time.DatabaseClock;
 import com.resolveai.ticketing.domain.Ticket;
 import com.resolveai.ticketing.domain.TicketEventType;
+import com.resolveai.ticketing.repository.TicketEntityRepository;
 import com.resolveai.ticketing.repository.TicketRepository;
 import com.resolveai.ticketing.service.SlaLifecycle;
 import com.resolveai.ticketing.service.TicketEventRecorder;
@@ -29,6 +30,7 @@ import com.resolveai.triage.policy.PriorityDecision;
 import com.resolveai.triage.policy.PriorityPolicy;
 import com.resolveai.triage.routing.AgentAssigner;
 import com.resolveai.triage.routing.RoutingPolicy;
+import com.resolveai.triage.service.EntityExtractor;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -117,6 +119,8 @@ public class TriageWorker implements Worker {
     private final DatabaseClock clock;
     private final ObjectMapper objectMapper;
     private final MeterRegistry metrics;
+    private final EntityExtractor entityExtractor;
+    private final TicketEntityRepository ticketEntities;
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     public TriageWorker(TransactionTemplate txTemplate, TicketRepository tickets,
@@ -127,7 +131,8 @@ public class TriageWorker implements Worker {
                         RoutingPolicy routing, AgentAssigner assigner,
                         TriageRepository triage, TicketEventRecorder eventRecorder,
                         SlaLifecycle sla, DatabaseClock clock, ObjectMapper objectMapper,
-                        MeterRegistry metrics) {
+                        MeterRegistry metrics, EntityExtractor entityExtractor,
+                        TicketEntityRepository ticketEntities) {
         this.txTemplate = txTemplate;
         this.tickets = tickets;
         this.tenants = tenants;
@@ -146,6 +151,8 @@ public class TriageWorker implements Worker {
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.metrics = metrics;
+        this.entityExtractor = entityExtractor;
+        this.ticketEntities = ticketEntities;
     }
 
     @Override
@@ -231,9 +238,16 @@ public class TriageWorker implements Worker {
             return;
         }
 
+        // Deterministic, not the model's job — see EntityExtractor's class comment. Run
+        // here, alongside the network phase, on the same redacted text the model saw, so
+        // the entities feeding Phase 8's correlation gate never depend on how tx2 happens
+        // to be timed.
+        Set<EntityExtractor.ExtractedEntity> entities =
+                entityExtractor.extract(redacted.redactedText());
+
         // ── tx2: short write ────────────────────────────────────────────────
         txTemplate.executeWithoutResult(status ->
-                persistAnalysisAndDecide(context, result, embedding));
+                persistAnalysisAndDecide(context, result, embedding, entities));
     }
 
     /**
@@ -271,7 +285,8 @@ public class TriageWorker implements Worker {
      * transactions here would eventually produce.
      */
     private void persistAnalysisAndDecide(Context context, LlmResult<TriageSignals> result,
-                                          float[] embedding) {
+                                          float[] embedding,
+                                          Set<EntityExtractor.ExtractedEntity> entities) {
         TriageSignals signals = result.value();
 
         Optional<Long> analysisId = triage.insertAnalysis(
@@ -287,6 +302,13 @@ public class TriageWorker implements Worker {
                     context.ticketId(), context.attempt());
             metrics.counter("triage.duplicate").increment();
             return;
+        }
+
+        // uq_ticket_entity absorbs a redelivery on its own, but there is no reason to pay
+        // for rows this attempt has already earned the right to skip.
+        for (EntityExtractor.ExtractedEntity entity : entities) {
+            ticketEntities.upsert(context.ticketId(), context.tenantId(),
+                    entity.type().name(), entity.value());
         }
 
         Ticket ticket = tickets.findById(context.ticketId()).orElseThrow(

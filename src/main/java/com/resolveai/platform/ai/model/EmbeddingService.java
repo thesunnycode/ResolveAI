@@ -157,7 +157,13 @@ public class EmbeddingService {
         return out.append(']').toString();
     }
 
-    private static float[] fromVectorLiteral(String literal) {
+    /**
+     * The inverse of {@link #toVectorLiteral}. Public for the same reason that one is:
+     * Phase 8's correlation sweep reads {@code ticket.embedding::text} back into a
+     * {@code float[]} for in-memory cosine similarity, and needs the identical parsing
+     * this class already uses for its own cache reads.
+     */
+    public static float[] fromVectorLiteral(String literal) {
         String body = literal.substring(1, literal.length() - 1);
         if (body.isBlank()) {
             return new float[0];
