@@ -20,7 +20,11 @@ jobs:
   build:
     name: build and verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Raised from 20 in Phase 7: the retrieval suite embeds 70 queries, the drafting
+    # tests each index a small corpus and run several draft round trips, and the
+    # refusal suite alone drives 25 tickets through the full HTTP → worker → HTTP
+    # cycle. None of that is slow individually; the sum of it is.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4

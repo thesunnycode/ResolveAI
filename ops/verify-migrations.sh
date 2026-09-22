@@ -57,15 +57,23 @@ docker run --rm --network "$NET" -v "/${MIG}:/flyway/sql" flyway/flyway:10 \
   | xargs -I{} echo "  applied: {} migrations"
 
 echo "── schema assertions ──"
-expect "migrations succeeded"   "7"  "$(q "SELECT count(*) FROM flyway_schema_history WHERE success")"
-expect "tables"                 "39" "$(q "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history'")"
+# Counts below were set at Phase 2 (V1-V7: 7 migrations, 39 tables, 73 FKs) and updated
+# here at Phase 7 (V1-V12: V8 resolved_ticket_stat, V9 narrows a trigger with no new
+# table, V10/V12 seed prompt rows with no schema change, V11 adds columns plus
+# draft_unresolved_aspect) — two new tables (resolved_ticket_stat,
+# draft_unresolved_aspect), one new FK each plus resolved_ticket_stat's three, for four
+# more FKs total. A number that only ever goes up between phases and is never
+# re-derived is a number nobody trusts; re-deriving it here each phase is what keeps
+# this script worth running instead of worth ignoring.
+expect "migrations succeeded"   "12" "$(q "SELECT count(*) FROM flyway_schema_history WHERE success")"
+expect "tables"                 "41" "$(q "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history'")"
 expect "partial indexes"        "23" "$(q "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexdef ILIKE '%WHERE%'")"
 expect "triggers"               "10" "$(q "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal")"
 expect "hnsw indexes"           "2"  "$(q "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexdef ILIKE '%hnsw%'")"
 expect "gin indexes"            "3"  "$(q "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexdef ILIKE '%gin%'")"
 expect "vector extension"       "1"  "$(q "SELECT count(*) FROM pg_extension WHERE extname='vector'")"
 expect "pg_trgm extension"      "1"  "$(q "SELECT count(*) FROM pg_extension WHERE extname='pg_trgm'")"
-expect "foreign keys"           "73" "$(q "SELECT count(*) FROM pg_constraint WHERE contype='f'")"
+expect "foreign keys"           "77" "$(q "SELECT count(*) FROM pg_constraint WHERE contype='f'")"
 
 echo "── structural guarantees ──"
 verdict=$(docker compose exec -T postgres psql -U resolveai -d resolveai -tA \

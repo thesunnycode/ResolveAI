@@ -56,17 +56,20 @@ class PlatformSmokeTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("Flyway applied all 10 migrations against a truly empty database")
+    @DisplayName("Flyway applied all 12 migrations against a truly empty database")
     void flywayAppliedAllMigrations() {
+        // 12, not 10: Phase 7 added V11 (draft/draft_claim columns plus
+        // draft_unresolved_aspect) and V12 (seeds draft@1 and entailment@1, no schema
+        // change). Same re-derive-it-every-phase discipline as ops/verify-migrations.sh.
         Integer applied = jdbc.queryForObject(
                 "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-        assertThat(applied).isEqualTo(10);
+        assertThat(applied).isEqualTo(12);
 
         Integer tables = jdbc.queryForObject("""
                 SELECT count(*) FROM pg_tables
                  WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history'
                 """, Integer.class);
-        assertThat(tables).isEqualTo(40);
+        assertThat(tables).isEqualTo(41);
 
         // The partial indexes carry the correctness properties the whole system rests on.
         // A WHERE clause silently dropped during a migration edit creates an index that

@@ -54,6 +54,8 @@ class CrossTenantAccessTest extends IntegrationTestBase {
     private String alphaAgentToken;
     private String alphaAdminToken;
     private Long betaTicketId;
+    private Long betaDocumentId;
+    private Long betaDraftId;
 
     @BeforeEach
     void seedTwoTenants() {
@@ -63,6 +65,39 @@ class CrossTenantAccessTest extends IntegrationTestBase {
         alphaAgentToken = auth.accessToken(rest, "alpha", "agent");
         alphaAdminToken = auth.accessToken(rest, "alpha", "admin");
         betaTicketId = seedFullyTriagedBetaTicket();
+        betaDocumentId = seedBetaKnowledgeDocument();
+        betaDraftId = seedBetaDraft(betaTicketId);
+    }
+
+    /**
+     * Doc 15 Task 6/24: knowledge_document.body is read directly by
+     * GET /knowledge/documents/{id}, so the marker has to be in the body a leak would
+     * actually surface, not only in the title.
+     */
+    private Long seedBetaKnowledgeDocument() {
+        return jdbc.queryForObject(("INSERT INTO knowledge_document (tenant_id, source, "
+                + "title, body, content_sha256, indexed_at) "
+                + "VALUES (?, 'RUNBOOK', 'Beta internal runbook', "
+                + "'Beta confidential procedure text.', repeat('b', 64), NOW()) "
+                + "RETURNING id"),
+                Long.class, beta.tenantId());
+    }
+
+    /**
+     * A minimal draft row — no claims or citations needed for GET /drafts/{id} to
+     * return 200 to the owning tenant, and the suppression reason carries the marker a
+     * leak would surface.
+     */
+    private Long seedBetaDraft(Long ticketId) {
+        Long promptId = jdbc.queryForObject(
+                "SELECT id FROM prompt_version WHERE name = 'draft' AND is_active",
+                Long.class);
+        return jdbc.queryForObject(("INSERT INTO draft (ticket_id, tenant_id, "
+                + "prompt_version_id, model_id, requested_by, status, coverage, "
+                + "suppression_reason) VALUES (?, ?, ?, 'gpt-4.1', ?, "
+                + "'SUPPRESSED_LOW_COVERAGE', 0.2, 'Beta confidential suppression reason.') "
+                + "RETURNING id"),
+                Long.class, ticketId, beta.tenantId(), promptId, beta.agentId());
     }
 
     /**
@@ -190,8 +225,15 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                 Arguments.of(HttpMethod.POST,
                         "/api/v1/tickets/{ticketId}/priority-override", true),
                 Arguments.of(HttpMethod.GET,    "/api/v1/admin/ai-policy", true),
-                Arguments.of(HttpMethod.PUT,    "/api/v1/admin/ai-policy", true)
-                // Phase 7 appends: /knowledge/documents/{id}, /drafts/{id}, ...
+                Arguments.of(HttpMethod.PUT,    "/api/v1/admin/ai-policy", true),
+
+                // ── Phase 7: knowledge base and drafting ───────────────────
+                // knowledge_chunk denormalises tenant_id specifically so the hybrid
+                // search CTEs can pre-filter on it without a join (see
+                // HybridSearchRepository) - which means the document/draft reads below
+                // are exactly where a forgotten predicate would cost the most.
+                Arguments.of(HttpMethod.GET,    "/api/v1/knowledge/documents/{documentId}", true),
+                Arguments.of(HttpMethod.GET,    "/api/v1/drafts/{draftId}", true)
                 // Phase 8 appends: /incidents/{id}, /incidents/{id}/confirm, ...
         );
     }
@@ -203,7 +245,9 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                                                boolean authenticated) {
         String path = template
                 .replace("{id}", String.valueOf(beta.agentId()))
-                .replace("{ticketId}", String.valueOf(betaTicketId));
+                .replace("{ticketId}", String.valueOf(betaTicketId))
+                .replace("{documentId}", String.valueOf(betaDocumentId))
+                .replace("{draftId}", String.valueOf(betaDraftId));
 
         ResponseEntity<Map> response = rest.exchange(path, method,
                 new HttpEntity<>(Map.of(), AuthTestSupport.bearer(alphaAgentToken)), Map.class);
@@ -266,7 +310,9 @@ class CrossTenantAccessTest extends IntegrationTestBase {
                                                     boolean authenticated) {
         String path = template
                 .replace("{id}", String.valueOf(beta.agentId()))
-                .replace("{ticketId}", String.valueOf(betaTicketId));
+                .replace("{ticketId}", String.valueOf(betaTicketId))
+                .replace("{documentId}", String.valueOf(betaDocumentId))
+                .replace("{draftId}", String.valueOf(betaDraftId));
 
         ResponseEntity<Map> response = rest.exchange(path, method,
                 new HttpEntity<>(Map.of(), AuthTestSupport.bearer(alphaAdminToken)), Map.class);

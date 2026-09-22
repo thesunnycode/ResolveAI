@@ -564,8 +564,14 @@ public class TicketService {
         Map<String, Object> effect = sla.stopResolution(ticket);
         eventRecorder.record(ticket, TicketEventType.RESOLVED, from.name(),
                 TicketStatus.RESOLVED.name(), Map.of("messageId", closing.getId()));
-        // TODO(Phase 7): publish KNOWLEDGE_INDEX_REQUESTED for this ticket, so a resolved
-        // thread becomes retrievable evidence for the next similar one.
+
+        // Doc 15 Task 25: queued unconditionally here. The three quality gates
+        // (resolution length, not incident-linked, not reopened) are the indexing
+        // worker's decision to make, not this method's — deciding here would mean this
+        // transaction reaching into Phase 8's incident-link table, which resolve() has
+        // no other reason to know about.
+        outbox.publish("TICKET", ticket.getId(), EventType.TICKET_RESOLVED,
+                Map.of("ticketId", ticket.getId()));
 
         // The agent's queue shrinks when the work leaves it, not when the ticket is closed
         // days later by a cron job.
