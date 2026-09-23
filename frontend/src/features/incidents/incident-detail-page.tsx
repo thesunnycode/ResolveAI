@@ -168,7 +168,7 @@ export function IncidentDetailPage() {
                     isPublic ? 'bg-primary' : 'bg-surface-2 border border-border',
                   )}
                 >
-                  <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-white shadow transition-transform data-[state=checked]:translate-x-[18px]" />
+                  <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-[18px]" />
                 </Switch.Root>
                 Visible to customers
               </label>

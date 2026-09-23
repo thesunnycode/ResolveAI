@@ -16,7 +16,7 @@ const buttonVariants = cva(
         // Krea's primary: the inverse of the canvas (white on dark, black on
         // light). The accent never fills a button - it would read as a second
         // brand color competing with priority and SLA signals.
-        primary: 'bg-action text-action-fg hover:bg-action-hover shadow-[0_1px_6px_0_rgb(0_0_0/0.18)]',
+        primary: 'bg-action text-action-fg hover:bg-action-hover',
         secondary:
           'glass text-text hover:bg-surface-2 hover:border-border-strong',
         danger: 'bg-danger-bg text-danger border border-danger/25 hover:bg-danger/15',

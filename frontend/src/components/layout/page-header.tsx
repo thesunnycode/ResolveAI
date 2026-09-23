@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 export function Eyebrow({ children, dot = true }: { children: React.ReactNode; dot?: boolean }) {
   return (
     <span className="glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-text-muted">
-      {dot && <span className="size-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]" />}
+      {dot && <span className="size-1.5 rounded-full bg-primary" />}
       {children}
     </span>
   )

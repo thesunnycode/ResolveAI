@@ -42,7 +42,6 @@ function SlaPreview() {
                 fill="none"
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference * (1 - progress)}
-                style={{ filter: 'drop-shadow(0 0 10px var(--color-primary))' }}
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -72,16 +71,6 @@ function SlaPreview() {
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-svh overflow-hidden bg-bg">
-      <div aria-hidden className="noise pointer-events-none absolute inset-0" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-[8%] top-1/2 hidden size-[720px] -translate-y-1/2 rounded-full bg-primary opacity-[0.10] blur-[160px] lg:block"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-40 right-1/3 hidden size-[420px] rounded-full bg-[#6b7cff] opacity-[0.06] blur-[140px] lg:block"
-      />
-
       <div className="relative flex w-full flex-col px-6 py-8 sm:px-12 lg:w-[480px] lg:shrink-0 lg:px-14">
         <div className="flex items-center gap-2.5">
           <Logomark size={30} />

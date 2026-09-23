@@ -17,7 +17,7 @@ export function applyTheme(theme: Theme) {
 
 /** Called once, as early as possible, so there's no flash of the wrong theme. */
 export function initTheme(): Theme {
-  const theme = getStoredTheme() ?? 'dark'
+  const theme = getStoredTheme() ?? 'light'
   applyTheme(theme)
   return theme
 }

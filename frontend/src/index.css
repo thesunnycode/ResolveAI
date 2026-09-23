@@ -4,7 +4,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Design tokens. Reference lock (Refero): Krea as the primary direction -
+ * Design tokens. Flat and simple: no gradients, glows or grain. One cream accent,
+ * used for brand, focus and small highlights only. Reference lock (Refero): Krea -
  * near-black matte canvas, white/zinc text, white primary actions with black
  * text, active states as subtle surface shifts rather than colored fills -
  * with Hyperliquid's single-accent discipline borrowed on top: teal appears
@@ -19,24 +20,25 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  --color-bg: #f6f6f7;
+  --color-bg: #f8f7f4;
   --color-surface: #ffffff;
-  --color-surface-2: #f1f1f3;
-  --color-glass: rgb(255 255 255 / 0.72);
-  --color-border: #e5e5e8;
-  --color-border-strong: #d4d4d8;
+  --color-surface-2: #f2f0eb;
+  --color-glass: rgb(255 255 255 / 0.8);
+  --color-border: #e7e4dd;
+  --color-border-strong: #d6d2c8;
 
-  --color-text: #09090b;
-  --color-text-muted: #52525b;
-  --color-text-subtle: #8a8a93;
+  --color-text: #1c1917;
+  --color-text-muted: #57534e;
+  --color-text-subtle: #8c8780;
 
-  --color-primary: #0d9488;
-  --color-primary-hover: #0f766e;
-  --color-primary-bg: #e7f6f4;
+  /* Warm bronze: the cream accent's light-mode partner. 4.65:1 on white, so it holds up as link text. */
+  --color-primary: #9a6b2f;
+  --color-primary-hover: #7f5723;
+  --color-primary-bg: #f6eddd;
 
-  --color-action: #09090b;
-  --color-action-hover: #27272a;
-  --color-action-fg: #fafafa;
+  --color-action: #1c1917;
+  --color-action-hover: #292524;
+  --color-action-fg: #faf8f4;
 
   --color-success: #047857;
   --color-success-bg: #ecfdf5;
@@ -68,7 +70,6 @@
 
   --animate-fade-in: fade-in 0.18s ease-out;
   --animate-slide-up: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -77,10 +78,6 @@
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
   }
 }
 
@@ -96,13 +93,13 @@
   --color-text-muted: #a1a1aa;
   --color-text-subtle: #71717a;
 
-  --color-primary: #2dd4bf;
-  --color-primary-hover: #5eead4;
-  --color-primary-bg: rgb(45 212 191 / 0.1);
+  --color-primary: #e8dcc4;
+  --color-primary-hover: #f3eadb;
+  --color-primary-bg: rgb(232 220 196 / 0.1);
 
-  --color-action: #fafafa;
-  --color-action-hover: #e4e4e7;
-  --color-action-fg: #09090b;
+  --color-action: #e8dcc4;
+  --color-action-hover: #f3eadb;
+  --color-action-fg: #1a1712;
 
   --color-success: #34d399;
   --color-success-bg: rgb(52 211 153 / 0.1);
@@ -175,28 +172,13 @@ h1, h2, h3 {
 }
 }
 
-/* Film grain. Low enough to read as "matte" rather than as texture. */
-.noise::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-.dark .noise::after {
-  opacity: 0.06;
-}
-
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface-2) 25%,
-    color-mix(in srgb, var(--color-surface-2) 55%, var(--color-text) 6%) 50%,
-    var(--color-surface-2) 75%
-  );
-  background-size: 200% 100%;
-  animation: var(--animate-shimmer);
+  background: var(--color-surface-2);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 @media (prefers-reduced-motion: reduce) {

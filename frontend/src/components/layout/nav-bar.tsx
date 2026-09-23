@@ -123,7 +123,7 @@ function NavSection({ label, items }: { label?: string; items: NavItem[] }) {
             {({ isActive }) => (
               <>
                 {isActive && (
-                  <span className="absolute -left-3 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_10px_var(--color-primary)]" />
+                  <span className="absolute -left-3 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
                 )}
                 <item.icon className={cn('size-4', isActive ? 'text-text' : 'text-text-subtle group-hover:text-text-muted')} aria-hidden />
                 {item.label}

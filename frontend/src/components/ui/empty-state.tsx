@@ -15,10 +15,6 @@ export function EmptyState({
 }) {
   return (
     <div className="relative flex flex-col items-center justify-center overflow-hidden px-6 py-16 text-center animate-fade-in">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-6 size-48 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
-      />
       <div className="glass relative flex size-12 items-center justify-center rounded-xl">
         <Icon className="size-5 text-text-muted" aria-hidden />
       </div>
