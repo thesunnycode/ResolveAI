@@ -92,6 +92,16 @@ public abstract class IntegrationTestBase {
                     .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1));
 
     static {
+        // The test HTTP client (Reactor Netty, via TestRestTemplate) keeps pooled
+        // connections with no idle limit. Tomcat drops a kept-alive connection after 20s,
+        // so a connection idle longer than that may already be dead on the server side -
+        // and in a long suite, where a class can go minutes without an HTTP call, reusing
+        // one made the next request (usually a login) hang for 20s and fail with
+        // "Connection reset". Evicting after 10s, below the server's timeout, is the usual
+        // client/server keep-alive rule. Set before any client exists: Reactor reads it
+        // once, when its default connection provider is created.
+        System.setProperty("reactor.netty.pool.maxIdleTime", "10000");
+
         // Started once for the JVM. Starting an already-started container is a no-op, so
         // this is safe however many subclasses exist. Nothing stops them: Ryuk removes them
         // when the build process exits, and stopping them per test class is precisely the

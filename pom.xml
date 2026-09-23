@@ -275,6 +275,23 @@
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!--
+					  Tests only: use the select()-based NIO selector instead of JDK 21's
+					  default on Windows (WEPoll). In the test JVM, where Tomcat and the
+					  Reactor Netty test client both poll sockets, WEPoll intermittently
+					  missed readiness events: a request sat unread until Tomcat's 20s
+					  timeout reset it ("Connection reset"), and a response body once never
+					  arrived at all, hanging the build. Thread dumps showed both pollers
+					  idle in WEPoll.wait with data pending. The property is ignored on
+					  Linux and macOS, so CI is unaffected.
+					-->
+					<argLine>-Djava.nio.channels.spi.SelectorProvider=sun.nio.ch.WindowsSelectorProvider</argLine>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<executions>
 					<execution>
