@@ -3,6 +3,7 @@ package com.resolveai.platform.ai.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.resolveai.ticketing.domain.Category;
 import java.util.Map;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * What the model observed. <b>Not what it decided.</b>
@@ -43,6 +44,7 @@ public record TriageSignals(
         boolean dataLossClaimed,
         boolean paymentAffected,
         Urgency linguisticUrgency,
+        @JsonDeserialize(using = LenientEntityMapDeserializer.class)
         Map<String, String> extractedEntities,
         double confidence) {
 

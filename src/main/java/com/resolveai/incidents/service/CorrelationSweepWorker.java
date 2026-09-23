@@ -32,6 +32,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -231,8 +232,25 @@ public class CorrelationSweepWorker {
             return false;
         }
 
+        // The gate tolerates partial overlap with an existing live incident, but a ticket can
+        // only be live-linked to one (uq_incident_ticket_live). Proposing the cluster as-is
+        // tried to re-link those tickets, the insert failed, and because the overlapping
+        // tickets are still in the next window the sweep failed the same way every minute -
+        // silently blocking all new detection for the tenant. Only the unlinked members are
+        // proposed, and only if they still make a cluster on their own.
+        Set<Long> alreadyLinked = new HashSet<>(existingLiveTicketIds);
+        List<Long> fresh = cluster.ticketIds().stream().filter(id -> !alreadyLinked.contains(id)).toList();
+        if (fresh.size() < gateConfig.minClusterSize()) {
+            log.debug("Tenant {} cluster of {}: only {} not already in a live incident; not proposing",
+                    tenantId, cluster.size(), fresh.size());
+            return false;
+        }
+        Cluster toPropose = fresh.size() == cluster.size()
+                ? cluster
+                : new Cluster(fresh, cluster.windowStart(), cluster.windowEnd());
+
         txTemplate.executeWithoutResult(status ->
-                propose(tenantId, cluster, decision, baseline, embeddingByTicket, entitiesByTicket));
+                propose(tenantId, toPropose, decision, baseline, embeddingByTicket, entitiesByTicket));
         return true;
     }
 

@@ -376,6 +376,16 @@ public class TriageWorker implements Worker {
         assignee.flatMap(users::findById).ifPresent(ticket::setAssignee);
         assignee.ifPresent(userId -> eventRecorder.record(ticket, TicketEventType.ASSIGNED,
                 null, String.valueOf(userId), Map.of("source", "AUTO_ROUTING")));
+        // The same status move a manual assign makes (TicketRepository.assignIfUnassigned):
+        // without it an auto-routed ticket had an assignee but stayed OPEN, so the queue
+        // showed it as unworked and its own assignee's "assign to me" was refused.
+        if (assignee.isPresent() && (ticket.getStatus() == com.resolveai.ticketing.domain.TicketStatus.OPEN
+                || ticket.getStatus() == com.resolveai.ticketing.domain.TicketStatus.TRIAGED)) {
+            String from = ticket.getStatus().name();
+            ticket.moveTo(com.resolveai.ticketing.domain.TicketStatus.ASSIGNED, clock.now());
+            eventRecorder.recordStatusChange(ticket, from,
+                    com.resolveai.ticketing.domain.TicketStatus.ASSIGNED.name(), "Auto-routed");
+        }
 
         tickets.saveAndFlush(ticket);
         embeddings.storeTicketEmbedding(context.ticketId(), embedding);

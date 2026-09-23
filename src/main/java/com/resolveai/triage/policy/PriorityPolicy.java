@@ -101,7 +101,7 @@ public final class PriorityPolicy {
             case SINGLE_USER -> 3;
         };
         trace.add(RuleTrace.matched(BASE_FROM_IMPACT, "P" + level,
-                signals.reportedImpact() + " impact starts at P" + level));
+                impactLabel(signals.reportedImpact()) + " impact starts at P" + level));
 
         // -- 2. Something is completely unusable -----------------------------
         if (signals.serviceDownClaimed()) {
@@ -147,15 +147,15 @@ public final class PriorityPolicy {
             case ENTERPRISE -> {
                 level = bump(level);
                 trace.add(RuleTrace.matched(PLAN_TIER_BUMP, "+1",
-                        "ENTERPRISE plan raises one level"));
+                        "Enterprise plan raises one level"));
             }
             case FREE -> {
                 level = lower(level);
                 trace.add(RuleTrace.matched(PLAN_TIER_BUMP, "-1",
-                        "FREE plan lowers one level"));
+                        "Free plan lowers one level"));
             }
             case PRO -> trace.add(RuleTrace.skipped(PLAN_TIER_BUMP,
-                    "PRO does not bump; ENTERPRISE would"));
+                    "Pro does not change the level; Enterprise would raise it"));
         }
 
         // -- 6. A live incident overrides everything above and below ---------
@@ -217,6 +217,14 @@ public final class PriorityPolicy {
                 explain(priority, trace, inputs));
     }
 
+    private static String impactLabel(TriageSignals.Severity s) {
+        return switch (s) {
+            case ORG_WIDE -> "Organisation-wide";
+            case TEAM -> "Team-level";
+            case SINGLE_USER -> "Single-user";
+        };
+    }
+
     /** One level more urgent, saturating at P1. */
     private static int bump(int level) {
         return Math.max(MOST_URGENT, level - 1);
@@ -252,33 +260,73 @@ public final class PriorityPolicy {
      */
     private static String explain(Priority priority, List<RuleTrace> trace,
                                   PolicyInputs inputs) {
-        List<String> reasons = new ArrayList<>(4);
+        // Replays the matched rules as steps ("starts at P3 ...; raised to P2 ...") rather
+        // than listing reasons. A list reads "P1 because it affects one person, and ..." -
+        // which makes the one rule that pulled the priority *down* sound like a reason for
+        // urgency. Showing how the level moved is what an agent deciding on an override
+        // actually needs.
+        List<String> steps = new ArrayList<>(6);
+        List<String> noEffect = new ArrayList<>(4);
+        int level = LEAST_URGENT;
         for (RuleTrace rule : trace) {
-            if (!rule.matched()) {
+            if (!rule.matched() || CLAMP.equals(rule.rule())) {
                 continue;
             }
-            switch (rule.rule()) {
-                case BASE_FROM_IMPACT -> reasons.add(switch (inputs.signals().reportedImpact()) {
-                    case ORG_WIDE -> "the customer reports their whole organisation is affected";
-                    case TEAM -> "the customer reports a team is affected";
-                    case SINGLE_USER ->
-                            "the customer reports the problem affects them individually";
-                });
-                case SERVICE_DOWN_BUMP ->
-                        reasons.add("they say something is completely unusable");
-                case DATA_LOSS_BUMP -> reasons.add("they report data missing or wrong");
-                case PAYMENT_BUMP -> reasons.add("money is involved");
-                case PLAN_TIER_BUMP ->
-                        reasons.add("they are on the " + inputs.planTier() + " plan");
-                case INCIDENT_INHERIT -> reasons.add(
-                        "the ticket is linked to a live incident and inherits its priority");
-                case REOPEN_BUMP -> reasons.add("the ticket has been reopened "
-                        + inputs.reopenCount() + " times");
-                default -> {
-                    // CLAMP adds nothing a human needs to read.
+            String why = reasonFor(rule.rule(), inputs);
+            if (rule.effect().startsWith("P")) {
+                level = Integer.parseInt(rule.effect().substring(1));
+                steps.add(BASE_FROM_IMPACT.equals(rule.rule())
+                        ? "starts at P" + level + " because " + why
+                        : "set to P" + level + " because " + why);
+            } else {
+                int next = rule.effect().startsWith("+") ? bump(level) : lower(level);
+                if (next == level) {
+                    // Saturated. Grouped into one clause at the end rather than a repeated
+                    // "stays at P1" per rule, which read as three separate decisions.
+                    noEffect.add(why);
+                } else {
+                    steps.add((next < level ? "raised" : "lowered") + " to P" + next + " because " + why);
+                    level = next;
                 }
             }
         }
-        return priority.name() + " because " + String.join(", and ", reasons) + ".";
+        String sentence = priority.name() + ": " + String.join("; ", steps) + ".";
+        if (!noEffect.isEmpty()) {
+            sentence += " Already at " + priority.name() + ", so this made no difference: "
+                    + joinAnd(noEffect) + ".";
+            if (noEffect.size() > 1) {
+                sentence = sentence.replace("so this made", "so these made");
+            }
+        }
+        return sentence;
+    }
+
+    private static String joinAnd(List<String> parts) {
+        if (parts.size() == 1) {
+            return parts.get(0);
+        }
+        return String.join(", ", parts.subList(0, parts.size() - 1)) + " and " + parts.get(parts.size() - 1);
+    }
+
+    private static String reasonFor(String rule, PolicyInputs inputs) {
+        return switch (rule) {
+            case BASE_FROM_IMPACT -> switch (inputs.signals().reportedImpact()) {
+                case ORG_WIDE -> "the customer says their whole organisation is affected";
+                case TEAM -> "the customer says a team is affected";
+                case SINGLE_USER -> "it affects one person";
+            };
+            case SERVICE_DOWN_BUMP -> "they say something is completely unusable";
+            case DATA_LOSS_BUMP -> "they report data missing or wrong";
+            case PAYMENT_BUMP -> "money is involved";
+            case PLAN_TIER_BUMP -> "the account is on the " + planName(inputs) + " plan";
+            case INCIDENT_INHERIT -> "it is linked to a live incident";
+            case REOPEN_BUMP -> "it has been reopened " + inputs.reopenCount() + " times";
+            default -> rule;
+        };
+    }
+
+    private static String planName(PolicyInputs inputs) {
+        String p = inputs.planTier().name();
+        return p.charAt(0) + p.substring(1).toLowerCase(java.util.Locale.ROOT);
     }
 }

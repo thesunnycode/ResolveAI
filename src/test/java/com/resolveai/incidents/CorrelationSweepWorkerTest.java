@@ -116,4 +116,41 @@ class CorrelationSweepWorkerTest extends IntegrationTestBase {
 
         assertThat(proposedAgain).isZero();
     }
+
+    @Test
+    @DisplayName("a cluster partly overlapping a live incident proposes only its new tickets, and the sweep keeps working")
+    void partialOverlapDoesNotPoisonTheSweep() {
+        OffsetDateTime now = jdbc.queryForObject("SELECT NOW()", OffsetDateTime.class);
+        List<Long> firstBatch = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            firstBatch.add(fixtures.seedTicket(tenant.tenantId(), tenant.customerId(),
+                    "Payment failing #" + i, 1, now.minusMinutes(10).plusSeconds(i * 30L)));
+        }
+        fixtures.refreshBaseline();
+        assertThat(sweeper.sweepOnce()).isEqualTo(1);
+        Long firstId = tenantScope.inTenant(tenant.tenantId(), () ->
+                incidents.findByStatusIn(EnumSet.of(IncidentStatus.PROPOSED)).get(0).getId());
+        jdbc.update("UPDATE incident SET status = 'CONFIRMED' WHERE id = ?", firstId);
+
+        // 7 new on the same storm: overlap 6/13 = 46%, under the 50% gate, so the gate says
+        // propose. This used to re-link the 6 taken tickets, violate uq_incident_ticket_live,
+        // roll back, and fail identically on every following sweep.
+        List<Long> secondBatch = new java.util.ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            secondBatch.add(fixtures.seedTicket(tenant.tenantId(), tenant.customerId(),
+                    "Payment still failing #" + i, 1, now.minusSeconds(90).plusSeconds(i * 10L)));
+        }
+
+        assertThat(sweeper.sweepOnce()).isEqualTo(1);
+
+        Incident second = tenantScope.inTenant(tenant.tenantId(), () ->
+                incidents.findByStatusIn(EnumSet.of(IncidentStatus.PROPOSED)).get(0));
+        assertThat(second.getId()).isNotEqualTo(firstId);
+        assertThat(incidentTickets.findLiveByIncidentId(second.getId()))
+                .extracting(link -> link.getTicketId())
+                .containsExactlyInAnyOrderElementsOf(secondBatch);
+        assertThat(incidentTickets.findLiveByIncidentId(firstId))
+                .extracting(link -> link.getTicketId())
+                .containsExactlyInAnyOrderElementsOf(firstBatch);
+    }
 }

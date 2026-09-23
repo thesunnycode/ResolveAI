@@ -35,12 +35,14 @@ public class TicketMapper {
     private final TicketMessageRepository messages;
     private final TicketEventRepository events;
     private final SlaSummaryProvider slaSummaries;
+    private final IncidentLinkLookup incidentLinks;
 
     public TicketMapper(TicketMessageRepository messages, TicketEventRepository events,
-                        SlaSummaryProvider slaSummaries) {
+                        SlaSummaryProvider slaSummaries, IncidentLinkLookup incidentLinks) {
         this.messages = messages;
         this.events = events;
         this.slaSummaries = slaSummaries;
+        this.incidentLinks = incidentLinks;
     }
 
     public TicketSummaryResponse toSummary(Ticket t, long messageCount) {
@@ -48,7 +50,9 @@ public class TicketMapper {
                 t.getId(), t.getReference(), t.getSubject(), t.getStatus(), t.getPriority(),
                 t.getCategory(),
                 UserRef.of(t.getRequester()), UserRef.of(t.getAssignee()), TeamRef.of(t.getTeam()),
-                null,
+                // Confirmed incidents only: this row is also what a customer's list is built
+                // from, and a customer hears about an incident once a person has confirmed it.
+                refOf(incidentLinks.liveFor(t.getTenantId(), t.getId(), false)),
                 slaSummaries.summaryFor(t.getId()),
                 messageCount, t.getCreatedAt(), t.getUpdatedAt());
     }
@@ -70,12 +74,20 @@ public class TicketMapper {
                 UserRef.of(t.getRequester()), UserRef.of(t.getAssignee()), TeamRef.of(t.getTeam()),
                 t.getReopenCount(), thread, timeline,
                 slaSummaries.detailFor(t.getId()),
-                null, null,
+                mapOf(incidentLinks.liveFor(t.getTenantId(), t.getId(), true)), null,
                 // Phase 6 fills this in. A fixed value rather than an omission, so clients
                 // can bind the field now and see it change rather than appear.
                 "NOT_STARTED", null,
                 EtagSupport.etagOf(t.getVersion()),
                 t.getCreatedAt(), t.getUpdatedAt());
+    }
+
+    private static String refOf(IncidentLinkLookup.Link link) {
+        return link == null ? null : link.reference();
+    }
+
+    private static Object mapOf(IncidentLinkLookup.Link link) {
+        return link == null ? null : link.asMap();
     }
 
     /**

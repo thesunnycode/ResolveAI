@@ -398,6 +398,21 @@ public class TicketService {
         eventRecorder.record(ticket, TicketEventType.MESSAGE_ADDED, null,
                 visibility.name(),
                 Map.of("messageId", message.getId(), "isFirstResponse", isFirst));
+
+        // Doc 02 step 11: the customer answering is what "waiting on customer" was waiting
+        // for. Without this the ticket stayed WAITING with its clock paused after the reply
+        // - telling the customer "waiting for your reply" and never able to breach. Routed
+        // through the same table-driven effect as a manual status change, so the clock
+        // resumes and the timeline records why.
+        if (visibility == Visibility.PUBLIC
+                && Objects.equals(author.getId(), ticket.getRequester().getId())
+                && ticket.getStatus() == TicketStatus.WAITING_ON_CUSTOMER) {
+            TicketStatus from = ticket.getStatus();
+            ticket.moveTo(TicketStatus.IN_PROGRESS, now);
+            applySlaEffect(ticket, from, TicketStatus.IN_PROGRESS, null);
+            eventRecorder.recordStatusChange(ticket, from.name(), TicketStatus.IN_PROGRESS.name(),
+                    "Customer replied");
+        }
         tickets.saveAndFlush(ticket);
 
         // Automatic capture is what makes SENT_AS_IS / EDITED rates trustworthy: relying
@@ -468,8 +483,14 @@ public class TicketService {
 
         if (updated == 0) {
             // Not an error in the system — the system worked. Somebody else got there first.
-            throw new ApiException(ErrorCode.ALREADY_ASSIGNED,
-                    "This ticket was assigned to someone else. Reload to see who.");
+            // Still a 409 when that "somebody" is the caller (ConcurrentAssignmentTest pins
+            // exactly one success), but the message must not claim it was someone else:
+            // with auto-routing, "you already have it" is the common case.
+            Long holder = tickets.findById(ticketId)
+                    .map(t -> t.getAssignee() == null ? null : t.getAssignee().getId()).orElse(null);
+            throw new ApiException(ErrorCode.ALREADY_ASSIGNED, Objects.equals(holder, targetId)
+                    ? "This ticket is already assigned to you."
+                    : "This ticket was assigned to someone else. Reload to see who.");
         }
 
         agentProfiles.incrementOpenCount(targetId, principal.tenantId());

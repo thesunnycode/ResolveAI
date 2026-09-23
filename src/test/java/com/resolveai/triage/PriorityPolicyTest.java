@@ -181,9 +181,9 @@ class PriorityPolicyTest {
                 PriorityPolicy.PAYMENT_BUMP,
                 PriorityPolicy.PLAN_TIER_BUMP);
         assertThat(decision.humanReadable())
-                .startsWith("P1 because")
+                .startsWith("P1: starts at P3 because")
                 .contains("completely unusable")
-                .contains("ENTERPRISE plan");
+                .contains("Enterprise plan");
     }
 
     /**
@@ -214,7 +214,7 @@ class PriorityPolicyTest {
 
         RuleTrace planTier = ruleNamed(decision, PriorityPolicy.PLAN_TIER_BUMP);
         assertThat(planTier.matched()).isFalse();
-        assertThat(planTier.note()).contains("ENTERPRISE would");
+        assertThat(planTier.note()).contains("Enterprise would");
 
         RuleTrace reopen = ruleNamed(decision, PriorityPolicy.REOPEN_BUMP);
         assertThat(reopen.matched()).isFalse();

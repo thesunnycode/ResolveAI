@@ -177,9 +177,9 @@ class TriageWorkerTest extends IntegrationTestBase {
             assertThat(rule.get("rule")).isEqualTo("PLAN_TIER_BUMP");
             assertThat(rule.get("matched")).isEqualTo(false);
             // The near-miss: the useful part of an unmatched rule.
-            assertThat((String) rule.get("note")).contains("ENTERPRISE would");
+            assertThat((String) rule.get("note")).contains("Enterprise would");
         });
-        assertThat((String) rationale.get("humanReadable")).startsWith("P1 because");
+        assertThat((String) rationale.get("humanReadable")).startsWith("P1: starts at P");
     }
 
     @Test

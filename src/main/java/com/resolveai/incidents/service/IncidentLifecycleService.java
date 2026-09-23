@@ -218,7 +218,11 @@ public class IncidentLifecycleService {
         if (ticket != null) {
             eventRecorder.record(ticket, TicketEventType.INCIDENT_DETACHED, null, null,
                     Map.of("incidentId", incidentId));
-            sla.resumeResolution(ticket);
+            // Only if nothing else is holding the clock: a ticket that is also waiting on
+            // the customer must stay paused for that reason.
+            if (!ticket.getStatus().isWaiting()) {
+                sla.resumeResolution(ticket);
+            }
         }
     }
 
@@ -263,6 +267,16 @@ public class IncidentLifecycleService {
                 ticketService.resolve(principal, link.getTicketId(),
                         new ResolveRequest(request.resolutionNote()));
                 resolvedCount++;
+            }
+        } else {
+            // The incident was the reason these resolution clocks were paused. Resolving it
+            // without resolving the tickets used to leave them paused indefinitely - never
+            // able to breach, invisible to every SLA report - so the pause ends here, the
+            // same way a detach ends it.
+            for (IncidentTicket link : incidentTickets.findLiveByIncidentId(incidentId)) {
+                tickets.findByIdForUpdate(link.getTicketId())
+                        .filter(t -> !t.getStatus().isWaiting())
+                        .ifPresent(sla::resumeResolution);
             }
         }
         incidents.saveAndFlush(incident);

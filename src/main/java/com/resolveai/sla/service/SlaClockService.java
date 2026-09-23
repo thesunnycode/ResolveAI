@@ -94,14 +94,17 @@ public class SlaClockService {
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(SlaKind.class)));
         if (covered.size() == SlaKind.values().length) {
             // Re-entry. uq_sla_ticket_kind would raise anyway; checking first turns a
-            // constraint violation into an ordinary idempotent return.
-            return existing;
+            // constraint violation into an ordinary idempotent return. Empty, not the
+            // existing records: callers write an SLA_STARTED event per record returned, and
+            // returning these made every priority override log two "clock started" events
+            // for clocks that never restarted - including a first-response clock long MET.
+            return List.of();
         }
 
         SlaPolicy policy = policyResolver.resolve(ticket.getPriority(), planTier, now);
         CalendarSpec calendar = calendars.current();
 
-        List<SlaRecord> created = new ArrayList<>(existing);
+        List<SlaRecord> created = new ArrayList<>(2);
         for (SlaKind kind : SlaKind.values()) {
             if (!covered.contains(kind)) {
                 created.add(startOne(ticket, policy, kind, calendar, now));
