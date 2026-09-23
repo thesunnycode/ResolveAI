@@ -195,29 +195,48 @@ public class EscalationService {
     /**
      * Who hears about it, by rung.
      *
-     * <p>50% goes to the assignee, 75% to the team lead, 90% marks it at risk for the
-     * dashboard, 100% is the breach. Escalating to a human at 50% and to their manager at
-     * 75% is the point of a ladder: by the time it breaches, two people have already been
-     * told and had a chance to act.
+     * <p>50% goes to the assignee, 75% and above to the team lead. Escalating to a human
+     * at 50% and to their lead at 75% is the point of a ladder: by the time it breaches,
+     * two people have already been told and had a chance to act.
      *
+     * <p><b>Each rung falls back to the other person rather than to nobody.</b> An
+     * unassigned ticket at 50% goes to the lead - it is the lead's queue that is short an
+     * owner, and that is exactly when someone needs to know. A team with no lead keeps the
+     * assignee on the upper rungs. Only a ticket with neither is left unaddressed.
      */
     private Long recipientFor(SlaRecord record, short rung) {
         Ticket ticket = record.getTicket();
-        Long recipient = switch (rung) {
-            case 50 -> ticket.getAssignee() == null ? null : ticket.getAssignee().getId();
-            // A lead is not modelled per team yet (Phase 9's admin surface), so 75 and
-            // above go to the assignee too rather than to nobody. Named here rather than
-            // left as a silent gap.
-            default -> ticket.getAssignee() == null ? null : ticket.getAssignee().getId();
-        };
+        Long assignee = ticket.getAssignee() == null ? null : ticket.getAssignee().getId();
+        Long lead = teamLeadOf(ticket);
+        Long recipient = rung < 75
+                ? (assignee != null ? assignee : lead)
+                : (lead != null ? lead : assignee);
         if (recipient == null) {
-            // An unassigned ticket breaching is exactly the case worth knowing about, so
-            // the escalation row is still written - it is the notification that has no
+            // The escalation row is still written - it is the notification that has no
             // addressee. The at-risk queue is what surfaces these.
-            log.warn("SLA rung {} on unassigned ticket {}; no notification sent",
-                    rung, ticket.getReference());
+            log.warn("SLA rung {} on ticket {} with no assignee and no team lead; "
+                     + "no notification sent", rung, ticket.getReference());
         }
         return recipient;
+    }
+
+    /**
+     * The active lead of the ticket's team, lowest id first so the choice is stable.
+     *
+     * <p>Native, with the tenant spelled out: this runs on the poller thread, and a
+     * native query is not covered by {@code @TenantId}.
+     */
+    private Long teamLeadOf(Ticket ticket) {
+        if (ticket.getTeam() == null) {
+            return null;
+        }
+        List<Long> leads = jdbc.queryForList("""
+                SELECT id FROM app_user
+                 WHERE tenant_id = ? AND team_id = ? AND role = 'TEAM_LEAD' AND is_active
+                 ORDER BY id
+                 LIMIT 1
+                """, Long.class, ticket.getTenantId(), ticket.getTeam().getId());
+        return leads.isEmpty() ? null : leads.get(0);
     }
 
     /** @return the id of the notification written */

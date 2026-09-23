@@ -379,12 +379,15 @@ public class TriageWorker implements Worker {
         // The same status move a manual assign makes (TicketRepository.assignIfUnassigned):
         // without it an auto-routed ticket had an assignee but stayed OPEN, so the queue
         // showed it as unworked and its own assignee's "assign to me" was refused.
+        //
+        // Like the manual path, no separate STATUS_CHANGED event: the ASSIGNED event
+        // already says what happened, and the status rides on the same UPDATE as the
+        // assignee. An extra insert here is one more round trip while the agent row is
+        // locked, and TriageConcurrencyTest's burst showed it - siblings' SKIP LOCKED
+        // started finding every agent taken and left tickets unassigned.
         if (assignee.isPresent() && (ticket.getStatus() == com.resolveai.ticketing.domain.TicketStatus.OPEN
                 || ticket.getStatus() == com.resolveai.ticketing.domain.TicketStatus.TRIAGED)) {
-            String from = ticket.getStatus().name();
             ticket.moveTo(com.resolveai.ticketing.domain.TicketStatus.ASSIGNED, clock.now());
-            eventRecorder.recordStatusChange(ticket, from,
-                    com.resolveai.ticketing.domain.TicketStatus.ASSIGNED.name(), "Auto-routed");
         }
 
         tickets.saveAndFlush(ticket);

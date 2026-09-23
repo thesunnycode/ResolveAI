@@ -66,7 +66,7 @@ echo "── schema assertions ──"
 # Phase 2 in V2/V5. A number that only ever goes up between phases and is never
 # re-derived is a number nobody trusts; re-deriving it here each phase is what keeps
 # this script worth running instead of worth ignoring.
-expect "migrations succeeded"   "14" "$(q "SELECT count(*) FROM flyway_schema_history WHERE success")"
+expect "migrations succeeded"   "15" "$(q "SELECT count(*) FROM flyway_schema_history WHERE success")"
 expect "tables"                 "41" "$(q "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history'")"
 expect "partial indexes"        "23" "$(q "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexdef ILIKE '%WHERE%'")"
 expect "triggers"               "10" "$(q "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal")"

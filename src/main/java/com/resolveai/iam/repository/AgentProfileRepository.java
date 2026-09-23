@@ -122,4 +122,33 @@ public interface AgentProfileRepository extends JpaRepository<AgentProfile, Long
     Optional<Long> claimLeastLoadedAgent(@Param("tenantId") Long tenantId,
                                          @Param("teamId") Long teamId,
                                          @Param("localTime") String localTime);
+
+    /**
+     * Whether anyone in the team is eligible right now, ignoring row locks.
+     *
+     * <p>The same predicate as {@link #claimLeastLoadedAgent}, without {@code FOR UPDATE}.
+     * It lets the assigner tell "everyone is busy" apart from "everyone free is locked by
+     * a sibling router for the next few milliseconds" - the second is a burst, not a
+     * shortage, and deserves a retry rather than a ticket left in the queue.
+     */
+    @Query(value = """
+            SELECT EXISTS (
+              SELECT 1
+                FROM agent_profile ap
+               WHERE ap.tenant_id = :tenantId
+                 AND ap.is_available = TRUE
+                 AND ap.open_count < ap.max_concurrent
+                 AND ap.user_id IN (
+                       SELECT u.id FROM app_user u
+                        WHERE u.team_id = :teamId
+                          AND u.tenant_id = :tenantId
+                          AND u.deleted_at IS NULL
+                          AND u.is_active = TRUE
+                          AND u.role IN ('AGENT', 'TEAM_LEAD'))
+                 AND (ap.shift_start IS NULL
+                      OR CAST(:localTime AS time) BETWEEN ap.shift_start AND ap.shift_end))
+            """, nativeQuery = true)
+    boolean anyEligibleAgent(@Param("tenantId") Long tenantId,
+                             @Param("teamId") Long teamId,
+                             @Param("localTime") String localTime);
 }

@@ -39,6 +39,9 @@ public class AgentAssigner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentAssigner.class);
 
+    /** Retries when free agents are only locked, not busy: 2+4+8+16+32 ms at most. */
+    private static final int LOCKED_RETRIES = 5;
+
     private final AgentProfileRepository agents;
     private final CalendarService calendars;
 
@@ -65,8 +68,21 @@ public class AgentAssigner {
         // shift looks like it is asleep and the evening one never ends.
         LocalTime localTime = now.atZoneSameInstant(calendars.current().zone()).toLocalTime();
 
-        Optional<Long> claimed = agents.claimLeastLoadedAgent(tenantId, teamId,
-                localTime.toString());
+        String time = localTime.toString();
+        Optional<Long> claimed = agents.claimLeastLoadedAgent(tenantId, teamId, time);
+
+        // SKIP LOCKED returns nothing both when nobody is free and when everybody free is
+        // locked by a sibling router that is about to commit. Under a burst the second is
+        // common - five routers, five agents, and the fifth router sees four locked rows
+        // and the fifth agent already taken. Treating that as "nobody free" left tickets
+        // unassigned with agents sitting at half capacity. The locks are held for a few
+        // milliseconds, so a short bounded retry resolves it; a genuine shortage fails the
+        // unlocked check straight away and costs one extra query.
+        for (int attempt = 0; claimed.isEmpty() && attempt < LOCKED_RETRIES
+                && agents.anyEligibleAgent(tenantId, teamId, time); attempt++) {
+            pause(2L << attempt);
+            claimed = agents.claimLeastLoadedAgent(tenantId, teamId, time);
+        }
         if (claimed.isEmpty()) {
             log.debug("No eligible agent in team {} at {}; leaving the ticket in the "
                       + "team queue", teamId, localTime);
@@ -79,5 +95,13 @@ public class AgentAssigner {
         // contended column in the schema.
         agents.incrementOpenCount(userId, tenantId);
         return Optional.of(userId);
+    }
+
+    private static void pause(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
