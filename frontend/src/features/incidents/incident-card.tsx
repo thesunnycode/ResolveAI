@@ -1,0 +1,89 @@
+import { AlertTriangle, CheckCircle2, Circle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import type { IncidentSummary } from '@/lib/types'
+import { cn } from '@/lib/utils'
+
+export function IncidentCard({
+  incident,
+  onConfirm,
+  onReject,
+}: {
+  incident: IncidentSummary
+  onConfirm?: () => void
+  onReject?: () => void
+}) {
+  const d = incident.detection
+  const sizeOk = d.clusterSizeAtDetection >= d.gateThresholds.minClusterSize
+  const rateOk = d.arrivalRateMultiple > d.gateThresholds.minRateMultiple
+
+  return (
+    <div
+      className={cn(
+        'glass rounded-xl p-5 transition-all hover:border-border-strong hover:shadow-elevated',
+        incident.status === 'PROPOSED' && 'border-warning/30',
+      )}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {incident.status === 'PROPOSED' && (
+            <Badge variant="warning">
+              <AlertTriangle className="size-3" aria-hidden /> Proposed
+            </Badge>
+          )}
+          {(incident.status === 'CONFIRMED' || incident.status === 'MITIGATED') && (
+            <Badge variant="primary">
+              <Circle className="size-2 fill-current" aria-hidden /> Live
+            </Badge>
+          )}
+          {incident.status === 'RESOLVED' && (
+            <Badge variant="success">
+              <CheckCircle2 className="size-3" aria-hidden /> Resolved
+            </Badge>
+          )}
+          <span className="text-[12px] text-text-subtle">{incident.reference}</span>
+        </div>
+        <span className="text-[12px] text-text-subtle">
+          detected {d.timeToDetectSeconds}s after first report
+        </span>
+      </div>
+
+      <Link to={`/incidents/${incident.id}`} className="block">
+        <h3 className="text-[16px] font-semibold tracking-tight text-text hover:text-primary">{incident.title}</h3>
+      </Link>
+
+      <p className="mt-1.5 text-[13px] text-text-muted">
+        {incident.linkedTicketCount} tickets &middot; arrival rate {d.arrivalRateMultiple.toFixed(1)}&times; baseline
+        &middot; window {Math.round((new Date(d.detectedAt).getTime() - new Date(d.firstTicketAt).getTime()) / 60000)} min
+      </p>
+
+      {/* The gate line, on the card, not behind a click — doc 12/06: the evidence
+          that a statistical check, not a model, decided this. */}
+      <p className="mt-3 rounded-lg bg-surface-2/60 px-3 py-2 font-mono text-[11.5px] text-text-subtle">
+        gate: size {sizeOk ? '✓' : '✗'} &ge;{d.gateThresholds.minClusterSize} AND rate {rateOk ? '✓' : '✗'} &gt;
+        {d.gateThresholds.minRateMultiple}&times; — {sizeOk && rateOk ? 'both passed' : 'not satisfied'}
+      </p>
+
+      {incident.status === 'PROPOSED' && !onConfirm && !onReject && (
+        <p className="mt-4 border-t border-border pt-3 text-[12px] text-text-subtle">
+          Waiting for a team lead to confirm or reject.
+        </p>
+      )}
+      {incident.status === 'PROPOSED' && (onConfirm || onReject) && (
+        <div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
+          {onReject && (
+            <Button variant="secondary" size="sm" onClick={onReject}>
+              Reject
+            </Button>
+          )}
+          {onConfirm && (
+            <Button size="sm" onClick={onConfirm}>
+              Confirm incident
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

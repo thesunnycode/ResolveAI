@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Reference lock (Refero): Krea as the primary direction -
+ * near-black matte canvas, white/zinc text, white primary actions with black
+ * text, active states as subtle surface shifts rather than colored fills -
+ * with Hyperliquid's single-accent discipline borrowed on top: teal appears
+ * only as brand mark, focus ring, glow and small highlights, never as a
+ * button fill or a tinted neutral.
+ *
+ * Dark is the designed-for theme; light mirrors it (black actions on white).
+ * Every semantic color has its own dark value - the light-mode reds and
+ * ambers are unreadable on #09090b.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-bg: #f6f6f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1f3;
+  --color-glass: rgb(255 255 255 / 0.72);
+  --color-border: #e5e5e8;
+  --color-border-strong: #d4d4d8;
+
+  --color-text: #09090b;
+  --color-text-muted: #52525b;
+  --color-text-subtle: #8a8a93;
+
+  --color-primary: #0d9488;
+  --color-primary-hover: #0f766e;
+  --color-primary-bg: #e7f6f4;
+
+  --color-action: #09090b;
+  --color-action-hover: #27272a;
+  --color-action-fg: #fafafa;
+
+  --color-success: #047857;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+
+  --color-p1: #dc2626;
+  --color-p2: #d97706;
+  --color-p3: #3a6ea8;
+  --color-p4: #8a8a93;
+
+  /*
+   * No custom --spacing-{xs,sm,md,lg,xl,2xl} keys: those names are also how
+   * Tailwind v4 derives max-w-{sm,md,...}, and defining them silently broke
+   * every max-w-sm in the app. Use the stock numeric spacing utilities.
+   */
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.05);
+  --shadow-elevated: 0 8px 24px -8px rgb(0 0 0 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.06);
+  --shadow-popover: 0 16px 40px -12px rgb(0 0 0 / 0.22), 0 4px 10px -4px rgb(0 0 0 / 0.08);
+
+  --animate-fade-in: fade-in 0.18s ease-out;
+  --animate-slide-up: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+}
+
+.dark {
+  --color-bg: #09090b;
+  --color-surface: #111113;
+  --color-surface-2: #1a1a1d;
+  --color-glass: rgb(255 255 255 / 0.028);
+  --color-border: rgb(255 255 255 / 0.08);
+  --color-border-strong: rgb(255 255 255 / 0.15);
+
+  --color-text: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --color-text-subtle: #71717a;
+
+  --color-primary: #2dd4bf;
+  --color-primary-hover: #5eead4;
+  --color-primary-bg: rgb(45 212 191 / 0.1);
+
+  --color-action: #fafafa;
+  --color-action-hover: #e4e4e7;
+  --color-action-fg: #09090b;
+
+  --color-success: #34d399;
+  --color-success-bg: rgb(52 211 153 / 0.1);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgb(251 191 36 / 0.1);
+  --color-danger: #f87171;
+  --color-danger-bg: rgb(248 113 113 / 0.1);
+
+  --color-p1: #f87171;
+  --color-p2: #fbbf24;
+  --color-p3: #7aa7e0;
+  --color-p4: #71717a;
+
+  --shadow-card: inset 0 1px 0 0 rgb(255 255 255 / 0.04), 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-elevated: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 12px 32px -12px rgb(0 0 0 / 0.7);
+  --shadow-popover: inset 0 1px 0 0 rgb(255 255 255 / 0.06), 0 20px 48px -12px rgb(0 0 0 / 0.8);
+}
+
+@layer base {
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+::selection {
+  background: var(--color-primary-bg);
+  color: var(--color-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+}
+
+@layer components {
+/* A translucent panel over the ambient backdrop - the one surface treatment
+   the whole app uses, instead of a different bordered box per component. */
+.glass {
+  background: var(--color-glass);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+}
+
+/* Film grain. Low enough to read as "matte" rather than as texture. */
+.noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark .noise::after {
+  opacity: 0.06;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    color-mix(in srgb, var(--color-surface-2) 55%, var(--color-text) 6%) 50%,
+    var(--color-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
