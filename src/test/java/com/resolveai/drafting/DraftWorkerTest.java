@@ -145,7 +145,7 @@ class DraftWorkerTest extends IntegrationTestBase {
         assertThat(draft.get("status")).isEqualTo("SUPPRESSED_LOW_COVERAGE");
         assertThat(draft.get("assembledText")).isNull();
         assertThat(draft.get("recommendation")).isEqualTo("ESCALATE_TO_HUMAN");
-        assertThat((String) draft.get("suppressionReason")).contains("0 of 1");
+        assertThat((String) draft.get("suppressionReason")).contains("0 of the 1");
         assertThat((List<String>) draft.get("unresolvedAspects")).isNotEmpty();
     }
 

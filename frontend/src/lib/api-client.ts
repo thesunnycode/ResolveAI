@@ -69,6 +69,33 @@ api.interceptors.response.use(
     if (error.response?.data && typeof error.response.data === 'object') {
       return Promise.reject(new ApiError(error.response.data as ProblemDetail))
     }
-    return Promise.reject(error)
+    // No RFC 7807 body: a CORS rejection (a bare 403), a proxy error, or no response at
+    // all. Surfacing these as a generic "Something went wrong" left a first-time user with
+    // nothing to act on, so they become a readable ApiError like every other failure.
+    return Promise.reject(new ApiError(bodilessProblem(error)))
   },
 )
+
+function bodilessProblem(error: AxiosError): ProblemDetail {
+  const status = error.response?.status ?? 0
+  const detail =
+    status === 0
+      ? "We couldn't reach ResolveAI. Check your connection and try again — if the demo was idle it may take a few seconds to wake up."
+      : status === 403
+        ? import.meta.env.DEV
+          ? 'The server refused this request (403, no body). In local development this is almost always CORS: add this page\'s origin to CORS_ALLOWED_ORIGINS.'
+          : 'The server refused this request. Try again, or contact your workspace admin if it keeps happening.'
+        : status >= 500
+          ? 'ResolveAI hit a problem on its side. Try again in a moment.'
+          : `The request failed (HTTP ${status}). Try again.`
+  return {
+    type: 'about:blank',
+    title: 'Request failed',
+    status,
+    detail,
+    instance: error.config?.url ?? '',
+    errorCode: status === 0 ? 'NETWORK_ERROR' : 'HTTP_' + status,
+    traceId: '',
+    timestamp: new Date().toISOString(),
+  }
+}

@@ -159,6 +159,19 @@ logging:
 # services: one typed object per concern, validated at startup, so a missing value is a
 # refusal to boot rather than a null three hours into a worker run.
 resolveai:
+  # Demo mode: one-click role logins, a seeded showcase queue, the outage simulator. OFF
+  # unless DEMO_ENABLED=true, in every profile - a real deployment never grows public
+  # logins by accident. See com.resolveai.demo.DemoSettings for what each switch does.
+  demo:
+    enabled: ${DEMO_ENABLED:false}
+    tenant-slug: ${DEMO_TENANT_SLUG:demo}
+    seed-tenant: ${DEMO_SEED_TENANT:true}
+    password: ${DEMO_PASSWORD:}
+    allow-admin: ${DEMO_ALLOW_ADMIN:false}
+    storm-on-seed: ${DEMO_STORM_ON_SEED:true}
+    storm-cooldown-minutes: ${DEMO_STORM_COOLDOWN_MINUTES:10}
+    # Spring cron ("0 0 3 * * *" = 03:00 UTC daily); "-" disables the reset.
+    reset-cron: ${DEMO_RESET_CRON:-}
   auth:
     access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
     refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
@@ -185,10 +198,13 @@ resolveai:
     window-minutes: ${CORRELATION_WINDOW_MINUTES:30}
     min-cluster-size: ${CORRELATION_MIN_CLUSTER_SIZE:5}
     rate-multiplier: ${CORRELATION_RATE_MULTIPLIER:3.0}
-    # Doc 12 Task 11 tunes these two against the seeded storms; the table is committed
-    # in the README. tau is the leader-clustering similarity threshold (cosine plus the
-    # entity boost); entity-boost weights the Jaccard overlap of extracted entities.
-    tau: ${CORRELATION_TAU:0.82}
+    # tau is the leader-clustering similarity threshold (cosine plus the entity boost);
+    # entity-boost weights the Jaccard overlap of extracted entities. 0.68, not the 0.82
+    # the synthetic sweep suggested: re-tuned on REAL text-embedding-3-small vectors of
+    # demo/storm.json against demo/no-storm.json and the 200-ticket starter corpus
+    # (CorrelationRealEmbeddingTuningTest). The varied storm is only 0.44 cosine-similar
+    # on median, so at 0.82 no real outage was ever detected. Table in the README.
+    tau: ${CORRELATION_TAU:0.68}
     entity-boost: ${CORRELATION_ENTITY_BOOST:0.15}
     max-overlap-fraction: ${CORRELATION_MAX_OVERLAP_FRACTION:0.50}
     baseline-floor: ${CORRELATION_BASELINE_FLOOR:2.0}

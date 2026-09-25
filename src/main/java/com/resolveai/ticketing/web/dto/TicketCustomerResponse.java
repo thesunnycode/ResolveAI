@@ -45,7 +45,20 @@ public record TicketCustomerResponse(
         UserRef assignee,
         int reopenCount,
         List<MessageResponse> messages,
+        ResponseTarget responseTarget,
         String etag,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
+
+    /**
+     * The promise, and only the promise: how long until a person replies, in which business
+     * hours. Deliberately none of the SLA internals an agent sees - no segments, no
+     * escalation rungs, no breach prediction. {@code null} until triage has decided the
+     * priority, because until then there is no promise to state.
+     *
+     * @param state {@code RUNNING}, {@code PAUSED}, {@code MET} or {@code BREACHED}
+     */
+    public record ResponseTarget(String state, int targetBusinessMinutes, String timezone,
+                                 List<Integer> workingDays, String dayStart, String dayEnd) {
+    }
 }

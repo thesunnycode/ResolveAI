@@ -73,6 +73,13 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh").permitAll()
+                        // Demo mode (only exists when resolveai.demo.enabled; a 404
+                        // otherwise) and first-party product analytics, which has to accept
+                        // events from the login page before anyone is signed in.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/demo").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/demo/login",
+                                "/api/v1/events").permitAll()
                         // CORS preflight carries no Authorization header by definition.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(EndpointRequest.to("health", "prometheus")).permitAll()

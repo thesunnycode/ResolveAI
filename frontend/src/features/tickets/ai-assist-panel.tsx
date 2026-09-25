@@ -1,8 +1,12 @@
-import { ChevronRight, Sparkles } from 'lucide-react'
+import { BookPlus, ChevronRight, PenLine, RefreshCw, SearchCheck, Sparkles } from 'lucide-react'
 import * as React from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { AnalysisView, ClaimView, DraftView } from '@/lib/types'
+import { useToast } from '@/components/ui/toast'
+import { ApiError } from '@/lib/api-client'
+import { track } from '@/lib/analytics'
+import type { AnalysisView, CitationView, ClaimView, DraftView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useDraft, useRequestDraft, useTicketAnalysis } from './api'
 import { CitationPopover } from './citation-popover'
@@ -64,6 +68,18 @@ function TriageSignals({ analysis }: { analysis: AnalysisView }) {
   )
 }
 
+const CIRCLED = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
+
+/** One chip per document: four chunks of one runbook are one source, not four. */
+function uniqueByDocument(citations: CitationView[]): CitationView[] {
+  const seen = new Set<number>()
+  return citations.filter((c) => {
+    if (seen.has(c.documentId)) return false
+    seen.add(c.documentId)
+    return true
+  })
+}
+
 function ClaimCard({ claim, index }: { claim: ClaimView; index: number }) {
   // `kept` is what the backend actually decides on — see ClaimView's own doc: a claim is
   // struck through and its reason shown whenever it was dropped, regardless of which of
@@ -78,7 +94,7 @@ function ClaimCard({ claim, index }: { claim: ClaimView; index: number }) {
           dropped ? 'text-text-subtle line-through decoration-danger/60' : 'text-text',
         )}
       >
-        <span className="mr-1 font-medium text-text-subtle">&#9312;{index > 0 ? String(index + 1) : ''}</span>
+        <span className="mr-1 font-medium text-text-subtle">{CIRCLED[index] ?? `${index + 1}.`}</span>
         {claim.text}
       </p>
       {dropped ? (
@@ -87,8 +103,8 @@ function ClaimCard({ claim, index }: { claim: ClaimView; index: number }) {
         </p>
       ) : (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {claim.citations.map((c) => (
-            <CitationPopover key={c.chunkId} citation={c} />
+          {uniqueByDocument(claim.citations).map((c) => (
+            <CitationPopover key={c.documentId} citation={c} />
           ))}
           {claim.verdict === 'PARTIAL' && (
             <span className="inline-flex items-center rounded-sm bg-warning-bg px-1.5 py-0.5 text-[11px] font-medium text-warning">
@@ -101,16 +117,95 @@ function ClaimCard({ claim, index }: { claim: ClaimView; index: number }) {
   )
 }
 
-function DraftPanel({
+type Example = { id: number; reference: string } | null | undefined
+
+/**
+ * A suppressed draft is ResolveAI working as designed — "a confidently wrong answer is
+ * worse than no answer" — so it is framed as a decision with somewhere to go next, not
+ * as an error full of engineering numbers (those sit behind "Why exactly?").
+ */
+function SuppressedDraft({
   draft,
-  onUseReply,
+  isAdmin,
+  coveredExample,
+  onReplyManually,
+  onRegenerate,
+  regenerating,
 }: {
   draft: DraftView
-  onUseReply: (text: string) => void
+  isAdmin: boolean
+  coveredExample: Example
+  onReplyManually: () => void
+  onRegenerate: () => void
+  regenerating: boolean
+}) {
+  const noEvidence = draft.status === 'SUPPRESSED_NO_EVIDENCE'
+  return (
+    <div className="p-4 text-[13px]">
+      <p className="flex items-center gap-1.5 font-medium text-text">
+        <SearchCheck className="size-3.5 text-text-muted" aria-hidden />
+        No draft — ResolveAI didn&apos;t guess
+      </p>
+      <p className="mt-1.5 leading-relaxed text-text-muted">
+        {noEvidence
+          ? 'Nothing in the knowledge base covers this ticket, so there was nothing to cite.'
+          : "The knowledge base didn't back up enough of what a reply would need to say."}{' '}
+        Unsupported answers are withheld on purpose — this one is yours to write.
+      </p>
+      <div className="mt-3 grid gap-2">
+        <Button size="sm" className="w-full" onClick={onReplyManually}>
+          <PenLine className="size-3.5" aria-hidden /> Reply manually
+        </Button>
+        {isAdmin && (
+          <Button asChild variant="secondary" size="sm" className="w-full">
+            <Link to="/knowledge/new">
+              <BookPlus className="size-3.5" aria-hidden /> Add a knowledge article
+            </Link>
+          </Button>
+        )}
+        {coveredExample && (
+          <Button asChild variant="ghost" size="sm" className="w-full">
+            <Link to={`/tickets/${coveredExample.id}`}>See a ticket the knowledge base covers ({coveredExample.reference})</Link>
+          </Button>
+        )}
+      </div>
+      <details className="mt-3 text-[12px] text-text-subtle">
+        <summary className="cursor-pointer select-none hover:text-text-muted">Why exactly?</summary>
+        <p className="mt-1.5 leading-relaxed">{draft.suppressionReason}</p>
+        <button
+          type="button"
+          onClick={onRegenerate}
+          disabled={regenerating}
+          className="mt-2 inline-flex items-center gap-1 text-text-muted hover:text-text disabled:opacity-50"
+        >
+          <RefreshCw className={cn('size-3', regenerating && 'animate-spin')} aria-hidden /> Try again (e.g. after adding an article)
+        </button>
+      </details>
+    </div>
+  )
+}
+
+function DraftPanel({
+  draft,
+  isAdmin,
+  coveredExample,
+  onUseReply,
+  onReplyManually,
+  onRegenerate,
+  regenerating,
+}: {
+  draft: DraftView
+  isAdmin: boolean
+  coveredExample: Example
+  onUseReply: (text: string, draftId: number) => void
+  onReplyManually: () => void
+  onRegenerate: () => void
+  regenerating: boolean
 }) {
   if (draft.status === 'PENDING') {
     return (
       <div className="space-y-2 p-4">
+        <p className="text-[12px] text-text-subtle">Drafting, then checking every claim against the knowledge base…</p>
         <Skeleton className="h-3.5 w-1/3" />
         <Skeleton className="h-14 w-full" />
         <Skeleton className="h-14 w-full" />
@@ -119,25 +214,34 @@ function DraftPanel({
   }
   if (draft.status === 'SUPPRESSED_LOW_COVERAGE' || draft.status === 'SUPPRESSED_NO_EVIDENCE') {
     return (
-      <div className="p-4 text-[13px] text-text-muted">
-        <p className="font-medium text-text">Not enough grounded evidence to draft a reply.</p>
-        <p className="mt-1 text-text-subtle">{draft.suppressionReason}</p>
-      </div>
+      <SuppressedDraft
+        draft={draft}
+        isAdmin={isAdmin}
+        coveredExample={coveredExample}
+        onReplyManually={onReplyManually}
+        onRegenerate={onRegenerate}
+        regenerating={regenerating}
+      />
     )
   }
   if (draft.status === 'FAILED') {
-    return <p className="p-4 text-[13px] text-text-muted">The draft failed. Try again from the ticket.</p>
+    return (
+      <div className="p-4 text-[13px] text-text-muted">
+        <p>The draft couldn&apos;t be generated this time.</p>
+        <Button variant="secondary" size="sm" className="mt-3 w-full" loading={regenerating} onClick={onRegenerate}>
+          <RefreshCw className="size-3.5" aria-hidden /> Try again
+        </Button>
+      </div>
+    )
   }
 
   const covered = draft.claims.filter((c) => c.kept).length
   return (
     <div className="p-4">
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[12px] font-semibold uppercase tracking-wide text-text-subtle">
-          Suggested reply
-        </span>
-        <span className="text-[12px] text-text-muted">
-          Coverage {covered}/{draft.claims.length}
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-text-subtle">Suggested reply</span>
+        <span className="text-[12px] text-text-muted" title="Claims backed by a cited source">
+          {covered} of {draft.claims.length} cited
         </span>
       </div>
       <div className="space-y-2">
@@ -147,7 +251,7 @@ function DraftPanel({
       </div>
       {draft.unresolvedAspects.length > 0 && (
         <div className="mt-3 rounded-md bg-surface-2 p-2.5 text-[12px] text-text-muted">
-          <p className="mb-1 font-medium text-text">Not covered by the knowledge base:</p>
+          <p className="mb-1 font-medium text-text">Not covered by the knowledge base — answer these yourself:</p>
           <ul className="list-inside list-disc space-y-0.5">
             {draft.unresolvedAspects.map((a, i) => (
               <li key={i}>{a}</li>
@@ -156,30 +260,81 @@ function DraftPanel({
         </div>
       )}
       {draft.assembledText && (
-        <Button size="sm" className="mt-3 w-full" onClick={() => onUseReply(draft.assembledText!)}>
+        <Button size="sm" className="mt-3 w-full" onClick={() => onUseReply(draft.assembledText!, draft.id)}>
           Use reply
         </Button>
       )}
+      <button
+        type="button"
+        onClick={onRegenerate}
+        disabled={regenerating}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] text-text-subtle hover:text-text disabled:opacity-50"
+      >
+        <RefreshCw className={cn('size-3', regenerating && 'animate-spin')} aria-hidden /> Regenerate
+      </button>
     </div>
   )
 }
 
+function draftErrorMessage(err: unknown): string {
+  if (!(err instanceof ApiError)) return 'Could not request a draft. Try again.'
+  switch (err.problem.errorCode) {
+    case 'AI_BUDGET_EXHAUSTED':
+      return "This workspace's AI budget for the month is used up, so no new drafts can be generated. Existing drafts still work."
+    case 'DRAFT_IN_PROGRESS':
+      return 'A draft for this ticket is already being written — it will appear here in a moment.'
+    case 'AI_DISABLED_BY_POLICY':
+      return 'AI drafting is switched off for this workspace by its admin.'
+    case 'NO_KNOWLEDGE_BASE':
+      return 'This workspace has no knowledge base yet, so there is nothing to draft from.'
+    case 'RATE_LIMITED':
+      return 'Too many drafts requested just now. Wait a moment and try again.'
+    default:
+      return err.problem.detail || 'Could not request a draft. Try again.'
+  }
+}
+
 export function AiAssistPanel({
   ticketId,
+  latestDraftId,
+  isAdmin,
+  coveredExample,
   onUseReply,
+  onReplyManually,
 }: {
   ticketId: number
-  onUseReply: (text: string) => void
+  /**
+   * A draft that already exists for this ticket — shown straight away instead of an empty
+   * rail. Read once on mount; the parent keys this component by ticket id, so moving to
+   * another ticket starts fresh from that ticket's draft.
+   */
+  latestDraftId?: number | null
+  isAdmin: boolean
+  /** A ticket the knowledge base does cover, offered when this one's draft is suppressed. */
+  coveredExample?: Example
+  onUseReply: (text: string, draftId: number) => void
+  onReplyManually: () => void
 }) {
+  const { push } = useToast()
   const [collapsed, setCollapsed] = React.useState(() => {
     const stored = localStorage.getItem('ai-rail-collapsed')
-    // No stored choice: open on wide screens, closed where it would crush the thread.
-    return stored === null ? window.innerWidth < 1280 : stored === '1'
+    // No stored choice: open at every width where it fits beside or over the thread. It
+    // used to start collapsed below 1280px, hiding the product's main feature on most
+    // laptops; now only a remembered collapse, or a phone, hides it.
+    return stored === null ? window.innerWidth < 768 : stored === '1'
   })
-  const [draftId, setDraftId] = React.useState<number | null>(null)
+  const [draftId, setDraftId] = React.useState<number | null>(latestDraftId ?? null)
   const analysis = useTicketAnalysis(ticketId, { poll: true })
   const draft = useDraft(draftId)
   const requestDraft = useRequestDraft()
+  const reported = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    const d = draft.data
+    if (!d || d.status === 'PENDING' || reported.current === d.id) return
+    reported.current = d.id
+    track('draft_result', { status: d.status, coverage: d.coverage ?? undefined, claims: d.claims.length })
+  }, [draft.data])
 
   function toggle() {
     setCollapsed((c) => {
@@ -189,8 +344,15 @@ export function AiAssistPanel({
   }
 
   async function handleRequestDraft() {
-    const result = await requestDraft.mutateAsync({ ticketId })
-    setDraftId(result.draftId)
+    track('draft_requested', { regenerate: draftId !== null })
+    try {
+      const result = await requestDraft.mutateAsync({ ticketId })
+      setDraftId(result.draftId)
+    } catch (err) {
+      // Used to be unhandled: on a 402/429/5xx the button stopped spinning and nothing
+      // happened, at the exact moment a new user was trying the main feature.
+      push('error', draftErrorMessage(err))
+    }
   }
 
   if (collapsed) {
@@ -227,16 +389,25 @@ export function AiAssistPanel({
 
       <div className="flex-1 overflow-y-auto">
         {draftId && draft.data ? (
-          <DraftPanel draft={draft.data} onUseReply={onUseReply} />
+          <DraftPanel
+            draft={draft.data}
+            isAdmin={isAdmin}
+            coveredExample={coveredExample && coveredExample.id !== ticketId ? coveredExample : null}
+            onUseReply={(text, id) => {
+              track('draft_used', { coverage: draft.data?.coverage ?? undefined })
+              onUseReply(text, id)
+            }}
+            onReplyManually={onReplyManually}
+            onRegenerate={handleRequestDraft}
+            regenerating={requestDraft.isPending}
+          />
         ) : (
           <div className="p-4">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full"
-              loading={requestDraft.isPending}
-              onClick={handleRequestDraft}
-            >
+            <p className="mb-3 text-[12.5px] leading-relaxed text-text-muted">
+              Drafts a reply from your knowledge base. Every sentence cites its source; anything the sources
+              don&apos;t support is dropped — or no draft is shown at all.
+            </p>
+            <Button size="sm" className="w-full" loading={requestDraft.isPending} onClick={handleRequestDraft}>
               <Sparkles className="size-3.5" aria-hidden /> Draft a reply
             </Button>
           </div>

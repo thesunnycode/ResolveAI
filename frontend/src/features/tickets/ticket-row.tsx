@@ -6,6 +6,7 @@ import type { TicketSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { PriorityBar, PriorityLabel } from './priority-badge'
 import { SlaChip } from './sla-chip'
+import { primarySlaClock } from './sla-utils'
 
 export function TicketRow({
   ticket,
@@ -16,7 +17,7 @@ export function TicketRow({
 }) {
   const [assigning, setAssigning] = React.useState(false)
   // Untriaged tickets have no SLA policy resolved yet, so `sla` itself is null.
-  const primaryClock = ticket.sla?.resolution ?? ticket.sla?.firstResponse ?? null
+  const primary = primarySlaClock(ticket.sla)
   const isAnalysing = ticket.status === 'OPEN' && ticket.priority === 'UNTRIAGED'
 
   async function handleAssign(e: React.MouseEvent) {
@@ -81,7 +82,7 @@ export function TicketRow({
         ) : (
           <div className="hidden w-28 flex-col items-end gap-0.5 sm:flex">
             <PriorityLabel priority={ticket.priority} />
-            {primaryClock && <SlaChip clock={primaryClock} />}
+            {primary && <SlaChip clock={primary.clock} label={primary.label} />}
           </div>
         )}
 

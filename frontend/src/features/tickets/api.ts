@@ -29,11 +29,18 @@ export function useTicketQueue(filters: QueueFilters) {
   })
 }
 
-export function useTicket(id: string | number) {
+export function useTicket(id: string | number, opts?: { pollWhile?: (t: TicketDetail) => boolean }) {
   return useQuery({
     queryKey: ['ticket', String(id)],
     queryFn: async () => (await api.get<TicketDetail>(`/tickets/${id}?include=timeline`)).data,
     enabled: !!id,
+    // e.g. the customer view polls until triage has set the response promise, so the page
+    // updates by itself instead of saying "Open" until someone reloads it.
+    refetchInterval: (query) =>
+      opts?.pollWhile && query.state.data && opts.pollWhile(query.state.data) ? 3000 : false,
+    // These polls only run while work is in flight, so let them finish in a background
+    // tab too — otherwise switching away mid-draft left "Drafting…" on screen.
+    refetchIntervalInBackground: true,
   })
 }
 
@@ -46,6 +53,7 @@ export function useTicketAnalysis(id: string | number, opts?: { poll?: boolean }
       if (!opts?.poll) return false
       return query.state.data?.status === 'PROCESSING' ? 3000 : false
     },
+    refetchIntervalInBackground: true,
   })
 }
 
@@ -55,6 +63,7 @@ export function useDraft(id: number | null) {
     queryFn: async () => (await api.get<DraftView>(`/drafts/${id}`)).data,
     enabled: !!id,
     refetchInterval: (query) => (query.state.data?.status === 'PENDING' ? 2000 : false),
+    refetchIntervalInBackground: true,
   })
 }
 

@@ -272,6 +272,20 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<!--
+					  `./mvnw spring-boot:run` is the local developer path, so it runs the
+					  `local` profile - the only profile that imports .env. Without this
+					  the app starts on "default", never reads .env, and dies on the JWT
+					  secret placeholder. Scoped to the run goal on purpose: the packaged
+					  jar has no default profile, so a deploy that forgets
+					  SPRING_PROFILES_ACTIVE fails loudly instead of starting the seeders.
+					  Override with -Dspring-boot.run.profiles=... when needed.
+					-->
+					<profiles>
+						<profile>local</profile>
+					</profiles>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

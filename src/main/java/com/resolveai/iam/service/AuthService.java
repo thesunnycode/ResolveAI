@@ -104,22 +104,37 @@ public class AuthService {
                     "This account has been deactivated. Contact your administrator.");
         }
 
-        return tenantScope.inTenant(details.getTenantId(), () -> {
-            AppUser user = users.findById(details.getUserId()).orElseThrow(
+        return issueTokens(details.getTenantId(), details.getTenantSlug(), details.getUserId());
+    }
+
+    /**
+     * Signs a user in <b>without a password</b> - used only by the demo module, for the
+     * one-click "Explore as ..." buttons on a demo tenant whose accounts are public by
+     * design. Same token pair, same refresh family, same audit line as a real login, so a
+     * demo session is indistinguishable downstream; the caller is responsible for making
+     * sure the user belongs to the demo tenant.
+     */
+    public TokenResponse issueDemoTokens(Long tenantId, String tenantSlug, Long userId) {
+        log.info("Demo login for user {} in tenant {}", userId, tenantSlug);
+        return issueTokens(tenantId, tenantSlug, userId);
+    }
+
+    private TokenResponse issueTokens(Long tenantId, String tenantSlug, Long userId) {
+        return tenantScope.inTenant(tenantId, () -> {
+            AppUser user = users.findById(userId).orElseThrow(
                     () -> new ApiException(ErrorCode.INVALID_CREDENTIALS,
                             "Email or password is incorrect."));
             user.setLastLoginAt(OffsetDateTime.now());
 
             var refresh = refreshTokens.issueNewFamily(user);
             String access = jwtService.generateAccessToken(
-                    user.getId(), user.getTenantId(), details.getTenantSlug(), user.getRole());
+                    user.getId(), user.getTenantId(), tenantSlug, user.getRole());
 
-            log.info("Login: user {} ({}) in tenant {}",
-                    user.getId(), user.getRole(), details.getTenantSlug());
+            log.info("Login: user {} ({}) in tenant {}", user.getId(), user.getRole(), tenantSlug);
 
             return TokenResponse.of(access, refresh.rawToken(),
                     jwtService.accessTtl().toSeconds(),
-                    UserResponse.from(user, details.getTenantSlug()));
+                    UserResponse.from(user, tenantSlug));
         });
     }
 

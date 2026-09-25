@@ -76,13 +76,15 @@ public class CoverageService {
     public String suppressionReasonFor(DraftStatus status, int supportedOrPartial, int total,
                                        double coverage) {
         return switch (status) {
-            case SUPPRESSED_NO_EVIDENCE -> "No knowledge base coverage was found for this "
-                    + "ticket. Escalating rather than guessing.";
-            case SUPPRESSED_LOW_COVERAGE -> "Only %d of %d claim(s) were supported by "
-                    .formatted(supportedOrPartial, total)
-                    + "retrieved evidence (coverage %.2f < threshold %.2f). Escalating "
-                    .formatted(coverage, threshold)
-                    + "rather than showing a weakly-grounded draft.";
+            // Read by agents, not engineers - the numbers travel separately as `coverage`
+            // on the draft. And no promise of escalation: suppression routes nothing
+            // anywhere, it leaves the ticket with the person already looking at it.
+            case SUPPRESSED_NO_EVIDENCE -> "Nothing in the knowledge base covers this "
+                    + "ticket, so no reply was drafted rather than guessing.";
+            case SUPPRESSED_LOW_COVERAGE -> ("The knowledge base backed up %d of the %d "
+                    + "points a reply would need to make (%.0f%%; at least %.0f%% is "
+                    + "required), so no reply was drafted rather than risk a wrong answer.")
+                    .formatted(supportedOrPartial, total, coverage * 100, threshold * 100);
             default -> null;
         };
     }

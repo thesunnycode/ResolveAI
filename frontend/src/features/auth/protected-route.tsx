@@ -1,7 +1,9 @@
 import { Lock } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
+import { useSlowFlag } from '@/lib/use-slow-flag'
+import { SlowServerHint } from './auth-shell'
 import type { Role } from '@/lib/types'
 import { useAuth } from './auth-context'
 
@@ -21,11 +23,13 @@ export function ProtectedRoute({
 }) {
   const { user, loading } = useAuth()
   const location = useLocation()
+  const slow = useSlowFlag(loading)
 
   if (loading) {
     return (
-      <div className="flex h-svh items-center justify-center">
+      <div className="flex h-svh flex-col items-center justify-center">
         <Loader2 className="size-5 animate-spin text-text-subtle" aria-hidden />
+        {slow && <SlowServerHint />}
       </div>
     )
   }
@@ -43,6 +47,9 @@ export function ProtectedRoute({
 }
 
 function NotAvailableForRole() {
+  // A client-side navigation, not window.location: a full reload here re-downloaded the
+  // app and re-validated the session just to change routes.
+  const navigate = useNavigate()
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-6">
       <div className="glass w-full max-w-md rounded-xl">
@@ -50,7 +57,7 @@ function NotAvailableForRole() {
           icon={Lock}
           title="Not available for your role"
           description="This page needs a higher permission level than your account has. If you think that's wrong, ask a workspace admin."
-          action={{ label: 'Go to my home page', onClick: () => window.location.assign('/') }}
+          action={{ label: 'Go to my home page', onClick: () => navigate('/') }}
         />
       </div>
     </div>

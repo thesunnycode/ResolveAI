@@ -15,6 +15,14 @@ export function formatDuration(minutes: number): string {
   return `${h}h ${m}m`
 }
 
+/** "45s" / "29 min" / "1h 5m" — for durations measured in seconds, e.g. time-to-detect. */
+export function formatSeconds(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  if (s < 60) return `${s}s`
+  const minutes = Math.round(s / 60)
+  return minutes < 60 ? `${minutes} min` : formatDuration(minutes)
+}
+
 export function formatRelativeTime(iso: string): string {
   const date = new Date(iso)
   const diffMs = Date.now() - date.getTime()

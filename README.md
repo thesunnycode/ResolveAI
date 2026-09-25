@@ -170,9 +170,17 @@ docker compose down -v && docker compose up -d && bash ops/verify-stack.sh
 
 ```bash
 docker compose up -d                      # datastores first
-./mvnw spring-boot:run                    # defaults to the local profile
+./mvnw spring-boot:run                    # runs the `local` profile (set in pom.xml)
 curl -s localhost:8080/actuator/health | jq
+npm --prefix frontend run dev             # SPA on http://localhost:5176
 ```
+
+`spring-boot:run` is pinned to the `local` profile in the Maven plugin config, and only
+there: the packaged jar has no default profile, so a deployment that forgets
+`SPRING_PROFILES_ACTIVE` refuses to start rather than running the local seeders. The
+frontend dev server is on **5176**, and `CORS_ALLOWED_ORIGINS` must include it — the Vite
+proxy forwards the browser's `Origin`, so a missing entry makes every POST, login included,
+a bare `403`.
 
 `.env` is read by Spring itself, through `spring.config.import`, so there is nothing to
 source into the shell — which also sidesteps the CRLF problem, where sourcing a Windows
@@ -202,7 +210,7 @@ curl -s localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
 ```bash
 bash ops/verify-stack.sh         # 7 containers, pgvector, HNSW
 bash ops/verify-migrations.sh    # schema from empty + 10 structural guarantees
-bash ops/verify-openapi.sh       # Redocly + 64 operations + 12 with examples
+bash ops/verify-openapi.sh       # Redocly + 74 operations + 12 with examples
 node ops/verify-postman.mjs      # collection matches the contract, both directions
 ./mvnw clean verify              # 5 integration tests on real containers
 ```
@@ -301,6 +309,34 @@ resolveai-local-2026
 ⚠️ **A single shared password across every seeded account is fine for a machine on your desk
 and catastrophic anywhere else.** The seeder is `@Profile("local")` and guarded by
 `resolveai.seed.enabled`; it cannot run under `prod`.
+
+Each tenant also gets the 75-document knowledge corpus and one SLA policy per priority
+(without a policy there is deliberately no fallback, so no ticket would ever get a clock).
+
+### Demo mode — one click to a working product
+
+You rarely need the table above: the login page has **"Explore as Agent / Team lead /
+Customer / Admin"** buttons. They exist only when `resolveai.demo.enabled=true`
+(`GET /api/v1/demo` is a 404 otherwise, and the SPA shows the plain form).
+
+| | Local (`local` profile) | Public deployment |
+|---|---|---|
+| Switch | on by default | `DEMO_ENABLED=true` |
+| Demo tenant | the seeded `acme` | its own `demo` tenant, created on first start (needs `DEMO_PASSWORD`, 10+ chars, used nowhere else) |
+| Calendar | acme's office hours | 24/7 UTC, so clocks move whenever a reviewer visits |
+| Admin button | yes | no — `DEMO_ALLOW_ADMIN=false`; an admin can raise the AI budget |
+| Clean slate | — | `DEMO_RESET_CRON`, e.g. `0 0 3 * * *`: retires the tenant (renamed, deactivated — never deleted, the audit tables are append-only) and seeds a fresh one |
+
+An empty demo tenant is seeded **through the real services**: ~35 tickets filed by its
+customers and triaged by the real worker, three showcase tickets (a cited draft, a clock
+paused on the customer, a refund question the corpus answers), and one outage burst so the
+incident board is never empty. On the queue, a dismissible *"Tour the three things"* card
+links to each. Team leads get **Simulate a payment outage** on the Incidents board —
+`demo/storm.sh` as a button (the same 38 tickets), rate-limited to one run per 10 minutes.
+
+**Onboarding analytics.** `POST /api/v1/events` records a fixed vocabulary of first-party
+events (no third-party script, no free text); `GET /api/v1/admin/analytics/funnel` reads the
+funnel back. See [docs/ONBOARDING-ACTIVATION-AUDIT.md](docs/ONBOARDING-ACTIVATION-AUDIT.md).
 
 ---
 
@@ -749,9 +785,11 @@ best single point.** At `entityBoost=0.05` every `tau` from 0.70 to 0.92 clears 
 **`tau=0.82`**. Taking the technically-best row instead (`tau=0.92`, right where recall was
 just barely rescued by the boost) would be the edge-of-cliff choice a slightly noisier live
 corpus could push back into missing storms; the plateau centre is the one that survives
-being a little wrong about the corpus. The values already shipped in `application.yml`
-(`tau=0.82`, `entityBoost=0.15`) land exactly on that centre and are asserted directly in
-the test, alongside `minRateMultiple=3.0`/`minClusterSize=5`/`windowMinutes=30`, which are
+being a little wrong about the corpus. The values then shipped in `application.yml`
+(`tau=0.82`, `entityBoost=0.15`) landed exactly on that centre — and turned out to be
+exactly the "slightly noisier live corpus" failure predicted here: see the real-embedding
+re-tune below, which moved `tau` to 0.68 (still asserted clean against this synthetic
+corpus). The gate's other values — `minRateMultiple=3.0`/`minClusterSize=5`/`windowMinutes=30`, which are
 exercised at every boundary in `CorrelationGateTest` rather than swept here (Task 11's own
 K/M sweep is a smaller, more mechanical search over two already-boundary-tested integers
 and a ratio; it did not seem worth a second sweep harness for four fixed values).
@@ -765,6 +803,48 @@ one hand-picked point. It is not evidence that real customer language about a re
 produces embeddings this well-behaved. `demo/storm.sh` posts real, linguistically varied
 ticket text and is the natural next step once run against a live stack with a real
 embedding provider.
+
+### Re-tuned on real embeddings — and why `tau` is 0.68, not 0.82
+
+That next step was run (2026-09-25), and it changed the answer. `demo/storm.json`,
+`demo/no-storm.json` and the 200-ticket starter corpus went through the live triage
+pipeline; their real `text-embedding-3-small` vectors and extracted entities are committed
+as `src/test/resources/correlation/real-embeddings.json` and swept by
+`CorrelationRealEmbeddingTuningTest` with the production `TicketClusterer`.
+
+| Real cosine similarity | median | p90 | max |
+|---|---|---|---|
+| storm ↔ storm (one outage, 38 phrasings) | 0.44 | 0.54 | 0.70 |
+| storm ↔ unrelated | 0.30 | 0.41 | 0.64 |
+| unrelated ↔ unrelated | 0.38 | 0.55 | 0.86 |
+
+Real customer language is nothing like the synthetic cones: the storm's own tickets are
+*less* alike than some unrelated pairs, so no threshold holds all 38 together without
+merging hundreds of others. **At 0.82 the storm never formed a cluster of five — no real
+outage phrased like this would ever have been detected.** The sweep therefore scores the
+question the gate asks inside one 30-minute window — storm plus 10 random background
+tickets (detected?) and the 30-ticket unrelated burst plus 10 background (any cluster of
+five?) — over 300 random draws each, `entityBoost` 0.15:
+
+| tau | storm detected | storm tickets linked (median) | false alarm on the unrelated burst |
+|---|---|---|---|
+| 0.66 | 100% | 7 | 0.7% |
+| **0.68** | **100%** | **7** | **0.0%** |
+| 0.70 – 0.72 | 100% | 5 (exactly the minimum) | ≤ 0.3% |
+| 0.74 – 0.82 | **0%** | 2 – 3 | 0% |
+
+**0.68** is the robust point of the real plateau: seven storm tickets link against a
+minimum of five, where 0.70–0.72 sit on the edge. The synthetic `CorrelationTuningTest`
+still passes at 0.68 with no false positives. Live, on the running stack: the varied storm
+now proposes an incident in about two minutes (7 tickets linked), and `no-storm.json`
+posted the same way produces no cluster at all.
+
+**The honest limits.** The incident links the storm's tight core — about seven tickets,
+not 38; the rest stay individual tickets for an agent to link. It is one outage, one
+embedding model and a synthetic background corpus. Packing that whole 200-ticket corpus into
+one half-hour (a burst that is itself abnormal) proposes 11 incidents, each topically pure
+(KYC delays, Tally sync failures, 2FA lockouts...) and the storm's own cluster contains
+only storm tickets. Change the embedding model and this test is the one to re-run.
 
 ### Per-ticket fan-out: N events, not one event carrying a list
 
@@ -824,8 +904,8 @@ skip, and the table is designed to be the thing that notices when one is.
 | 11 Schema verified | ✅ 39 tables · 125 indexes · 10 triggers · 73 FKs |
 | 12 Structural guarantees | ✅ **all 10 hold** — 6 negatives, 4 positives |
 | 13 Migration repeatability | ✅ `ops/verify-migrations.sh`, green from empty |
-| 14 OpenAPI 3.1 | ✅ 64 operations, 12 with real examples, Redocly clean |
-| 15 Postman collection | ✅ 77 requests, self-authenticating, no secrets |
+| 14 OpenAPI 3.1 | ✅ 64 operations at Phase 2 (**74 now**, after the onboarding audit's demo, analytics and eval endpoints), 12 with real examples, Redocly clean |
+| 15 Postman collection | ✅ 77 requests at Phase 2 (**87 now**, covering all 74 operations), self-authenticating, no secrets |
 | 16 Handoff | ✅ [docs/phase-2-handoff.md](docs/phase-2-handoff.md) |
 
 **Phase 3 — Project Setup & Boilerplate · ✅ complete** (`phase-3-complete`)
@@ -1046,7 +1126,7 @@ model misread the ticket or the policy is wrong.
 | 6–8 `TicketClusterer`, `CorrelationGate`, boundary tests | ✅ both zero-dependency pure functions; every gate boundary tested from both sides plus a 500-case monotonicity property |
 | 9 `CorrelationSweepWorker` | ✅ per-tenant Redis lock, fails closed; suppresses a duplicate proposal for a storm a confirmed incident already covers >50% of |
 | 10 `IncidentTitleGenerator` | ✅ `incident_title@1`; template fallback proved with the AI policy off entirely |
-| 11 Threshold tuning | ✅ 84-combination grid, `CorrelationTuningTest` — **zero false positives everywhere; shipped `tau=0.82` sits at the plateau centre** — synthetic corpus, see scope note above |
+| 11 Threshold tuning | ✅ 84-combination synthetic grid (`CorrelationTuningTest`), then **re-tuned on real embeddings** (`CorrelationRealEmbeddingTuningTest`): `tau` 0.82 → **0.68** — 0.82 detected no real storm; 0.68 detects it in 100% of windows with 0% false alarms on `no-storm.json` |
 | 12–17 Board, detail, confirm, reject, link/detach, resolve | ✅ resolve routes every linked ticket through `TicketService.resolve()` itself, never a bare status write |
 | 18–20 Publish update, `FanoutWorker`, delivery status | ✅ N independent deliveries and events, not one event over a list |
 | 21 `demo/storm.sh` + `demo/no-storm.sh` | ✅ written against the local IAM seed; **not run end-to-end in this session** — see scope note |

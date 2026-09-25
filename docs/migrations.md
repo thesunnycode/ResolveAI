@@ -40,6 +40,7 @@ has no `undo`.
 | `V12` | `ticket_arrival_baseline` materialised view | Phase 8 | [12 T5](planning/12-TASK-BREAKDOWN-PHASE-8.md) |
 | `V13` | Seed `incident_title@1` prompt | Phase 8 | [12 T10](planning/12-TASK-BREAKDOWN-PHASE-8.md) |
 | `V14` | Seed `draft@1` and `entailment@1` prompts | Phase 7 | [15 T12](planning/15-TASK-BREAKDOWN-PHASE-7.md) |
+| `V16` | `product_event` — first-party onboarding analytics | Onboarding audit | [ONBOARDING-ACTIVATION-AUDIT](ONBOARDING-ACTIVATION-AUDIT.md) §6 |
 
 **39 tables total** after `V1`–`V7`.
 

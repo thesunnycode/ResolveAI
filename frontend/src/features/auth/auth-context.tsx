@@ -1,13 +1,15 @@
 import * as React from 'react'
 import { api } from '@/lib/api-client'
 import { authStorage } from '@/lib/auth-storage'
-import type { AuthUser, CurrentUserResponse } from '../../lib/types'
+import type { AuthUser, CurrentUserResponse, Role } from '../../lib/types'
 
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
   login: (tenantSlug: string, email: string, password: string) => Promise<void>
   register: (tenantSlug: string, email: string, password: string, fullName: string) => Promise<void>
+  /** One-click sign-in to the demo workspace as its seeded user for `role`. */
+  loginAsDemo: (role: Role) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -53,14 +55,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
-  async function login(tenantSlug: string, email: string, password: string) {
-    const res = await api.post('/auth/login', { tenantSlug, email, password })
-    const { accessToken, refreshToken } = res.data
+  async function completeLogin(accessToken: string, refreshToken: string) {
     authStorage.set(accessToken, refreshToken, {} as AuthUser)
     const me = await api.get<CurrentUserResponse>('/auth/me')
     const authUser = toAuthUser(me.data)
     authStorage.set(accessToken, refreshToken, authUser)
     setUser(authUser)
+  }
+
+  async function login(tenantSlug: string, email: string, password: string) {
+    const res = await api.post('/auth/login', { tenantSlug, email, password })
+    await completeLogin(res.data.accessToken, res.data.refreshToken)
+  }
+
+  async function loginAsDemo(role: Role) {
+    const res = await api.post('/demo/login', { role })
+    await completeLogin(res.data.accessToken, res.data.refreshToken)
   }
 
   async function register(tenantSlug: string, email: string, password: string, fullName: string) {
@@ -80,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )

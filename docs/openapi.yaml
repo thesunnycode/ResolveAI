@@ -85,6 +85,14 @@ tags:
     description: Presigned two-step upload with server-side magic-byte verification.
   - name: Admin
     description: SLA policy, calendar, AI policy, usage, evaluation runs, audit, outbox DLQ.
+  - name: Demo
+    description: |
+      One-click demo mode. **Every path here is a `404` unless the deployment sets
+      `resolveai.demo.enabled=true`** — which is how the SPA knows to show the plain sign-in
+      form on a real deployment. Only `GET /demo` and `POST /demo/login` are public; the rest
+      require a session inside the demo tenant.
+  - name: Analytics
+    description: First-party onboarding analytics — a fixed event vocabulary, no free text.
 
 paths:
 
@@ -584,7 +592,12 @@ paths:
             ETag: { $ref: '#/components/headers/ETag' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TicketDetail' }
+              # AGENT and above get TicketDetail; a CUSTOMER gets TicketCustomerDetail. anyOf,
+              # not oneOf: the two shapes share their base fields, so a body can satisfy both.
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TicketDetail'
+                  - $ref: '#/components/schemas/TicketCustomerDetail'
               example:
                 id: 88213
                 reference: TKT-10428
@@ -1234,7 +1247,7 @@ paths:
                         rejectionReason: No retrieved chunk entails this claim
                         citations: []
                     assembledText: null
-                    suppressionReason: Only 1 of 3 claims was supported by retrieved evidence (coverage 0.33 < threshold 0.80). Escalating rather than showing a weakly-grounded draft.
+                    suppressionReason: The knowledge base backed up 1 of the 3 points a reply would need to make (33%; at least 80% is required), so no reply was drafted rather than risk a wrong answer.
                     unresolvedAspects:
                       - No knowledge base coverage for refunds on cancelled subscriptions.
                     recommendation: ESCALATE_TO_HUMAN
@@ -2568,44 +2581,26 @@ paths:
     get:
       tags: [Admin]
       operationId: getAiUsage
-      summary: Tokens and cost, grouped by prompt version, model or day
+      summary: This month's AI tokens and cost, by feature, prompt version and model
       description: |
-        **Several README numbers come from this endpoint** — cost per ticket, cache hit rate,
-        triage escalation rate and draft suppression rate. Measuring them here rather than
-        estimating them is what makes them quotable.
-      parameters:
-        - name: from
-          in: query
-          schema: { type: string, format: date }
-        - name: to
-          in: query
-          schema: { type: string, format: date }
-        - name: groupBy
-          in: query
-          schema: { type: string, enum: [promptVersion, model, day], default: promptVersion }
+        Month to date for the caller's tenant, against its monthly budget. Aggregated from
+        what every triage (`ai_analysis`) and every draft (`draft`, entailment calls
+        included) already records — no separate instrumentation. `suppressionRate` is set
+        on drafting rows only. `from` / `to` / `groupBy` from the original design are
+        **not implemented**: month to date is what the budget is measured against.
       responses:
         '200':
-          description: Usage and budget.
+          description: Usage and budget, month to date.
           content:
             application/json:
+              schema: { $ref: '#/components/schemas/AiUsageResponse' }
               example:
-                period: { from: '2026-09-01', to: '2026-09-20' }
-                budget:
-                  monthlyMicros: 5000000
-                  spentMicros: 1842300
-                  remainingPct: 63.2
-                  projectedMonthEndMicros: 2763450
-                  status: OK
-                totals:
-                  calls: 4182
-                  tokensIn: 5120400
-                  tokensOut: 611200
-                  costMicros: 1842300
-                  cacheHitRate: 0.34
+                period: { from: '2026-09-01', to: '2026-09-25' }
+                budget: { monthlyMicros: 5000000, spentMicros: 198312, remainingPct: 96.0, status: OK }
+                totals: { calls: 136, tokensIn: 153025, tokensOut: 12462, costMicros: 198312 }
                 breakdown:
-                  - { promptVersion: 'triage@7',     model: gpt-4.1-mini, calls: 3011, costMicros: 412800,  avgLatencyMs: 2740,  escalationRate: 0.06 }
-                  - { promptVersion: 'draft@4',      model: gpt-4.1-mini, calls: 604,  costMicros: 1189200, avgLatencyMs: 18900, suppressionRate: 0.11 }
-                  - { promptVersion: 'entailment@2', model: gpt-4o-mini,  calls: 1812, costMicros: 186400,  avgLatencyMs: 810,   cacheHitRate: 0.61 }
+                  - { feature: Triage, promptVersion: 'triage@1', model: gpt-4.1-mini, calls: 116, tokensIn: 128292, tokensOut: 9817, costMicros: 157743, avgLatencyMs: 1512 }
+                  - { feature: Drafting, promptVersion: 'draft@2', model: gpt-4.1, calls: 15, tokensIn: 20888, tokensOut: 2010, costMicros: 32048, avgLatencyMs: 1942, suppressionRate: 0.067 }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -2657,6 +2652,48 @@ paths:
                     metrics: { refusalRate: 1.0, casesEvaluated: 20 }
                     note: Gate requires 1.0 — a confidently wrong answer is worse than no answer.
                 pagination: { size: 25, nextCursor: null, hasNext: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      tags: [Admin]
+      operationId: startEvalRun
+      summary: Run the classification suite in the background
+      description: |
+        Runs the 60 labelled classification cases against the active triage prompt, charged
+        to the tenant's AI budget (about ten cents). Returns at once; the run appears in
+        `GET /admin/eval/runs` when it finishes, minutes later. **One run at a time** — a
+        second request while one is in flight is a `409`, so a double-click never pays twice.
+      responses:
+        '202':
+          description: Run started.
+          content:
+            application/json:
+              example: { status: STARTED, detail: 'Running the classification suite. Results appear here in a few minutes.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`CONFLICT` — an evaluation run is already in progress.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /admin/eval/runs/status:
+    get:
+      tags: [Admin]
+      operationId: getEvalRunStatus
+      summary: Whether an evaluation run is in progress
+      responses:
+        '200':
+          description: Run status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [running]
+                properties:
+                  running: { type: boolean }
+              example: { running: false }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -2833,6 +2870,181 @@ paths:
 # ══════════════════════════════════════════════════════════════════════════════
 # COMPONENTS
 # ══════════════════════════════════════════════════════════════════════════════
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # DEMO & ANALYTICS (onboarding audit)
+  # ════════════════════════════════════════════════════════════════════════════
+
+  /demo:
+    get:
+      tags: [Demo]
+      operationId: getDemoInfo
+      summary: Whether this deployment has a demo, and which roles it offers
+      description: |
+        `enabled` is false while the demo tenant is still being created on first start.
+        `ADMIN` is only offered when `resolveai.demo.allow-admin=true` (off on the public
+        demo: an admin can raise the AI budget).
+      security: []
+      responses:
+        '200':
+          description: Demo availability.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoInfo' }
+              example: { enabled: true, tenantSlug: demo, roles: [AGENT, TEAM_LEAD, CUSTOMER] }
+        '404':
+          description: This deployment has no demo mode.
+
+  /demo/login:
+    post:
+      tags: [Demo]
+      operationId: demoLogin
+      summary: Sign in to the demo tenant as its seeded user for a role — no password
+      description: |
+        Same token pair, refresh family and audit line as `POST /auth/login`, for the demo
+        tenant's first active user with that role. Rate-limited to 20 per 10 minutes per
+        client address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DemoLoginRequest' }
+            example: { role: AGENT }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403':
+          description: '`FORBIDDEN` — the demo does not offer that role.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: '`TENANT_NOT_FOUND` while the demo tenant is being created, or no demo mode.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: '`RATE_LIMITED` — too many demo sign-ins from this address.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /demo/showcase:
+    get:
+      tags: [Demo]
+      operationId: getDemoShowcase
+      summary: One live example of each mechanism, for the first-run tour
+      description: |
+        A ticket whose SLA clock is paused on the customer, a ticket with a shown (cited)
+        draft, and the newest live incident. Each is `null` when none exists yet. AGENT and
+        above, demo tenant only.
+      responses:
+        '200':
+          description: Showcase items.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoShowcase' }
+              example:
+                pausedTicket: { id: 38, reference: TKT-1037, title: UPI payment stuck on processing for an hour }
+                draftTicket: { id: 37, reference: TKT-1036, title: Charged twice for one invoice payment }
+                incident: { id: 18, reference: INC-1001, title: Card payment failures at checkout with error 502 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /demo/storm:
+    get:
+      tags: [Demo]
+      operationId: getDemoStormStatus
+      summary: Whether the outage simulator is running or cooling down
+      responses:
+        '200':
+          description: Simulator status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoStormStatus' }
+              example: { running: false, lastStartedAt: '2026-09-25T13:47:08Z', availableAt: '2026-09-25T13:57:08Z', ticketCount: 38 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Demo]
+      operationId: startDemoStorm
+      summary: Simulate a payment outage — `demo/storm.sh` as an endpoint
+      description: |
+        Posts the 38 tickets of `demo/storm.json` as the demo's customers over ~20 seconds;
+        the ordinary correlation sweep (every minute) then proposes an incident through the
+        real statistical gate. TEAM_LEAD and above, demo tenant only. One run at a time, then
+        a cooldown (`resolveai.demo.storm-cooldown-minutes`, default 10).
+      responses:
+        '202':
+          description: Simulation started.
+          content:
+            application/json:
+              example: { status: STARTED, detail: 'Posting 38 tickets over about 20 seconds. The correlation sweep runs every minute.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`CONFLICT` — a simulation is already running.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: '`RATE_LIMITED` — cooling down; `detail` says when it can run again.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /events:
+    post:
+      tags: [Analytics]
+      operationId: recordProductEvents
+      summary: Record onboarding-funnel events
+      description: |
+        Public, because the top of the funnel is the login page. Up to 25 events per call.
+        Unknown event names are dropped; property values must be numbers, booleans or short
+        strings (cut at 80 characters) — no free text. Tenant, user and role come only from
+        the access token, when there is one. Always `202`, even when events are dropped or
+        the caller is rate-limited: analytics must never break the app.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductEventBatch' }
+            example:
+              events:
+                - { name: demo_login_clicked, path: /login, sessionId: 3f9c2d0e-6b1a-4c5e-9a57-2d8e1f4b7c21, props: { role: AGENT } }
+      responses:
+        '202':
+          description: Accepted (recorded, or silently dropped).
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/analytics/funnel:
+    get:
+      tags: [Analytics]
+      operationId: getOnboardingFunnel
+      summary: The onboarding funnel, last 30 days
+      description: |
+        Distinct sessions reaching each step, demo sign-ins by role, and draft outcomes.
+        Pre-login events have no tenant, so they are counted alongside the caller's own
+        tenant's. ADMIN.
+      responses:
+        '200':
+          description: Funnel.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingFunnel' }
+              example:
+                windowDays: 30
+                sessionsReaching: { auth_page_viewed: 2, login_succeeded: 1, first_page_loaded: 1, ticket_opened: 1, draft_requested: 1, draft_used: 1, incident_viewed: 0, customer_ticket_created: 1 }
+                demoLoginsByRole: [{ role: AGENT, clicks: 1 }]
+                draftResults: [{ status: SHOWN, n: 3 }, { status: SUPPRESSED_LOW_COVERAGE, n: 2 }]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
 components:
 
@@ -3045,6 +3257,160 @@ components:
 
 
     # ── errors ────────────────────────────────────────────────────────────────
+
+    DemoInfo:
+      type: object
+      required: [enabled, tenantSlug, roles]
+      properties:
+        enabled: { type: boolean }
+        tenantSlug: { type: string }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+
+    DemoLoginRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+
+    DemoShowcaseItem:
+      type: [object, 'null']
+      properties:
+        id: { type: integer, format: int64 }
+        reference: { type: string }
+        title: { type: string }
+
+    DemoShowcase:
+      type: object
+      properties:
+        pausedTicket: { $ref: '#/components/schemas/DemoShowcaseItem' }
+        draftTicket: { $ref: '#/components/schemas/DemoShowcaseItem' }
+        incident: { $ref: '#/components/schemas/DemoShowcaseItem' }
+
+    DemoStormStatus:
+      type: object
+      properties:
+        running: { type: boolean }
+        lastStartedAt: { type: [string, 'null'], format: date-time }
+        availableAt: { type: [string, 'null'], format: date-time }
+        ticketCount: { type: integer }
+
+    ProductEvent:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          enum: [auth_page_viewed, demo_login_clicked, auth_failed, login_succeeded,
+                 register_submitted, register_failed, first_page_loaded, ticket_opened,
+                 draft_requested, draft_result, draft_used, reply_sent_from_draft,
+                 incident_viewed, storm_started, customer_ticket_created,
+                 tour_item_completed, tour_dismissed, eval_run_started]
+        path: { type: string, maxLength: 200 }
+        sessionId: { type: string, maxLength: 64 }
+        props:
+          type: object
+          description: At most 12 keys; values are numbers, booleans or strings of up to 80 characters.
+          additionalProperties:
+            type: [string, number, boolean]
+
+    ProductEventBatch:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          maxItems: 25
+          items: { $ref: '#/components/schemas/ProductEvent' }
+
+    OnboardingFunnel:
+      type: object
+      properties:
+        windowDays: { type: integer }
+        sessionsReaching:
+          type: object
+          additionalProperties: { type: integer }
+        demoLoginsByRole:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string }
+              clicks: { type: integer }
+        draftResults:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { type: string }
+              n: { type: integer }
+
+    AiUsageResponse:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        budget:
+          type: [object, 'null']
+          properties:
+            monthlyMicros: { type: integer, format: int64 }
+            spentMicros: { type: integer, format: int64 }
+            remainingPct: { type: number }
+            status: { type: string, enum: [OK, LOW, EXHAUSTED] }
+        totals:
+          type: object
+          properties:
+            calls: { type: integer, format: int64 }
+            tokensIn: { type: integer, format: int64 }
+            tokensOut: { type: integer, format: int64 }
+            costMicros: { type: integer, format: int64 }
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              feature: { type: string, enum: [Triage, Drafting] }
+              promptVersion: { type: string }
+              model: { type: string }
+              calls: { type: integer, format: int64 }
+              tokensIn: { type: integer, format: int64 }
+              tokensOut: { type: integer, format: int64 }
+              costMicros: { type: integer, format: int64 }
+              avgLatencyMs: { type: integer, format: int64 }
+              suppressionRate: { type: [number, 'null'] }
+
+    ResponseTarget:
+      type: [object, 'null']
+      description: |
+        The customer's first-response promise — only the promise: no segments, escalation
+        rungs or breach prediction. `null` until triage has decided the priority.
+      properties:
+        state: { $ref: '#/components/schemas/SlaState' }
+        targetBusinessMinutes: { type: integer }
+        timezone: { type: string }
+        workingDays: { type: array, items: { type: integer, minimum: 1, maximum: 7 } }
+        dayStart: { type: string, examples: ['09:00'] }
+        dayEnd: { type: string, examples: ['18:00'] }
+
+    TicketCustomerDetail:
+      allOf:
+        - $ref: '#/components/schemas/TicketBase'
+        - type: object
+          description: |
+            What a `CUSTOMER` receives for their own ticket: PUBLIC messages only, and the
+            first-response promise instead of the internal SLA detail.
+          properties:
+            body: { type: string }
+            reopenCount: { type: integer }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/MessageResponse' }
+            responseTarget: { $ref: '#/components/schemas/ResponseTarget' }
+            etag: { type: string }
 
     Problem:
       type: object

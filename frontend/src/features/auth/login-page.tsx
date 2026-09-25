@@ -5,7 +5,10 @@ import { ApiError } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/field-error'
 import { Input } from '@/components/ui/input'
-import { AuthShell } from './auth-shell'
+import { DemoAccess } from '@/features/demo/demo-access'
+import { track } from '@/lib/analytics'
+import { useSlowFlag } from '@/lib/use-slow-flag'
+import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
 import { useAuth } from './auth-context'
 
 export function LoginPage() {
@@ -20,6 +23,12 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
+  const [showReset, setShowReset] = React.useState(false)
+  const slow = useSlowFlag(submitting)
+
+  React.useEffect(() => {
+    track('auth_page_viewed', { page: 'login', width: window.innerWidth })
+  }, [])
 
   React.useEffect(() => {
     // No hardcoded default here: "/" resolves to the right role home via
@@ -34,7 +43,13 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(tenantSlug.trim(), email.trim(), password)
+      track('login_succeeded', { method: 'password' })
     } catch (err) {
+      track('auth_failed', {
+        endpoint: 'login',
+        status: err instanceof ApiError ? err.problem.status : 0,
+        code: err instanceof ApiError ? err.problem.errorCode : 'UNKNOWN',
+      })
       setFormError(
         err instanceof ApiError
           ? err.problem.detail || 'Invalid credentials.'
@@ -53,6 +68,9 @@ export function LoginPage() {
           <p className="mt-1 text-[13px] text-text-muted">Sign in to your workspace</p>
         </div>
 
+        <DemoAccess />
+        <OrDivider label="or sign in to your workspace" />
+
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
             <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-[13px] text-danger">
@@ -70,8 +88,12 @@ export function LoginPage() {
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               autoComplete="organization"
+              aria-describedby="tenantSlug-help"
               required
             />
+            <p id="tenantSlug-help" className="mt-1.5 text-[12px] text-text-subtle">
+              Your company's ResolveAI name, from your invite — for example <span className="font-mono">acme</span>.
+            </p>
           </div>
 
           <div className="mb-4">
@@ -90,9 +112,20 @@ export function LoginPage() {
           </div>
 
           <div className="mb-5">
-            <Label htmlFor="password" required>
-              Password
-            </Label>
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="password" required>
+                Password
+              </Label>
+              <button
+                type="button"
+                onClick={() => setShowReset((v) => !v)}
+                className="text-[12px] font-medium text-primary hover:underline"
+                aria-expanded={showReset}
+                aria-controls="reset-help"
+              >
+                Forgot password?
+              </button>
+            </div>
             <div className="relative">
               <Input
                 id="password"
@@ -112,11 +145,18 @@ export function LoginPage() {
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
+            {showReset && (
+              <p id="reset-help" className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-text-muted">
+                Passwords are reset by your workspace admin — ask them and they can set a new one for you.
+                Self-service reset by email isn't available yet.
+              </p>
+            )}
           </div>
 
           <Button type="submit" size="lg" className="w-full" loading={submitting}>
             Sign in
           </Button>
+          {slow && <SlowServerHint />}
         </form>
 
         <p className="mt-5 text-[13px] text-text-muted">

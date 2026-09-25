@@ -11,8 +11,8 @@ true, each with the command that proves it rather than an assertion that it is.
 | 4 | `docs/design-trace.md` shows no unclosed gaps | [design-trace.md](design-trace.md) | ✅ 5 gaps closed by 11 endpoints + 1 payload change; 3 documented as deliberate |
 | 5 | `docs/migrations.md` reserves every version | [migrations.md](migrations.md) | ✅ `V1`–`V14`, with `V8` and `V11` left as documented holes |
 | 6 | Docs 04 and 05 carry the Task 2 resolutions | grep | ✅ `tenant_sequence` + `ticket_entity` in doc 04; doc 05 §3.8 and §3.9 added |
-| 7 | `docs/openapi.yaml` validates; 12 endpoints fully specified | `bash ops/verify-openapi.sh` | ✅ Redocly clean · 64 operations · 348 `$ref`s resolve · 12/12 with examples |
-| 8 | Postman collection committed and self-authenticating | `node ops/verify-postman.mjs` | ✅ 77 requests covering 64/64 operations · login stores both tokens · no secrets |
+| 7 | `docs/openapi.yaml` validates; 12 endpoints fully specified | `bash ops/verify-openapi.sh` | ✅ Redocly clean · 64 operations · 348 `$ref`s resolve · 12/12 with examples *(today: 74 operations · 430 `$ref`s — see the onboarding audit)* |
+| 8 | Postman collection committed and self-authenticating | `node ops/verify-postman.mjs` | ✅ 77 requests covering 64/64 operations · login stores both tokens · no secrets *(today: 87 requests covering 74/74)* |
 
 Everything above runs from one place:
 

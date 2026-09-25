@@ -5,16 +5,34 @@ import { ApiError } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { FieldError, Label } from '@/components/ui/field-error'
 import { Input } from '@/components/ui/input'
-import { AuthShell } from './auth-shell'
+import { DemoAccess } from '@/features/demo/demo-access'
+import { track } from '@/lib/analytics'
+import { useSlowFlag } from '@/lib/use-slow-flag'
+import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
 import { useAuth } from './auth-context'
+
+const PASSWORD_RULE = 'At least 10 characters, with a letter and a number.'
 
 function passwordStrength(pw: string): { label: string; ok: boolean } | null {
   if (pw.length === 0) return null
   const hasLetter = /[A-Za-z]/.test(pw)
   const hasDigit = /\d/.test(pw)
-  if (pw.length < 10) return { label: 'At least 10 characters', ok: false }
-  if (!hasLetter || !hasDigit) return { label: 'Needs a letter and a digit', ok: false }
+  if (pw.length < 10) return { label: `${pw.length} of 10 characters`, ok: false }
+  if (!hasLetter || !hasDigit) return { label: 'Needs a letter and a number', ok: false }
   return { label: 'Looks good', ok: true }
+}
+
+/**
+ * The server's rules, checked before the round trip. The server validates the password
+ * before it looks the workspace up, so without this a visitor fixed one error, submitted,
+ * and only then learned about the next. Local checks surface every rule at once.
+ */
+function localErrors(fullName: string, password: string): Record<string, string> {
+  const errors: Record<string, string> = {}
+  if (fullName.trim().length < 2) errors.fullName = 'Enter your full name.'
+  const strength = passwordStrength(password)
+  if (!strength || !strength.ok) errors.password = PASSWORD_RULE
+  return errors
 }
 
 export function RegisterPage() {
@@ -30,6 +48,11 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({})
+  const slow = useSlowFlag(submitting)
+
+  React.useEffect(() => {
+    track('auth_page_viewed', { page: 'register', width: window.innerWidth })
+  }, [])
 
   React.useEffect(() => {
     // Registration always creates a CUSTOMER (the backend's RegisterRequest
@@ -43,12 +66,26 @@ export function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
-    setFieldErrors({})
+    const local = localErrors(fullName, password)
+    setFieldErrors(local)
+    if (Object.keys(local).length > 0) {
+      setPasswordTouched(true)
+      return
+    }
     setSubmitting(true)
+    track('register_submitted')
     try {
       await register(tenantSlug.trim(), email.trim(), password, fullName.trim())
+      track('login_succeeded', { method: 'register' })
     } catch (err) {
-      if (err instanceof ApiError && err.problem.errors) {
+      track('register_failed', {
+        status: err instanceof ApiError ? err.problem.status : 0,
+        code: err instanceof ApiError ? err.problem.errorCode : 'UNKNOWN',
+      })
+      if (err instanceof ApiError && err.problem.errorCode === 'TENANT_NOT_FOUND') {
+        // Inline, under the field it is about, rather than a banner above the form.
+        setFieldErrors({ tenantSlug: err.problem.detail })
+      } else if (err instanceof ApiError && err.problem.errors) {
         const next: Record<string, string> = {}
         for (const e2 of err.problem.errors) next[e2.field] = e2.message
         setFieldErrors(next)
@@ -67,8 +104,14 @@ export function RegisterPage() {
       <div className="animate-slide-up">
         <div className="mb-7">
           <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.03em] text-text">Create your account</h1>
-          <p className="mt-1 text-[13px] text-text-muted">Join an existing workspace</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-text-muted">
+            For customers of a company that uses ResolveAI. Support agents get an invite from their workspace admin
+            instead.
+          </p>
         </div>
+
+        <DemoAccess compact />
+        <OrDivider label="or create a customer account" />
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
@@ -87,9 +130,16 @@ export function RegisterPage() {
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               error={!!fieldErrors.tenantSlug}
+              aria-describedby="tenantSlug-help"
               required
             />
-            <FieldError message={fieldErrors.tenantSlug} />
+            {fieldErrors.tenantSlug ? (
+              <FieldError message={fieldErrors.tenantSlug} />
+            ) : (
+              <p id="tenantSlug-help" className="mt-1.5 text-[12px] text-text-subtle">
+                The company name from the support link you were given — for example <span className="font-mono">acme</span>.
+              </p>
+            )}
           </div>
 
           <div className="mb-4">
@@ -150,17 +200,22 @@ export function RegisterPage() {
             </div>
             {/* On blur, not on keystroke — live validation while someone is
                 still typing their password is hostile. Doc 06 §4.5. */}
-            {strength && (
+            {fieldErrors.password ? (
+              <FieldError message={fieldErrors.password} />
+            ) : strength ? (
               <p className={`mt-1.5 text-[13px] ${strength.ok ? 'text-success' : 'text-text-muted'}`}>
                 {strength.label}
               </p>
+            ) : (
+              // The rule up front, so nobody has to fail once to learn it.
+              <p className="mt-1.5 text-[12px] text-text-subtle">{PASSWORD_RULE}</p>
             )}
-            <FieldError message={fieldErrors.password} />
           </div>
 
           <Button type="submit" size="lg" className="w-full" loading={submitting}>
             Create account
           </Button>
+          {slow && <SlowServerHint />}
         </form>
 
         <p className="mt-5 text-[13px] text-text-muted">

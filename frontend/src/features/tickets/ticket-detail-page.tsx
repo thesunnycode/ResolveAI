@@ -1,12 +1,14 @@
 import { ArrowLeft, SearchX } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import * as React from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useToast } from '@/components/ui/toast'
 import { useAuth } from '@/features/auth/auth-context'
+import { useIsDemoWorkspace, useShowcase } from '@/features/demo/api'
 import { ApiError, api } from '@/lib/api-client'
+import { track } from '@/lib/analytics'
 import type { MessageView, TicketDetail, TicketStatus } from '@/lib/types'
 import { AiAssistPanel } from './ai-assist-panel'
 import { useChangeStatus, useSendMessage, useTicket } from './api'
@@ -15,6 +17,7 @@ import { MessageBubble } from './message-bubble'
 import { MessageComposer } from './message-composer'
 import { PriorityLabel } from './priority-badge'
 import { PriorityRationale } from './priority-rationale'
+import { ResponsePromise } from './response-promise'
 import { SlaStrip } from './sla-chip'
 import { StatusDropdown } from './status-dropdown'
 import { allowedTransitionsFrom } from './ticket-state-machine'
@@ -52,10 +55,28 @@ export function TicketDetailPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { push } = useToast()
-  const { data: ticket, isLoading, isError, error, refetch } = useTicket(id!)
+  const location = useLocation()
+  const isCustomerUser = user?.role === 'CUSTOMER'
+  const { data: ticket, isLoading, isError, error, refetch } = useTicket(id!, {
+    // Customer view: keep checking until triage has set the response promise.
+    pollWhile: (t) => isCustomerUser && !t.responseTarget && !['RESOLVED', 'CLOSED'].includes(t.status),
+  })
   const sendMessage = useSendMessage()
   const changeStatus = useChangeStatus()
   const [prefill, setPrefill] = React.useState<string | undefined>()
+  // The draft the prefilled reply came from, sent as fromDraftId so the server records
+  // how much the agent edited it (agent_draft_action) — the draft-quality signal.
+  const [prefillDraftId, setPrefillDraftId] = React.useState<number | undefined>()
+  const [focusSignal, setFocusSignal] = React.useState(0)
+  const inDemo = useIsDemoWorkspace(user?.tenantSlug)
+  const showcase = useShowcase(inDemo && !isCustomerUser)
+  const justCreated = (location.state as { justCreated?: boolean } | null)?.justCreated === true
+
+  React.useEffect(() => {
+    if (ticket) track('ticket_opened', { role: user?.role, priority: ticket.priority, hasDraft: !!ticket.latestDraftId })
+    // Once per ticket, not on every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.id])
 
   if (isLoading) {
     return (
@@ -94,8 +115,11 @@ export function TicketDetailPage() {
   const isCustomer = user?.role === 'CUSTOMER'
 
   async function handleSend(body: string, visibility: 'PUBLIC' | 'INTERNAL') {
-    await sendMessage.mutateAsync({ ticketId: ticket!.id, body, visibility })
+    const fromDraftId = visibility === 'PUBLIC' ? prefillDraftId : undefined
+    await sendMessage.mutateAsync({ ticketId: ticket!.id, body, visibility, fromDraftId })
+    if (fromDraftId) track('reply_sent_from_draft')
     setPrefill(undefined)
+    setPrefillDraftId(undefined)
   }
 
   async function handleStatusChange(status: TicketStatus, reason?: string) {
@@ -119,6 +143,7 @@ export function TicketDetailPage() {
           <span>{ticket.reference}</span>
           <span className="rounded-md bg-primary-bg px-2 py-0.5 text-[11.5px] font-medium text-primary">{CUSTOMER_STATUS_LABEL[ticket.status]}</span>
         </p>
+        <ResponsePromise target={ticket.responseTarget} status={ticket.status} justCreated={justCreated} />
         {/* TicketCustomerResponse carries no incident field yet - a customer-safe incident
             hint (without exposing linkage confidence or internal detail) is backend work
             this pass didn't add. CustomerIncidentBanner is kept for when it does. */}
@@ -183,14 +208,20 @@ export function TicketDetailPage() {
             ))}
           </div>
           <div className="mx-auto mt-6 w-full max-w-3xl">
-            <MessageComposer allowInternal prefill={prefill} onSend={handleSend} />
+            <MessageComposer allowInternal prefill={prefill} focusSignal={focusSignal} onSend={handleSend} />
           </div>
         </div>
 
         <AiAssistPanel
+          key={ticket.id}
           ticketId={ticket.id}
-          onUseReply={(text) =>
+          latestDraftId={ticket.latestDraftId}
+          isAdmin={user?.role === 'ADMIN'}
+          coveredExample={showcase.data?.draftTicket}
+          onReplyManually={() => setFocusSignal((n) => n + 1)}
+          onUseReply={(text, draftId) => {
             // The draft is verified claims only; the greeting and sign-off are the agent's.
+            setPrefillDraftId(draftId)
             setPrefill(
               `Hi ${ticket.requester?.fullName.split(' ')[0] ?? 'there'},
 
@@ -199,7 +230,7 @@ ${text}
 Best regards,
 ${user?.fullName ?? ''}`,
             )
-          }
+          }}
         />
       </div>
     </div>

@@ -16,7 +16,7 @@ public class CorrelationConfig {
 
     @Bean
     public TicketClusterer ticketClusterer(
-            @Value("${resolveai.correlation.tau:0.82}") double tau,
+            @Value("${resolveai.correlation.tau:0.68}") double tau,
             @Value("${resolveai.correlation.entity-boost:0.15}") double entityBoost) {
         return new TicketClusterer(tau, entityBoost);
     }

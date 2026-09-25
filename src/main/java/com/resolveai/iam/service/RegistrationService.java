@@ -60,7 +60,10 @@ public class RegistrationService {
     public UserResponse register(RegisterRequest request) {
         Tenant tenant = tenants.findBySlugAndActiveTrue(request.tenantSlug())
                 .orElseThrow(() -> new ApiException(ErrorCode.TENANT_NOT_FOUND,
-                        "No active tenant with slug '" + request.tenantSlug() + "'."));
+                        // Shown verbatim on the sign-up form, to someone who has never
+                        // heard the words "tenant" or "slug".
+                        "We couldn't find a workspace called '" + request.tenantSlug()
+                                + "'. Check the name with the team that sent you here."));
 
         if (commonPasswords.isCommon(request.password())) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR,

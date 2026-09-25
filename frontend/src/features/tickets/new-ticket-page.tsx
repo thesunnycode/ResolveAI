@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { FieldError, Label } from '@/components/ui/field-error'
 import { Input, Textarea } from '@/components/ui/input'
 import { ApiError } from '@/lib/api-client'
+import { track } from '@/lib/analytics'
 import { useCreateTicket } from './api'
 
 const MAX_BODY = 20_000
@@ -45,7 +46,8 @@ export function NewTicketPage() {
     if (!subject.trim() || !body.trim()) return
     try {
       const result = await createTicket.mutateAsync({ subject: subject.trim(), body: body.trim(), idempotencyKey })
-      navigate(`/tickets/${result.id}`)
+      track('customer_ticket_created', { bodyLength: body.trim().length })
+      navigate(`/tickets/${result.id}`, { state: { justCreated: true } })
     } catch (err) {
       setFormError(err instanceof ApiError ? err.problem.detail : 'Could not create your ticket. Nothing was lost — try again.')
     }

@@ -33,6 +33,11 @@ import org.junit.jupiter.api.Test;
  * exactly that text) is the natural follow-up once {@code demo/storm.sh} has been run
  * against a live stack. See the README's Incident Correlation section for the same note.
  *
+ * <p><b>That follow-up has been done</b> - {@link CorrelationRealEmbeddingTuningTest} - and
+ * it moved the shipped {@code tau} from this sweep's 0.82 to 0.68: real varied outage
+ * language is only ~0.44 cosine-similar, so 0.82 detected no real storm. This test is kept
+ * as the check that the looser value still rejects all three synthetic negatives.
+ *
  * <h2>The corpus</h2>
  *
  * <ul>
@@ -160,12 +165,14 @@ class CorrelationTuningTest {
         assertThat(chosen.recall()).isEqualTo(1.0);
 
         // The values actually shipped in application.yml (resolveai.correlation.tau /
-        // entity-boost) must themselves clear the bar on this corpus, and land inside
-        // the plateau found above - the sweep is pointless if the numbers in config were
-        // not the ones it found defensible.
-        Result shipped = evaluate(corpus, 0.82, 0.15);
+        // entity-boost) must themselves clear the bar on this corpus too. They are no
+        // longer this sweep's plateau centre: tau was re-tuned to 0.68 on real embeddings
+        // (CorrelationRealEmbeddingTuningTest), where 0.82 detected no real outage at all.
+        // This synthetic corpus is still the check that the looser value does not start
+        // proposing incidents for its three uncorrelated bursts.
+        Result shipped = evaluate(corpus, 0.68, 0.15);
         assertThat(shipped.falsePositives())
-                .as("the shipped defaults (tau=0.82, entityBoost=0.15) must not false-positive here")
+                .as("the shipped defaults (tau=0.68, entityBoost=0.15) must not false-positive here")
                 .isZero();
         assertThat(shipped.precision()).isGreaterThanOrEqualTo(0.95);
         assertThat(shipped.recall())

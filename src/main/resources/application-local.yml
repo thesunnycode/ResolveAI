@@ -43,11 +43,18 @@ resolveai:
     bucket: ${S3_BUCKET:resolveai-attachments}
     access-key: ${S3_ACCESS_KEY:}
     secret-key: ${S3_SECRET_KEY:}
+  # Locally the demo is the seeded `acme` tenant (IamSeeder owns it, so the demo never
+  # creates or rotates it) and the login page offers one-click sign-in for every role.
+  demo:
+    enabled: ${DEMO_ENABLED:true}
+    tenant-slug: ${DEMO_TENANT_SLUG:acme}
+    seed-tenant: false
+    allow-admin: true
   auth:
     jwt-secret: ${JWT_SECRET:}
   security:
     pii-encryption-key: ${PII_ENCRYPTION_KEY:}
-    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5176,http://localhost:5173}
   ai:
     fallback:
       provider: ${LLM_FALLBACK_PROVIDER:}

@@ -6,12 +6,16 @@ import { cn } from '@/lib/utils'
 export function MessageComposer({
   allowInternal,
   prefill,
+  focusSignal,
   onSend,
 }: {
   allowInternal: boolean
   prefill?: string
+  /** Bump to move focus into the reply box (e.g. "Reply manually" on a suppressed draft). */
+  focusSignal?: number
   onSend: (body: string, visibility: 'PUBLIC' | 'INTERNAL') => Promise<void>
 }) {
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const [tab, setTab] = React.useState<'PUBLIC' | 'INTERNAL'>('PUBLIC')
   const [body, setBody] = React.useState(prefill ?? '')
   const [sending, setSending] = React.useState(false)
@@ -23,6 +27,12 @@ export function MessageComposer({
       setTab('PUBLIC')
     }
   }, [prefill])
+
+  React.useEffect(() => {
+    if (!focusSignal) return
+    textareaRef.current?.focus()
+    textareaRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focusSignal])
 
   async function handleSend() {
     if (!body.trim()) return
@@ -63,6 +73,8 @@ export function MessageComposer({
         )}
       </div>
       <textarea
+        ref={textareaRef}
+        aria-label={tab === 'PUBLIC' ? 'Reply' : 'Internal note'}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={4}

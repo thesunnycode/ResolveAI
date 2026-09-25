@@ -10,8 +10,9 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api-client'
-import { cn, formatDateTime } from '@/lib/utils'
+import { cn, formatDateTime, formatSeconds } from '@/lib/utils'
 import { useAuth } from '@/features/auth/auth-context'
+import { track } from '@/lib/analytics'
 import { useDetachTicket, useIncident, usePublishUpdate, useResolveIncident } from './api'
 
 export function IncidentDetailPage() {
@@ -22,6 +23,11 @@ export function IncidentDetailPage() {
   const detachTicket = useDetachTicket()
   const resolveIncident = useResolveIncident()
   const { user } = useAuth()
+
+  React.useEffect(() => {
+    if (incident) track('incident_viewed', { status: incident.status, role: user?.role })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incident?.id])
   // Publishing, detaching and resolving are TEAM_LEAD+ on the server.
   const canManage = user?.role === 'TEAM_LEAD' || user?.role === 'ADMIN'
   const [confirmResolve, setConfirmResolve] = React.useState(false)
@@ -96,7 +102,7 @@ export function IncidentDetailPage() {
         {incident.summary && <p className="mt-1 text-[14px] text-text-muted">{incident.summary}</p>}
         <p className="mt-2 font-mono text-[12px] text-text-subtle">
           {incident.detection.clusterSizeAtDetection} tickets &middot; {incident.detection.arrivalRateMultiple.toFixed(1)}&times;
-          baseline &middot; {incident.detection.timeToDetectSeconds}s to detect &middot;{' '}
+          baseline &middot; {formatSeconds(incident.detection.timeToDetectSeconds)} to detect &middot;{' '}
           {incident.titleGeneratedBy ? `title by ${incident.titleGeneratedBy}` : 'templated title'}
         </p>
       </div>

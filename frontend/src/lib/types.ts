@@ -167,9 +167,20 @@ export interface TicketDetail {
   incident: { id: number; reference: string } | null
   analysisStatus: string
   latestDraftId: number | null
+  /** Customer view only: the first-response promise, once triage has set it. */
+  responseTarget?: ResponseTarget | null
   etag: string
   createdAt: string
   updatedAt: string
+}
+
+export interface ResponseTarget {
+  state: 'RUNNING' | 'PAUSED' | 'MET' | 'BREACHED'
+  targetBusinessMinutes: number
+  timezone: string
+  workingDays: number[]
+  dayStart: string
+  dayEnd: string
 }
 
 export interface TriageSignalsView {

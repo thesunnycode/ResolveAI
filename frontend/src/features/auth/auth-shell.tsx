@@ -1,7 +1,10 @@
-import { Check, Sparkles } from 'lucide-react'
-import type * as React from 'react'
+import { ArrowRight, Check, Loader2, Sparkles } from 'lucide-react'
+import * as React from 'react'
 import { Logomark } from '@/components/brand/logomark'
 import { Eyebrow } from '@/components/layout/page-header'
+import { useDemoInfo } from '@/features/demo/api'
+import { track } from '@/lib/analytics'
+import { useAuth } from './auth-context'
 
 const VALUE_PROPS = [
   'SLA clocks that pause and resume on their own — never guessed at',
@@ -68,6 +71,63 @@ function SlaPreview() {
   )
 }
 
+/** "or …" between the demo block and the form. */
+export function OrDivider({ label }: { label: string }) {
+  const demo = useDemoInfo()
+  if (!demo.data?.enabled) return null
+  return (
+    <div className="mb-5 flex items-center gap-3 text-[11.5px] uppercase tracking-[0.08em] text-text-subtle">
+      <span className="h-px flex-1 bg-border" />
+      {label}
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+/**
+ * The live demo sleeps when idle; its first request can take ~10s. Without saying so, a
+ * spinning button for ten seconds reads as broken.
+ */
+export function SlowServerHint() {
+  return (
+    <p role="status" className="mt-3 flex items-center gap-2 text-[12.5px] text-text-muted">
+      <Loader2 className="size-3.5 animate-spin" aria-hidden />
+      Still working — if the server was idle it can take about 10 seconds to wake up.
+    </p>
+  )
+}
+
+/** The preview card, as a one-click way in when the deployment has a demo. */
+function PreviewEntry() {
+  const demo = useDemoInfo()
+  const { loginAsDemo } = useAuth()
+  const [busy, setBusy] = React.useState(false)
+  if (!demo.data?.enabled || !demo.data.roles.includes('AGENT')) return <SlaPreview />
+  return (
+    <button
+      type="button"
+      className="group block w-full text-left"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true)
+        track('demo_login_clicked', { role: 'AGENT', via: 'preview' })
+        try {
+          await loginAsDemo('AGENT')
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      <SlaPreview />
+      <span className="mt-8 flex items-center justify-center gap-1.5 text-[13px] font-medium text-primary">
+        {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
+        See this live in the demo
+        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+      </span>
+    </button>
+  )
+}
+
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-svh overflow-hidden bg-bg">
@@ -76,8 +136,14 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           <Logomark size={30} />
           <span className="text-[15px] font-semibold tracking-tight text-text">ResolveAI</span>
         </div>
+        {/* Below lg the right-hand panel is hidden, and with it every word about what
+            ResolveAI is. One line keeps a phone visitor from signing in to a blank. */}
+        <p className="mt-6 max-w-[360px] text-[13px] leading-relaxed text-text-muted lg:hidden">
+          <span className="font-medium text-text">An AI-assisted support desk</span> where every ticket has an SLA
+          clock, AI replies cite their sources, and outages are grouped into one incident.
+        </p>
         <div className="flex flex-1 items-center">
-          <div className="w-full max-w-[360px] py-12">{children}</div>
+          <div className="w-full max-w-[360px] py-10 lg:py-12">{children}</div>
         </div>
         <p className="text-[12px] text-text-subtle">© {new Date().getFullYear()} ResolveAI · Support that keeps its promises</p>
       </div>
@@ -98,7 +164,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             ))}
           </ul>
           <div className="mt-12">
-            <SlaPreview />
+            <PreviewEntry />
           </div>
         </div>
       </div>

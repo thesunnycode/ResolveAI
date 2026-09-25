@@ -2698,6 +2698,319 @@
             },
             "description": "Safe to call twice — every consumer is idempotent by construction, so a redelivery cannot double-message a customer or double-fire an escalation rung."
           }
+        },
+        {
+          "name": "Start eval run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/eval/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "eval",
+                "runs"
+              ]
+            },
+            "description": "ADMIN. Runs the 60-case classification suite in the background (charged to the AI budget). 409 if one is already running."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 started, or 409 already running', () => pm.expect([202, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eval run status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/eval/runs/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "eval",
+                "runs",
+                "status"
+              ]
+            },
+            "description": "ADMIN. Whether an evaluation run is in progress."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports running', () => pm.expect(pm.response.json().running).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Onboarding funnel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics/funnel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics",
+                "funnel"
+              ]
+            },
+            "description": "ADMIN. Sessions reaching each onboarding step over the last 30 days."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has sessionsReaching', () => pm.expect(pm.response.json()).to.have.property('sessionsReaching'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Demo & Analytics",
+      "description": "One-click demo mode and first-party onboarding analytics.\n\nEvery `/demo` path is a **404 unless the server runs with `resolveai.demo.enabled=true`** (on by default under the `local` profile, where the demo tenant is `acme`). `Demo login` stores tokens exactly like `Auth › Login`, so the requests after it run as that role. `Start demo storm` needs a TEAM_LEAD or ADMIN session: change the role in `Demo login` to `TEAM_LEAD` first.",
+      "item": [
+        {
+          "name": "Demo info",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo"
+              ]
+            },
+            "description": "Public. Whether this deployment has a demo and which one-click roles it offers."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, or 404 when demo mode is off', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('lists roles', () => pm.expect(b.roles).to.be.an('array'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/demo/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "login"
+              ]
+            },
+            "description": "Public. Signs in as the demo tenant's seeded user for `role` — no password. Stores both tokens.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"AGENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns both tokens', () => {",
+                  "    pm.expect(b.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.refreshToken).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.environment.set('accessToken', b.accessToken);",
+                  "pm.environment.set('refreshToken', b.refreshToken);",
+                  "pm.environment.set('userId', b.user.id);",
+                  "pm.environment.set('userRole', b.user.role);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo showcase",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/showcase",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "showcase"
+              ]
+            },
+            "description": "AGENT+, demo tenant. A paused-clock ticket, a ticket with a cited draft, and the newest live incident."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has the three slots', () => pm.expect(pm.response.json()).to.include.keys('pausedTicket', 'draftTicket', 'incident'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo storm status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/storm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "storm"
+              ]
+            },
+            "description": "AGENT+, demo tenant. Whether the outage simulator is running or cooling down."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports running', () => pm.expect(pm.response.json().running).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start demo storm",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/storm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "storm"
+              ]
+            },
+            "description": "TEAM_LEAD+, demo tenant. Posts the 38 tickets of `demo/storm.json` over ~20s; an incident is proposed within about a minute. 409 while running, 429 while cooling down."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 started, or 409/429 when busy', () => pm.expect([202, 409, 429]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record events",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Public. First-party onboarding analytics; unknown names are dropped, always 202.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"name\": \"auth_page_viewed\",\n      \"path\": \"/login\",\n      \"sessionId\": \"{{idempotencyKey}}\",\n      \"props\": {\n        \"page\": \"login\"\n      }\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

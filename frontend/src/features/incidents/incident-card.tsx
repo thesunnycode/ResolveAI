@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { IncidentSummary } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, formatSeconds } from '@/lib/utils'
 
 export function IncidentCard({
   incident,
@@ -45,7 +45,7 @@ export function IncidentCard({
           <span className="text-[12px] text-text-subtle">{incident.reference}</span>
         </div>
         <span className="text-[12px] text-text-subtle">
-          detected {d.timeToDetectSeconds}s after first report
+          detected {formatSeconds(d.timeToDetectSeconds)} after the first report
         </span>
       </div>
 
@@ -67,7 +67,8 @@ export function IncidentCard({
 
       {incident.status === 'PROPOSED' && !onConfirm && !onReject && (
         <p className="mt-4 border-t border-border pt-3 text-[12px] text-text-subtle">
-          Waiting for a team lead to confirm or reject.
+          Waiting for a team lead to confirm or reject. Confirming is what lets customers see an outage notice —
+          a model never does that on its own.
         </p>
       )}
       {incident.status === 'PROPOSED' && (onConfirm || onReject) && (

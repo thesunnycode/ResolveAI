@@ -9,6 +9,8 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { ApiError, api } from '@/lib/api-client'
 import { useAuth } from '@/features/auth/auth-context'
+import { useIsDemoWorkspace } from '@/features/demo/api'
+import { SimulateOutageButton } from '@/features/demo/simulate-outage-button'
 import { useConfirmIncident, useIncidents, useRejectIncident } from './api'
 import { IncidentCard } from './incident-card'
 
@@ -19,6 +21,7 @@ export function IncidentBoardPage() {
   const { user } = useAuth()
   // Confirm/reject are TEAM_LEAD+ on the server; an agent sees the evidence, not the buttons.
   const canManage = user?.role === 'TEAM_LEAD' || user?.role === 'ADMIN'
+  const inDemo = useIsDemoWorkspace(user?.tenantSlug)
   const { push } = useToast()
   const statusParam = tab === 'LIVE' ? 'CONFIRMED,MITIGATED' : tab
   const { data, isLoading, isError, refetch } = useIncidents(statusParam)
@@ -42,6 +45,8 @@ export function IncidentBoardPage() {
         title="Incidents"
         description="Bursts of related tickets, detected statistically and confirmed by a person before anything changes for customers."
         actions={
+          <>
+          {canManage && <SimulateOutageButton />}
           <Segmented
             value={tab}
             onChange={setTab}
@@ -51,6 +56,7 @@ export function IncidentBoardPage() {
               { value: 'RESOLVED', label: 'Resolved' },
             ]}
           />
+          </>
         }
       />
 
@@ -63,7 +69,13 @@ export function IncidentBoardPage() {
         <EmptyState
           icon={ShieldCheck}
           title={tab === 'PROPOSED' ? 'Nothing to review' : tab === 'LIVE' ? 'No live incidents' : 'No resolved incidents yet'}
-          description="Correlated ticket bursts will appear here automatically. An empty board is the healthy state."
+          description={
+            inDemo && tab === 'PROPOSED'
+              ? canManage
+                ? 'Correlated ticket bursts appear here automatically — an empty board is the healthy state. Use “Simulate a payment outage” above to watch one form in about a minute.'
+                : 'Correlated ticket bursts appear here automatically — an empty board is the healthy state. Sign in to the demo as a team lead to simulate an outage.'
+              : 'Correlated ticket bursts will appear here automatically. An empty board is the healthy state.'
+          }
         />
         </div>
       ) : (

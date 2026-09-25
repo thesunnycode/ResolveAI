@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { ChevronRight, Inbox, Plus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
@@ -8,6 +9,7 @@ import { StatTile } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/features/auth/auth-context'
 import type { TicketStatus } from '@/lib/types'
+import { trackOnce } from '@/lib/analytics'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { useTicketQueue } from './api'
 import { CustomerIncidentBanner } from './incident-banner'
@@ -48,6 +50,11 @@ export function MyTicketsPage() {
   const { data, isLoading, isError, refetch } = useTicketQueue({})
   const tickets = data?.data ?? []
   const count = (b: Bucket) => tickets.filter((t) => BUCKET[t.status] === b).length
+
+  React.useEffect(() => {
+    if (!isLoading && data) trackOnce('first_page_loaded', 'first_page_loaded', { route: 'my-tickets', rows: tickets.length })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, data])
 
   return (
     <Page>

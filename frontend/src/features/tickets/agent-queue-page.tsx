@@ -8,9 +8,13 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { useAuth } from '@/features/auth/auth-context'
+import { useIsDemoWorkspace, useStartStorm } from '@/features/demo/api'
+import { DemoTour } from '@/features/demo/demo-tour'
+import { trackOnce } from '@/lib/analytics'
 import { ApiError, api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { useAssignTicket, useTicketQueue } from './api'
+import { primarySlaClock } from './sla-utils'
 import { TicketRow } from './ticket-row'
 
 type ScopeFilter = 'all' | 'mine' | 'unassigned'
@@ -22,6 +26,9 @@ export function AgentQueuePage() {
   const [search, setSearch] = React.useState(params.get('q') ?? '')
   const scope = (params.get('scope') as ScopeFilter) ?? 'all'
   const assignMutation = useAssignTicket()
+  const inDemo = useIsDemoWorkspace(user?.tenantSlug)
+  const storm = useStartStorm()
+  const canSimulate = inDemo && (user?.role === 'TEAM_LEAD' || user?.role === 'ADMIN')
 
   React.useEffect(() => {
     const t = setTimeout(() => {
@@ -72,11 +79,24 @@ export function AgentQueuePage() {
   }
 
   const tickets = data?.data ?? []
-  const clocks = tickets.map((t) => t.sla?.resolution ?? t.sla?.firstResponse).filter(Boolean)
+  const clocks = tickets.map((t) => primarySlaClock(t.sla)?.clock).filter(Boolean)
   const unassigned = tickets.filter((t) => !t.assignee).length
   const atRisk = clocks.filter((c) => c!.state === 'RUNNING' && c!.atRisk).length
   const breached = clocks.filter((c) => c!.state === 'BREACHED').length
   const more = data?.pagination.hasNext ? '+' : ''
+
+  React.useEffect(() => {
+    // What a first-time agent actually sees: an empty queue and a wall of breaches were
+    // both first-impression problems the onboarding audit found.
+    if (!isLoading && data) {
+      trackOnce('first_page_loaded', 'first_page_loaded', {
+        route: 'queue',
+        rows: tickets.length,
+        breachedPct: tickets.length ? Math.round((100 * breached) / tickets.length) : 0,
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, data])
 
   return (
     <Page width="wide">
@@ -89,6 +109,8 @@ export function AgentQueuePage() {
         title="Queue"
         description={`Hi ${user?.fullName.split(' ')[0] ?? 'there'} — work the oldest at-risk ticket first. SLA clocks count business hours only.`}
       />
+
+      <DemoTour />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="In view" value={`${tickets.length}${more}`} hint={scope === 'mine' ? 'Assigned to you' : scope === 'unassigned' ? 'Nobody has these yet' : user?.role === 'AGENT' ? "Yours and your team's" : 'Across all teams'} />
@@ -146,9 +168,24 @@ export function AgentQueuePage() {
                   ? 'Tickets assigned to you appear here.'
                   : scope === 'unassigned'
                     ? 'Every ticket has an owner right now — nice work.'
-                    : 'New tickets land here within seconds of arriving, already triaged.'
+                    : canSimulate
+                      ? 'New tickets land here within seconds of arriving, already triaged. Nothing has arrived yet — simulate an outage to watch 38 of them come in.'
+                      : 'New tickets land here within seconds of arriving, already triaged. Nothing has arrived yet.'
               }
-              action={scope !== 'all' ? { label: 'View all tickets', onClick: () => setScope('all') } : undefined}
+              action={
+                scope !== 'all'
+                  ? { label: 'View all tickets', onClick: () => setScope('all') }
+                  : canSimulate
+                    ? {
+                        label: 'Simulate a payment outage',
+                        onClick: () =>
+                          storm
+                            .mutateAsync()
+                            .then((r) => push('success', r.detail))
+                            .catch((err) => push('info', err instanceof ApiError ? err.problem.detail : 'Could not start the simulation.')),
+                      }
+                    : undefined
+              }
             />
           ) : (
             <div>

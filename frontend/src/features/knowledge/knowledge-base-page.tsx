@@ -1,5 +1,5 @@
 import { BookOpen, Plus, Trash2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Page, PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ const SOURCE_VARIANT = { RUNBOOK: 'primary', ARTICLE: 'neutral', RESOLVED_TICKET
 
 export function KnowledgeBasePage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { push } = useToast()
   const { data, isLoading, isError, refetch } = useKnowledgeDocuments()
   const deleteDoc = useDeleteKnowledgeDocument()
@@ -49,7 +50,16 @@ export function KnowledgeBasePage() {
         {isLoading ? (
           <SkeletonRow count={5} />
         ) : docs.length === 0 ? (
-          <EmptyState icon={BookOpen} title="No documents yet" description="Runbooks and articles you add here ground every AI draft." />
+          <EmptyState
+            icon={BookOpen}
+            title="No documents yet"
+            description={
+              user?.role === 'ADMIN'
+                ? 'Runbooks and articles you add here ground every AI draft — with none, every draft is withheld. Start with your most-asked question.'
+                : 'Runbooks and articles here ground every AI draft. Your workspace admin adds them; until they do, drafts are withheld.'
+            }
+            action={user?.role === 'ADMIN' ? { label: 'Add your first article', onClick: () => navigate('/knowledge/new') } : undefined}
+          />
         ) : (
           <table className="w-full text-left text-[13px]">
             <thead>

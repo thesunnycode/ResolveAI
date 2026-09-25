@@ -1,5 +1,6 @@
 package com.resolveai.ticketing.service;
 
+import com.resolveai.sla.web.dto.SlaResponse;
 import com.resolveai.ticketing.domain.Ticket;
 import com.resolveai.ticketing.domain.TicketMessage;
 import com.resolveai.ticketing.repository.TicketEventRepository;
@@ -36,13 +37,16 @@ public class TicketMapper {
     private final TicketEventRepository events;
     private final SlaSummaryProvider slaSummaries;
     private final IncidentLinkLookup incidentLinks;
+    private final LatestDraftLookup latestDrafts;
 
     public TicketMapper(TicketMessageRepository messages, TicketEventRepository events,
-                        SlaSummaryProvider slaSummaries, IncidentLinkLookup incidentLinks) {
+                        SlaSummaryProvider slaSummaries, IncidentLinkLookup incidentLinks,
+                        LatestDraftLookup latestDrafts) {
         this.messages = messages;
         this.events = events;
         this.slaSummaries = slaSummaries;
         this.incidentLinks = incidentLinks;
+        this.latestDrafts = latestDrafts;
     }
 
     public TicketSummaryResponse toSummary(Ticket t, long messageCount) {
@@ -77,7 +81,7 @@ public class TicketMapper {
                 mapOf(incidentLinks.liveFor(t.getTenantId(), t.getId(), true)), null,
                 // Phase 6 fills this in. A fixed value rather than an omission, so clients
                 // can bind the field now and see it change rather than appear.
-                "NOT_STARTED", null,
+                "NOT_STARTED", latestDrafts.latestFor(t.getTenantId(), t.getId()),
                 EtagSupport.etagOf(t.getVersion()),
                 t.getCreatedAt(), t.getUpdatedAt());
     }
@@ -111,7 +115,24 @@ public class TicketMapper {
                 t.getStatus(), t.getPriority(), t.getCategory(),
                 UserRef.of(t.getRequester()), UserRef.of(t.getAssignee()),
                 t.getReopenCount(), publicThread,
+                responseTargetOf(t.getId()),
                 EtagSupport.etagOf(t.getVersion()),
                 t.getCreatedAt(), t.getUpdatedAt());
+    }
+
+    /** The first-response promise, reduced to what a customer may see. */
+    private TicketCustomerResponse.ResponseTarget responseTargetOf(Long ticketId) {
+        SlaResponse sla = slaSummaries.detailFor(ticketId);
+        if (sla == null || sla.clocks() == null || sla.calendar() == null) {
+            return null;
+        }
+        return sla.clocks().stream()
+                .filter(c -> "FIRST_RESPONSE".equals(c.kind()))
+                .findFirst()
+                .map(c -> new TicketCustomerResponse.ResponseTarget(c.state(),
+                        c.targetBusinessMinutes(), sla.calendar().timezone(),
+                        sla.calendar().workingDays(), sla.calendar().dayStart(),
+                        sla.calendar().dayEnd()))
+                .orElse(null);
     }
 }
