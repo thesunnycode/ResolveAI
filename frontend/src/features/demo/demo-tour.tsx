@@ -96,10 +96,10 @@ export function DemoTour() {
     <section aria-labelledby="tour-heading" className="glass mb-6 rounded-xl p-5">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <p id="tour-heading" className="text-[14px] font-semibold text-text">
+          <p id="tour-heading" className="text-base font-semibold text-text">
             Tour the three things that make this more than a chatbot
           </p>
-          <p className="mt-0.5 text-[12.5px] text-text-muted">
+          <p className="mt-0.5 text-sm text-text-muted">
             {done.size} of 3 seen · each one is live data in this demo workspace
           </p>
         </div>
@@ -112,7 +112,7 @@ export function DemoTour() {
           const isDone = done.has(step.key)
           const content = (
             <>
-              <span className="flex items-center gap-2 text-[13px] font-medium text-text">
+              <span className="flex items-center gap-2 text-sm font-medium text-text">
                 {isDone ? (
                   <CheckCircle2 className="size-4 shrink-0 text-success" aria-label="Seen" />
                 ) : (
@@ -121,7 +121,7 @@ export function DemoTour() {
                 <step.icon className="size-3.5 shrink-0 text-primary" aria-hidden />
                 {step.title}
               </span>
-              <span className="mt-1 block pl-6 text-[12px] leading-relaxed text-text-muted">{step.body}</span>
+              <span className="mt-1 block pl-6 text-xs leading-relaxed text-text-muted">{step.body}</span>
             </>
           )
           return (
@@ -140,7 +140,7 @@ export function DemoTour() {
               ) : (
                 <div className="h-full rounded-lg border border-dashed border-border p-3">
                   {content}
-                  <div className="mt-2 pl-6 text-[12px] text-text-subtle">{step.missing}</div>
+                  <div className="mt-2 pl-6 text-xs text-text-subtle">{step.missing}</div>
                 </div>
               )}
             </li>

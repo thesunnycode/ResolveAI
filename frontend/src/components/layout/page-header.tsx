@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 
 export function Eyebrow({ children, dot = true }: { children: React.ReactNode; dot?: boolean }) {
   return (
-    <span className="glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-text-muted">
+    <span className="glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium text-text-muted">
       {dot && <span className="size-1.5 rounded-full bg-primary" />}
       {children}
     </span>
@@ -27,8 +27,8 @@ export function PageHeader({
     <div className={cn('mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between', className)}>
       <div className="min-w-0">
         {eyebrow && <div className="mb-3">{eyebrow}</div>}
-        <h1 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.025em] text-text">{title}</h1>
-        {description && <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-text-muted">{description}</p>}
+        <h1 className="text-2xl font-semibold leading-[1.15] tracking-[-0.025em] text-text">{title}</h1>
+        {description && <p className="mt-1.5 max-w-xl text-base leading-relaxed text-text-muted">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>

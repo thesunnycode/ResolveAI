@@ -136,6 +136,7 @@ public class TicketController {
             @RequestParam(required = false) Long teamId,
             @RequestParam(required = false) String assigneeId,
             @RequestParam(required = false) Long incidentId,
+            @RequestParam(required = false) Long requesterId,
             @RequestParam(required = false) String slaState,
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) OffsetDateTime createdFrom,
@@ -146,9 +147,10 @@ public class TicketController {
         // A customer has no team and no queue; letting them pass teamId would be an
         // attempt to widen a scope the server does not let them widen. 403 rather than a
         // silent ignore: quietly dropping a filter returns data the caller did not ask for.
-        if (principal.role() == Role.CUSTOMER && (teamId != null || assigneeId != null)) {
-            throw ApiException.forbidden("teamId and assigneeId are not available to "
-                    + "customers; you already see only your own tickets.");
+        if (principal.role() == Role.CUSTOMER
+                && (teamId != null || assigneeId != null || requesterId != null)) {
+            throw ApiException.forbidden("teamId, assigneeId and requesterId are not available "
+                    + "to customers; you already see only your own tickets.");
         }
 
         boolean unassignedOnly = "none".equalsIgnoreCase(assigneeId);
@@ -160,7 +162,7 @@ public class TicketController {
                 cursor == null ? null : Cursor.decode(cursor),
                 PageRequests.clampSize(size),
                 upper(status), upper(priority),
-                teamId, resolvedAssignee, unassignedOnly, incidentId,
+                teamId, resolvedAssignee, unassignedOnly, incidentId, requesterId,
                 slaState == null ? null : slaState.toUpperCase(),
                 q, createdFrom, createdTo, sort, order);
 

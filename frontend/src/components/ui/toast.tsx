@@ -4,14 +4,23 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 type ToastKind = 'success' | 'info' | 'error'
+
+/** An inline action on a toast - "Undo", "Open ticket". Runs, then dismisses the toast. */
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 interface ToastItem {
   id: number
   kind: ToastKind
   message: string
+  action?: ToastAction
+  duration?: number
 }
 
 const ToastContext = React.createContext<{
-  push: (kind: ToastKind, message: string) => void
+  push: (kind: ToastKind, message: string, opts?: { action?: ToastAction; duration?: number }) => void
 } | null>(null)
 
 const ICONS: Record<ToastKind, React.ReactNode> = {
@@ -25,10 +34,13 @@ let idSeq = 0
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = React.useState<ToastItem[]>([])
 
-  const push = React.useCallback((kind: ToastKind, message: string) => {
-    const id = ++idSeq
-    setItems((prev) => [...prev, { id, kind, message }])
-  }, [])
+  const push = React.useCallback(
+    (kind: ToastKind, message: string, opts?: { action?: ToastAction; duration?: number }) => {
+      const id = ++idSeq
+      setItems((prev) => [...prev, { id, kind, message, action: opts?.action, duration: opts?.duration }])
+    },
+    [],
+  )
 
   const remove = (id: number) => setItems((prev) => prev.filter((t) => t.id !== id))
 
@@ -39,6 +51,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {items.map((item) => (
           <ToastPrimitive.Root
             key={item.id}
+            duration={item.duration ?? (item.action ? 6000 : 4000)}
             onOpenChange={(open) => !open && remove(item.id)}
             className={cn(
               'flex items-start gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 shadow-popover',
@@ -46,10 +59,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             )}
           >
             {ICONS[item.kind]}
-            <ToastPrimitive.Description className="flex-1 text-[13px] text-text">
+            <ToastPrimitive.Description className="flex-1 text-sm text-text">
               {item.message}
             </ToastPrimitive.Description>
-            <ToastPrimitive.Close aria-label="Dismiss" className="text-text-subtle hover:text-text">
+            {item.action && (
+              <ToastPrimitive.Action
+                altText={item.action.label}
+                onClick={item.action.onClick}
+                className="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-primary hover:bg-primary-bg"
+              >
+                {item.action.label}
+              </ToastPrimitive.Action>
+            )}
+            <ToastPrimitive.Close
+              aria-label="Dismiss"
+              className="-m-1 flex size-6 shrink-0 items-center justify-center rounded-md text-text-subtle hover:text-text"
+            >
               <X className="size-3.5" aria-hidden />
             </ToastPrimitive.Close>
           </ToastPrimitive.Root>

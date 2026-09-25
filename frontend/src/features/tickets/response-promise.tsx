@@ -61,8 +61,8 @@ export function ResponsePromise({
     <div role="status" className={cn('mt-5 flex gap-3 rounded-xl border px-4 py-3', tone)}>
       <span className="mt-0.5 shrink-0 text-text-muted">{icon}</span>
       <div>
-        <p className="text-[13.5px] font-medium text-text">{title}</p>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-text-muted">{body}</p>
+        <p className="text-base font-medium text-text">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-text-muted">{body}</p>
       </div>
     </div>
   )

@@ -64,6 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function login(tenantSlug: string, email: string, password: string) {
+    // Remembered for the sign-in page: "Welcome back" and a prefilled workspace (audit U9).
+    try {
+      localStorage.setItem(LAST_WORKSPACE_KEY, tenantSlug)
+    } catch {
+      // Private mode: the page just greets everyone the same way.
+    }
     const res = await api.post('/auth/login', { tenantSlug, email, password })
     await completeLogin(res.data.accessToken, res.data.refreshToken)
   }
@@ -95,6 +101,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   )
 }
+
+export const LAST_WORKSPACE_KEY = 'resolveai.lastWorkspace'
 
 export function useAuth() {
   const ctx = React.useContext(AuthContext)

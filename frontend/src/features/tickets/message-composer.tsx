@@ -1,23 +1,44 @@
-import { Paperclip, Send } from 'lucide-react'
+import { Send } from 'lucide-react'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+type Visibility = 'PUBLIC' | 'INTERNAL'
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+function draftKey(ticketId: number, tab: Visibility) {
+  return `resolveai.draft.${ticketId}.${tab}`
+}
+function readDraft(ticketId: number, tab: Visibility) {
+  try {
+    return sessionStorage.getItem(draftKey(ticketId, tab)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export function MessageComposer({
+  ticketId,
   allowInternal,
   prefill,
   focusSignal,
   onSend,
+  className,
 }: {
+  ticketId: number
   allowInternal: boolean
   prefill?: string
   /** Bump to move focus into the reply box (e.g. "Reply manually" on a suppressed draft). */
   focusSignal?: number
-  onSend: (body: string, visibility: 'PUBLIC' | 'INTERNAL') => Promise<void>
+  onSend: (body: string, visibility: Visibility) => Promise<void>
+  className?: string
 }) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const [tab, setTab] = React.useState<'PUBLIC' | 'INTERNAL'>('PUBLIC')
-  const [body, setBody] = React.useState(prefill ?? '')
+  const [tab, setTab] = React.useState<Visibility>('PUBLIC')
+  // Audit U13: a half-written reply survives navigation and reloads (per ticket, per tab).
+  const [body, setBody] = React.useState(() => prefill ?? readDraft(ticketId, 'PUBLIC'))
+  const [saved, setSaved] = React.useState(false)
   const [sending, setSending] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
 
@@ -25,6 +46,7 @@ export function MessageComposer({
     if (prefill) {
       setBody(prefill)
       setTab('PUBLIC')
+      textareaRef.current?.focus()
     }
   }, [prefill])
 
@@ -34,13 +56,59 @@ export function MessageComposer({
     textareaRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [focusSignal])
 
-  async function handleSend() {
+  // Persist after a short pause, then say so - the reassurance is the point.
+  React.useEffect(() => {
+    setSaved(false)
+    const t = window.setTimeout(() => {
+      try {
+        if (body.trim()) {
+          sessionStorage.setItem(draftKey(ticketId, tab), body)
+          setSaved(true)
+        } else {
+          sessionStorage.removeItem(draftKey(ticketId, tab))
+        }
+      } catch {
+        // Storage full or blocked: the leave guard below still protects the text.
+      }
+    }, 600)
+    return () => window.clearTimeout(t)
+  }, [body, tab, ticketId])
+
+  // Closing the tab still loses sessionStorage in some browsers - ask first.
+  React.useEffect(() => {
     if (!body.trim()) return
+    const guard = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [body])
+
+  function switchTab(next: Visibility) {
+    if (next === tab) return
+    try {
+      if (body.trim()) sessionStorage.setItem(draftKey(ticketId, tab), body)
+    } catch {
+      // Best effort.
+    }
+    setTab(next)
+    setBody(readDraft(ticketId, next))
+  }
+
+  async function handleSend() {
+    const text = body.trim()
+    if (!text || sending) return
     setSending(true)
     setFailed(false)
     try {
-      await onSend(body.trim(), tab)
+      await onSend(text, tab)
       setBody('')
+      try {
+        sessionStorage.removeItem(draftKey(ticketId, tab))
+      } catch {
+        // Nothing to clear.
+      }
     } catch {
       setFailed(true)
     } finally {
@@ -48,49 +116,53 @@ export function MessageComposer({
     }
   }
 
+  const tabClass = (active: boolean, tone: 'primary' | 'warning') =>
+    cn(
+      '-mb-px min-h-10 border-b-2 px-4 text-sm font-medium',
+      active ? (tone === 'primary' ? 'border-primary text-text' : 'border-warning text-text') : 'border-transparent text-text-muted hover:text-text',
+    )
+
   return (
-    <div className="glass overflow-hidden rounded-xl focus-within:border-border-strong">
-      <div className="flex border-b border-border">
-        <button
-          onClick={() => setTab('PUBLIC')}
-          className={cn(
-            'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px',
-            tab === 'PUBLIC' ? 'border-primary text-text' : 'border-transparent text-text-muted',
-          )}
-        >
-          {allowInternal ? 'Reply to customer' : 'Reply'}
-        </button>
-        {allowInternal && (
-          <button
-            onClick={() => setTab('INTERNAL')}
-            className={cn(
-              'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px',
-              tab === 'INTERNAL' ? 'border-warning text-text' : 'border-transparent text-text-muted',
-            )}
-          >
+    <div className={cn('glass overflow-hidden rounded-xl focus-within:border-border-strong', className)}>
+      {allowInternal && (
+        <div className="flex border-b border-border" role="group" aria-label="Message type">
+          <button type="button" aria-pressed={tab === 'PUBLIC'} onClick={() => switchTab('PUBLIC')} className={tabClass(tab === 'PUBLIC', 'primary')}>
+            Reply to customer
+          </button>
+          <button type="button" aria-pressed={tab === 'INTERNAL'} onClick={() => switchTab('INTERNAL')} className={tabClass(tab === 'INTERNAL', 'warning')}>
             Internal note
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <textarea
         ref={textareaRef}
+        id="reply-composer"
         aria-label={tab === 'PUBLIC' ? 'Reply' : 'Internal note'}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        rows={4}
+        onKeyDown={(e) => {
+          // Audit F2: ⌘/Ctrl+Enter sends.
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            void handleSend()
+          }
+        }}
+        rows={3}
         placeholder={tab === 'PUBLIC' ? 'Write a reply…' : 'Note for the team…'}
         className={cn(
-          'w-full resize-y border-0 bg-transparent p-3.5 text-[14px] text-text placeholder:text-text-subtle focus:outline-none',
+          'block max-h-[40svh] min-h-20 w-full resize-y border-0 bg-transparent p-3.5 text-base text-text placeholder:text-text-subtle focus:outline-none',
           tab === 'INTERNAL' && 'bg-warning-bg',
         )}
       />
-      {failed && (
-        <p className="px-3.5 text-[12px] text-danger">Couldn&apos;t send — your text is safe. Try again.</p>
-      )}
-      <div className="flex items-center justify-between border-t border-border px-3.5 py-2">
-        <button className="flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text" type="button">
-          <Paperclip className="size-3.5" aria-hidden /> Attach
-        </button>
+      {failed && <p className="px-3.5 text-xs text-danger" role="alert">Couldn&apos;t send — your text is safe. Try again.</p>}
+      <div className="flex items-center justify-between gap-3 border-t border-border px-3.5 py-2">
+        <p className="min-w-0 truncate text-xs text-text-subtle" aria-live="polite">
+          {sending ? 'Sending…' : saved ? 'Draft saved' : ''}
+          <span className="hidden sm:inline">
+            {sending || saved ? ' · ' : ''}
+            <kbd className="font-mono">{isMac ? '⌘' : 'Ctrl'}</kbd>+<kbd className="font-mono">Enter</kbd> to {tab === 'PUBLIC' ? 'send' : 'save'}
+          </span>
+        </p>
         <Button size="sm" loading={sending} disabled={!body.trim()} onClick={handleSend}>
           <Send className="size-3.5" aria-hidden />
           {failed ? 'Retry' : tab === 'PUBLIC' ? 'Send reply' : 'Save note'}

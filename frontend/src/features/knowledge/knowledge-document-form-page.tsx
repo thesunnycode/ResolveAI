@@ -1,4 +1,5 @@
 import * as Select from '@radix-ui/react-select'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { ChevronDown } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -10,6 +11,7 @@ import { ApiError } from '@/lib/api-client'
 import { useCreateKnowledgeDocument } from './api'
 
 export function KnowledgeDocumentFormPage() {
+  useDocumentTitle('Add a knowledge document')
   const navigate = useNavigate()
   const { push } = useToast()
   const createDoc = useCreateKnowledgeDocument()
@@ -31,7 +33,7 @@ export function KnowledgeDocumentFormPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-8 sm:px-8 lg:py-10 animate-slide-up">
-      <h1 className="mb-5 text-[20px] font-semibold text-text">Add knowledge document</h1>
+      <h1 className="mb-5 text-xl font-semibold text-text">Add knowledge document</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label required>Title</Label>
@@ -40,7 +42,7 @@ export function KnowledgeDocumentFormPage() {
         <div>
           <Label required>Source</Label>
           <Select.Root value={source} onValueChange={setSource}>
-            <Select.Trigger className="glass flex h-10 w-48 items-center justify-between rounded-md px-3 text-[14px] text-text">
+            <Select.Trigger className="glass flex h-10 w-48 items-center justify-between rounded-md px-3 text-base text-text">
               <Select.Value />
               <Select.Icon>
                 <ChevronDown className="size-3.5 text-text-subtle" />
@@ -50,7 +52,7 @@ export function KnowledgeDocumentFormPage() {
               <Select.Content className="rounded-md border border-border bg-surface shadow-popover">
                 <Select.Viewport className="p-1">
                   {['RUNBOOK', 'ARTICLE'].map((s) => (
-                    <Select.Item key={s} value={s} className="cursor-pointer rounded px-3 py-1.5 text-[14px] outline-none data-[highlighted]:bg-surface-2">
+                    <Select.Item key={s} value={s} className="cursor-pointer rounded px-3 py-1.5 text-base outline-none data-[highlighted]:bg-surface-2">
                       <Select.ItemText>{s}</Select.ItemText>
                     </Select.Item>
                   ))}
@@ -69,7 +71,7 @@ export function KnowledgeDocumentFormPage() {
             rows={14}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            className="font-mono text-[13px]"
+            className="font-mono text-sm"
             required
           />
         </div>

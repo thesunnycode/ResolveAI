@@ -19,8 +19,8 @@ export function EmptyState({
         <Icon className="size-5 text-text-muted" aria-hidden />
       </div>
       <div className="relative mt-4 space-y-1.5">
-        <p className="text-[15px] font-semibold tracking-tight text-text">{title}</p>
-        {description && <p className="max-w-sm text-[13px] leading-relaxed text-text-muted">{description}</p>}
+        <p className="text-lg font-semibold tracking-tight text-text">{title}</p>
+        {description && <p className="max-w-sm text-sm leading-relaxed text-text-muted">{description}</p>}
       </div>
       {action && (
         <Button variant="secondary" size="sm" onClick={action.onClick} className="relative mt-5">

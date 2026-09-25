@@ -25,5 +25,16 @@ public record TicketSummaryResponse(
         SlaSummary sla,
         long messageCount,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt) {
+        OffsetDateTime updatedAt,
+        LastReply lastPublicReply) {
+
+    /**
+     * The newest customer-visible message, so a list can say "Support replied 2h ago" or
+     * "Awaiting reply" instead of a bare count (UI audit U20). {@code null} when the thread
+     * has no public reply yet - the opening description is on the ticket, not a message.
+     *
+     * @param fromSupport true when an agent, lead or admin wrote it
+     */
+    public record LastReply(OffsetDateTime at, boolean fromSupport) {
+    }
 }

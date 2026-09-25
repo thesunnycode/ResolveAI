@@ -10,9 +10,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        'flex h-10 w-full rounded-md border bg-glass px-3 py-2 text-[14px] text-text transition-colors placeholder:text-text-subtle',
-        'border-border hover:border-border-strong',
-        'focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary-bg',
+        'flex h-10 w-full rounded-md border bg-surface px-3 py-2 text-base text-text transition-colors placeholder:text-text-subtle',
+        'border-border-control hover:border-text-subtle',
+        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
         'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle',
         error && 'border-danger focus-visible:border-danger focus-visible:ring-danger-bg',
         className,
@@ -31,9 +31,9 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'flex w-full rounded-md border bg-glass px-3 py-2.5 text-[14px] text-text transition-colors placeholder:text-text-subtle resize-y',
-      'border-border hover:border-border-strong',
-      'focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary-bg',
+      'flex w-full rounded-md border bg-surface px-3 py-2.5 text-base text-text transition-colors placeholder:text-text-subtle resize-y',
+      'border-border-control hover:border-text-subtle',
+      'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
       'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle',
       error && 'border-danger focus-visible:border-danger focus-visible:ring-danger-bg',
       className,

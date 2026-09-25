@@ -1,12 +1,16 @@
 package com.resolveai.iam.web;
 
+import com.resolveai.common.security.IsAgentOrAbove;
 import com.resolveai.iam.security.ResolvePrincipal;
 import com.resolveai.iam.service.AgentProfileService;
+import com.resolveai.iam.service.StaffDirectoryService;
 import com.resolveai.iam.web.dto.AgentProfileResponse;
 import com.resolveai.iam.web.dto.AvailabilityRequest;
 import com.resolveai.iam.web.dto.CapacityRequest;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,9 +28,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class AgentController {
 
     private final AgentProfileService agentProfiles;
+    private final StaffDirectoryService staff;
 
-    public AgentController(AgentProfileService agentProfiles) {
+    public AgentController(AgentProfileService agentProfiles, StaffDirectoryService staff) {
         this.agentProfiles = agentProfiles;
+        this.staff = staff;
+    }
+
+    /** Agents (with load) and team leads, for "Assign to…" and incident hand-offs. */
+    @GetMapping("/api/v1/agents")
+    @IsAgentOrAbove
+    public List<StaffDirectoryService.StaffMember> list() {
+        return staff.list();
     }
 
     @PutMapping("/api/v1/agents/me/availability")

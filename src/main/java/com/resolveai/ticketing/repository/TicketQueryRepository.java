@@ -75,6 +75,7 @@ public class TicketQueryRepository {
             Long assigneeId,
             boolean unassignedOnly,
             Long incidentId,
+            Long requesterId,
             String slaState,
             String q,
             OffsetDateTime createdFrom,
@@ -122,6 +123,12 @@ public class TicketQueryRepository {
             where.add("t.assignee_id = :filterAssigneeId");
             params.addValue("filterAssigneeId", f.assigneeId());
         }
+        if (f.requesterId() != null) {
+            // "This customer's other tickets" on the agent ticket view. Still inside the
+            // role scope above, so an agent sees only what their team could see anyway.
+            where.add("t.requester_id = :filterRequesterId");
+            params.addValue("filterRequesterId", f.requesterId());
+        }
         if (f.incidentId() != null) {
             where.add("""
                     EXISTS (SELECT 1 FROM incident_ticket it
@@ -147,8 +154,12 @@ public class TicketQueryRepository {
             }
         }
         if (f.q() != null && !f.q().isBlank()) {
-            where.add("t.search_tsv @@ plainto_tsquery('english', :q)");
+            // Full text over subject and body, OR an exact reference ("TKT-1036"). Agents
+            // paste references from customer emails; the text index tokenises them away.
+            where.add("(t.search_tsv @@ plainto_tsquery('english', :q)"
+                    + " OR upper(t.reference) = upper(:qRef))");
             params.addValue("q", f.q());
+            params.addValue("qRef", f.q().trim());
         }
         if (f.createdFrom() != null) {
             where.add("t.created_at >= :createdFrom");
@@ -229,6 +240,14 @@ public class TicketQueryRepository {
      * the mapper's output deterministic and the tests readable.
      */
     public Map<Long, Long> messageCounts(List<Long> ticketIds, Long tenantId) {
+        return messageCounts(ticketIds, tenantId, false);
+    }
+
+    /**
+     * @param publicOnly count only {@code PUBLIC} messages - what a customer's list must
+     *                   use, or the count itself reveals that internal notes exist
+     */
+    public Map<Long, Long> messageCounts(List<Long> ticketIds, Long tenantId, boolean publicOnly) {
         if (ticketIds.isEmpty()) {
             return Map.of();
         }
@@ -237,13 +256,40 @@ public class TicketQueryRepository {
                 SELECT ticket_id, count(*) AS n
                   FROM ticket_message
                  WHERE tenant_id = :tenantId AND ticket_id IN (:ids)
+                   AND (:publicOnly = FALSE OR visibility = 'PUBLIC')
                  GROUP BY ticket_id
                 """,
                 new MapSqlParameterSource().addValue("tenantId", tenantId)
-                        .addValue("ids", ticketIds),
+                        .addValue("ids", ticketIds).addValue("publicOnly", publicOnly),
                 rs -> {
                     counts.put(rs.getLong("ticket_id"), rs.getLong("n"));
                 });
         return counts;
+    }
+
+    /** The newest PUBLIC message per ticket, and whether support wrote it. One query. */
+    public Map<Long, com.resolveai.ticketing.web.dto.TicketSummaryResponse.LastReply> lastPublicReplies(
+            List<Long> ticketIds, Long tenantId) {
+        if (ticketIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, com.resolveai.ticketing.web.dto.TicketSummaryResponse.LastReply> out = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT DISTINCT ON (m.ticket_id) m.ticket_id, m.created_at, u.role
+                  FROM ticket_message m
+                  JOIN app_user u ON u.id = m.author_id
+                 WHERE m.tenant_id = :tenantId AND m.ticket_id IN (:ids)
+                   AND m.visibility = 'PUBLIC'
+                 ORDER BY m.ticket_id, m.created_at DESC, m.id DESC
+                """,
+                new MapSqlParameterSource().addValue("tenantId", tenantId)
+                        .addValue("ids", ticketIds),
+                rs -> {
+                    out.put(rs.getLong("ticket_id"),
+                            new com.resolveai.ticketing.web.dto.TicketSummaryResponse.LastReply(
+                                    rs.getObject("created_at", java.time.OffsetDateTime.class),
+                                    !"CUSTOMER".equals(rs.getString("role"))));
+                });
+        return out;
     }
 }

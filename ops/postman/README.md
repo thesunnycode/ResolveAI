@@ -1,7 +1,7 @@
 # Postman collection
 
-Phase 2, Task 15. Built from [`docs/openapi.yaml`](../../docs/openapi.yaml) — now **87 requests
-covering all 74 operations**, plus a `Smoke Test` folder and eleven deliberate
+Phase 2, Task 15. Built from [`docs/openapi.yaml`](../../docs/openapi.yaml) — now **88 requests
+covering all 75 operations**, plus a `Smoke Test` folder and eleven deliberate
 negative-path requests. The `Demo & Analytics` folder (onboarding audit) covers the one-click
 demo endpoints — a `404` unless the server runs with `resolveai.demo.enabled=true`, which the
 `local` profile does — and first-party analytics; `Demo login` stores tokens like `Auth › Login`.
@@ -36,7 +36,7 @@ An OpenAPI import produces requests with placeholder bodies and no chaining. Add
 | **Token capture** | `Login` and `Refresh` both store their tokens. Nothing else ever needs an `Authorization` header. |
 | **Fresh idempotency keys** | A collection-level pre-request script mints a UUID v4 into `{{idempotencyKey}}` on every send, so the endpoints that require the header never replay a stale key by accident. |
 | **Chaining** | `Create ticket` captures `ticketId` and `ETag`; `Incident board` captures `incidentId`; `Request draft` captures `draftId`. The Tickets folder runs top to bottom with no manual editing. |
-| **Assertions** | 54 of 87 requests assert something specific. A `200` on its own proves very little. |
+| **Assertions** | 55 of 88 requests assert something specific. A `200` on its own proves very little. |
 | **Realistic bodies** | Copied from [doc 05](../../docs/planning/05-API-CONTRACT.md), not `"string"`. |
 
 ## The requests that assert a design decision

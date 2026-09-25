@@ -210,7 +210,7 @@ curl -s localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' \
 ```bash
 bash ops/verify-stack.sh         # 7 containers, pgvector, HNSW
 bash ops/verify-migrations.sh    # schema from empty + 10 structural guarantees
-bash ops/verify-openapi.sh       # Redocly + 74 operations + 12 with examples
+bash ops/verify-openapi.sh       # Redocly + 75 operations + 12 with examples
 node ops/verify-postman.mjs      # collection matches the contract, both directions
 ./mvnw clean verify              # 5 integration tests on real containers
 ```
@@ -337,6 +337,41 @@ links to each. Team leads get **Simulate a payment outage** on the Incidents boa
 **Onboarding analytics.** `POST /api/v1/events` records a fixed vocabulary of first-party
 events (no third-party script, no free text); `GET /api/v1/admin/analytics/funnel` reads the
 funnel back. See [docs/ONBOARDING-ACTIVATION-AUDIT.md](docs/ONBOARDING-ACTIVATION-AUDIT.md).
+
+### The agent UI: keyboard-first, and accessible by construction
+
+A UI, UX and accessibility audit ([docs/UI-UX-AUDIT.md](docs/UI-UX-AUDIT.md), with before
+and after screenshots in `docs/ui-audit/`) found 76 issues. Its §11 records how each was
+closed: 72 are resolved and 4 are partly resolved, each gap stated. What that means in use:
+
+- **Queue.**
+  - Sorted "most urgent first" (breached → at risk → priority → time left).
+  - The counts line doubles as filter chips.
+  - Saved views: *Mine & at risk*, *P1 unassigned*, *Breached*.
+  - A "N new tickets · Show" pill instead of rows moving under the cursor.
+  - From 1280px, a split view previews the selected ticket.
+- **Ticket.**
+  - The assignee is a control: *Assign to me*, and for leads *Assign to…* with each agent's load.
+  - A customer-context pane lists the requester's other tickets.
+  - Resolved and Closed are held for 5 seconds behind an **Undo**.
+  - Reply drafts survive navigation.
+  - Citations open the whole source document with the cited span highlighted.
+- **Keyboard.**
+  - `⌘/Ctrl K` opens the palette (reference or text search) and `?` the shortcut sheet.
+  - Queue: `j`/`k` move, `Enter` opens, `a` assigns, `/` searches.
+  - Ticket: `r` replies, `⌘/Ctrl Enter` sends, `e` resolves, `c` copies the reference, `Esc` goes back.
+- **Accessibility.**
+  - Every text token clears 4.5:1 on every surface, and form-control borders clear 3:1.
+  - Priority is a glyph plus a label, never colour alone.
+  - Filters are radio groups with arrow keys.
+  - Skip link, a per-route title and focus moved to the `h1`.
+  - Live regions for new tickets and errors.
+  - Targets are at least 24px.
+- **Phones.**
+  - A bottom tab bar and two-line queue rows.
+  - AI Assist opens as a bottom sheet, and the reply box is pinned.
+  - Nothing scrolls sideways at 390px.
+- **Theme.** Light, Dark or System, following the OS by default.
 
 ---
 
@@ -904,8 +939,8 @@ skip, and the table is designed to be the thing that notices when one is.
 | 11 Schema verified | ✅ 39 tables · 125 indexes · 10 triggers · 73 FKs |
 | 12 Structural guarantees | ✅ **all 10 hold** — 6 negatives, 4 positives |
 | 13 Migration repeatability | ✅ `ops/verify-migrations.sh`, green from empty |
-| 14 OpenAPI 3.1 | ✅ 64 operations at Phase 2 (**74 now**, after the onboarding audit's demo, analytics and eval endpoints), 12 with real examples, Redocly clean |
-| 15 Postman collection | ✅ 77 requests at Phase 2 (**87 now**, covering all 74 operations), self-authenticating, no secrets |
+| 14 OpenAPI 3.1 | ✅ 64 operations at Phase 2 (**75 now**, after the onboarding audit's demo, analytics and eval endpoints and the UI audit's `GET /agents`), 12 with real examples, Redocly clean |
+| 15 Postman collection | ✅ 77 requests at Phase 2 (**88 now**, covering all 75 operations), self-authenticating, no secrets |
 | 16 Handoff | ✅ [docs/phase-2-handoff.md](docs/phase-2-handoff.md) |
 
 **Phase 3 — Project Setup & Boilerplate · ✅ complete** (`phase-3-complete`)

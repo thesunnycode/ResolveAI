@@ -487,8 +487,14 @@ paths:
           schema: { type: integer, format: int64 }
         - name: assigneeId
           in: query
-          description: Numeric id, or the literal `me`.
-          schema: { type: string, examples: ['me', '1204'] }
+          description: Numeric id, the literal `me`, or `none` for unassigned tickets.
+          schema: { type: string, examples: ['me', 'none', '1204'] }
+        - name: requesterId
+          in: query
+          description: |
+            AGENT+ only (a CUSTOMER passing this gets `403`). One customer's tickets - the
+            ticket page's customer-context pane.
+          schema: { type: integer, format: int64 }
         - name: incidentId
           in: query
           schema: { type: integer, format: int64 }
@@ -497,7 +503,9 @@ paths:
           schema: { type: string, enum: [AT_RISK, BREACHED] }
         - name: q
           in: query
-          description: Full-text over subject and body.
+          description: |
+            Full-text over subject and body, **or** an exact ticket reference
+            (case-insensitive), so `tkt-1036` finds `TKT-1036`.
           schema: { type: string, maxLength: 200 }
         - name: createdFrom
           in: query
@@ -507,7 +515,11 @@ paths:
           schema: { type: string, format: date-time }
         - name: sort
           in: query
-          schema: { type: string, enum: [created_at, priority, sla_deadline], default: created_at }
+          description: |
+            Keyset pagination follows `created_at`; with another sort key, only the first
+            page is meaningful. There is no SLA-deadline sort - the queue ranks a page by SLA
+            state client-side.
+          schema: { type: string, enum: [created_at, priority, updated_at], default: created_at }
         - name: order
           in: query
           schema: { type: string, enum: [asc, desc], default: desc }
@@ -2409,6 +2421,32 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /agents:
+    get:
+      tags: [Admin]
+      operationId: listStaff
+      summary: Support staff and their current load
+      description: |
+        AGENT+ only. Active agents and team leads, with open-ticket count and capacity for
+        those who have an agent profile - the "Assign to…" menu on a ticket and the names of
+        the leads who can confirm a proposed incident. No emails.
+
+        Only entries with a non-null `openCount` can be assigned tickets (assignment needs an
+        agent profile).
+      responses:
+        '200':
+          description: Staff, team leads after agents, each sorted by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StaffMember' }
+              example:
+                - { id: 12, fullName: Arjun Mehta, role: AGENT, teamName: Payments, openCount: 4, maxConcurrent: 8, available: true }
+                - { id: 9, fullName: Priya Nair, role: TEAM_LEAD, teamName: Payments, openCount: null, maxConcurrent: null, available: null }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   # ════════════════════════════════════════════════════════════════════════════
   # ADMIN
   # ════════════════════════════════════════════════════════════════════════════
@@ -3726,15 +3764,38 @@ components:
         assignee: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/UserRef' }] }
         team: { type: [object, 'null'], allOf: [{ $ref: '#/components/schemas/TeamRef' }] }
         incidentRef: { type: [string, 'null'], examples: [INC-204] }
-        messageCount: { type: integer }
+        messageCount:
+          type: integer
+          description: For a CUSTOMER caller, PUBLIC messages only - the count never reveals that internal notes exist.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    StaffMember:
+      type: object
+      required: [id, fullName, role]
+      properties:
+        id: { type: integer, format: int64 }
+        fullName: { type: string }
+        role: { type: string, enum: [AGENT, TEAM_LEAD] }
+        teamName: { type: [string, 'null'] }
+        openCount: { type: [integer, 'null'], description: 'null when the user has no agent profile' }
+        maxConcurrent: { type: [integer, 'null'] }
+        available: { type: [boolean, 'null'] }
 
     TicketSummary:
       allOf:
         - $ref: '#/components/schemas/TicketBase'
         - type: object
           properties:
+            lastPublicReply:
+              type: [object, 'null']
+              description: |
+                The newest customer-visible message, so a list can say "Support replied 2h
+                ago" instead of a bare count. `null` until the thread has a public reply
+                (the opening description is on the ticket, not a message).
+              properties:
+                at: { type: string, format: date-time }
+                fromSupport: { type: boolean, description: 'true when an agent, lead or admin wrote it' }
             sla:
               type: object
               description: Compact form. The full segment history is on `GET /tickets/{id}/sla`.

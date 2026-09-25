@@ -31,6 +31,7 @@ export function ConfirmDialog({
   destructive,
   onConfirm,
 }: ConfirmDialogProps) {
+  const reasonId = React.useId()
   const [reason, setReason] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState(false)
@@ -68,28 +69,40 @@ export function ConfirmDialog({
                   <AlertTriangle className="size-4 text-danger" aria-hidden />
                 </span>
               )}
-              <Dialog.Title className="text-[16px] font-semibold text-text">{title}</Dialog.Title>
+              <Dialog.Title className="text-lg font-semibold text-text">{title}</Dialog.Title>
             </div>
-            <Dialog.Close className="text-text-subtle hover:text-text" aria-label="Close">
+            <Dialog.Close
+              className="-m-1.5 flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-surface-2 hover:text-text"
+              aria-label="Close"
+            >
               <X className="size-4" aria-hidden />
             </Dialog.Close>
           </div>
 
-          {consequences && consequences.length > 0 && (
-            <ul className="mt-3 space-y-1 rounded-md bg-surface-2 p-3 text-[13px] text-text-muted">
-              {consequences.map((c, i) => (
-                <li key={i} className="flex gap-1.5">
-                  <span className="text-text-subtle">&bull;</span>
-                  {c}
-                </li>
-              ))}
-            </ul>
+          {consequences && consequences.length > 0 ? (
+            <Dialog.Description asChild>
+              <ul className="mt-3 space-y-1 rounded-md bg-surface-2 p-3 text-sm text-text-muted">
+                {consequences.map((c, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span aria-hidden className="text-text-subtle">&bull;</span>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </Dialog.Description>
+          ) : (
+            <Dialog.Description className="sr-only">
+              {requireReason ? `Enter a ${reasonLabel.toLowerCase()} to continue.` : 'Confirm or cancel.'}
+            </Dialog.Description>
           )}
 
           {requireReason && (
             <div className="mt-4">
-              <Label required>{reasonLabel}</Label>
+              <Label htmlFor={reasonId} required>
+                {reasonLabel}
+              </Label>
               <Textarea
+                id={reasonId}
                 rows={3}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}

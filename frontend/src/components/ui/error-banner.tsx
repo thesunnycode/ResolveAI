@@ -14,7 +14,7 @@ export function ErrorBanner({
   onRetry?: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-danger/20 bg-danger-bg px-4 py-3 text-[13px] text-danger animate-slide-up">
+    <div role="alert" className="flex items-center gap-3 rounded-md border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger animate-slide-up">
       <AlertTriangle className="size-4 shrink-0" aria-hidden />
       <span className="flex-1">{message}</span>
       {onRetry && (

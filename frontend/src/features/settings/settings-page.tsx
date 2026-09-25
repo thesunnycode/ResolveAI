@@ -2,6 +2,7 @@ import * as Tabs from '@radix-ui/react-tabs'
 import * as Switch from '@radix-ui/react-switch'
 import * as React from 'react'
 import { Page, PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -13,6 +14,8 @@ import { ApiError } from '@/lib/api-client'
 import type { AdminAiPolicy, AdminCalendar, AdminSlaPolicyRow } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useAiPolicy, useCalendar, useSlaPolicies, useUpdateAiPolicy, useUpdateCalendar, useUpdateSlaPolicy } from './api'
+
+const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
 const DAY_LABELS = [
   { iso: 1, label: 'Mon' },
@@ -28,7 +31,7 @@ function SlaPolicyTab() {
   const { data, isLoading, isError, refetch } = useSlaPolicies()
   return (
     <div className="p-5">
-      <p className="mb-5 max-w-2xl text-[13px] leading-relaxed text-text-muted">
+      <p className="mb-5 max-w-2xl text-sm leading-relaxed text-text-muted">
         First-response and resolution targets, in business minutes, for your plan&apos;s tickets. Saving
         supersedes the current target — tickets already promised the old one keep it.
       </p>
@@ -38,9 +41,9 @@ function SlaPolicyTab() {
         <ErrorBanner onRetry={() => refetch()} />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-surface-2/30">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-[11.5px] uppercase tracking-[0.08em] text-text-subtle">
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
                 <th className="px-4 py-3 font-medium">Priority</th>
                 <th className="px-4 py-3 font-medium">First response (min)</th>
                 <th className="px-4 py-3 font-medium">Resolution (min)</th>
@@ -90,7 +93,7 @@ function SlaPolicyTableRow({ row }: { row: AdminSlaPolicyRow }) {
         <Input
           type="number"
           min={1}
-          className="h-8 w-24 text-[13px] tabular-nums"
+          className="h-8 w-24 text-sm tabular-nums"
           value={fr}
           onChange={(e) => setFr(Number(e.target.value))}
           aria-label={`${row.priority} first response minutes`}
@@ -100,7 +103,7 @@ function SlaPolicyTableRow({ row }: { row: AdminSlaPolicyRow }) {
         <Input
           type="number"
           min={1}
-          className="h-8 w-24 text-[13px] tabular-nums"
+          className="h-8 w-24 text-sm tabular-nums"
           value={res}
           onChange={(e) => setRes(Number(e.target.value))}
           aria-label={`${row.priority} resolution minutes`}
@@ -171,28 +174,30 @@ function CalendarForm({ calendar }: { calendar: AdminCalendar }) {
   return (
     <div className="max-w-md space-y-4 p-5">
       <div>
-        <Label>Timezone</Label>
-        <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
+        <Label htmlFor="cal-timezone">Timezone</Label>
+        <Input id="cal-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
       </div>
       <div>
-        <Label>Working days</Label>
-        <div className="mt-1.5 flex gap-1.5">
+        <p id="cal-days" className="mb-1.5 text-sm font-medium text-text">Working days</p>
+        <div className="flex gap-1.5" role="group" aria-labelledby="cal-days">
           {DAY_LABELS.map((d) => (
             <button
               key={d.iso}
               type="button"
+              aria-pressed={days.has(d.iso)}
               onClick={() =>
                 setDays((prev) => {
                   const next = new Set(prev)
-                  next.has(d.iso) ? next.delete(d.iso) : next.add(d.iso)
+                  if (next.has(d.iso)) next.delete(d.iso)
+                  else next.add(d.iso)
                   return next
                 })
               }
               className={cn(
-                'flex h-9 w-11 items-center justify-center rounded-md border text-[12px] font-medium transition-colors',
+                'flex h-9 w-11 items-center justify-center rounded-md border text-xs font-medium transition-colors',
                 days.has(d.iso)
                   ? 'border-text/40 bg-surface-2 text-text'
-                  : 'border-border text-text-muted',
+                  : 'border-border-control border-dashed text-text-subtle line-through decoration-text-subtle/50',
               )}
             >
               {d.label}
@@ -202,12 +207,12 @@ function CalendarForm({ calendar }: { calendar: AdminCalendar }) {
       </div>
       <div className="flex gap-3">
         <div>
-          <Label>Day start</Label>
-          <Input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} />
+          <Label htmlFor="cal-start">Day start</Label>
+          <Input id="cal-start" type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} />
         </div>
         <div>
-          <Label>Day end</Label>
-          <Input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
+          <Label htmlFor="cal-end">Day end</Label>
+          <Input id="cal-end" type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
         </div>
       </div>
       <Button size="sm" loading={mutate.isPending} onClick={handleSave}>
@@ -268,14 +273,15 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
     <div className="max-w-md space-y-5 p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-[14px] font-medium text-text">Allow external models</p>
+          <label htmlFor="ai-external" className="text-base font-medium text-text">Allow external models</label>
           {!externalAllowed && (
-            <p className="mt-0.5 text-[12px] text-warning">
+            <p className="mt-0.5 text-xs text-warning">
               Tickets will be processed by the local model only. Triage accuracy may be lower.
             </p>
           )}
         </div>
         <Switch.Root
+          id="ai-external"
           checked={externalAllowed}
           onCheckedChange={setExternalAllowed}
           className={cn(
@@ -289,10 +295,11 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
 
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-[14px] font-medium text-text">Redact PII before sending to external models</p>
-          <p className="mt-0.5 text-[12px] text-text-subtle">Turning this off does not undo redaction already applied.</p>
+          <label htmlFor="ai-pii" className="text-base font-medium text-text">Redact PII before sending to external models</label>
+          <p className="mt-0.5 text-xs text-text-subtle">Turning this off does not undo redaction already applied.</p>
         </div>
         <Switch.Root
+          id="ai-pii"
           checked={piiRedaction}
           onCheckedChange={setPiiRedaction}
           className={cn(
@@ -305,19 +312,28 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
       </div>
 
       <div>
-        <Label>Monthly budget (₹)</Label>
-        <Input type="number" min={0} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-          <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        {/* Audit U19: USD everywhere - model costs are billed in dollars, and Evaluation shows $. */}
+        <Label htmlFor="ai-budget">Monthly budget (USD)</Label>
+        <Input id="ai-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+        <div
+          role="progressbar"
+          aria-label="Budget used this month"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+        >
+          <div className={cn('h-full rounded-full', pct >= 90 ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-1 text-[12px] text-text-subtle">
-          ₹{spent.toLocaleString()} spent of ₹{budgetTotal.toLocaleString()} this month
+        <p className="mt-1 text-xs text-text-subtle">
+          {usd(spent)} spent of {usd(budgetTotal)} this month
         </p>
       </div>
 
       <div>
-        <Label>PII retention (days)</Label>
+        <Label htmlFor="ai-retention">PII retention (days)</Label>
         <Input
+          id="ai-retention"
           type="number"
           min={1}
           value={retentionDays}
@@ -334,6 +350,7 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
 }
 
 export function SettingsPage() {
+  useDocumentTitle('Settings')
   return (
     <Page>
       <PageHeader title="Settings" description="Service targets, business hours and AI guardrails for this workspace." />
@@ -347,7 +364,7 @@ export function SettingsPage() {
             <Tabs.Trigger
               key={t.v}
               value={t.v}
-              className="-mb-px border-b-2 border-transparent px-3 py-3 text-[13px] font-medium text-text-muted transition-colors hover:text-text data-[state=active]:border-text data-[state=active]:text-text"
+              className="-mb-px border-b-2 border-transparent px-3 py-3 text-sm font-medium text-text-muted transition-colors hover:text-text data-[state=active]:border-text data-[state=active]:text-text"
             >
               {t.label}
             </Tabs.Trigger>

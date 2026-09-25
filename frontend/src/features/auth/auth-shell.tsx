@@ -26,10 +26,10 @@ function SlaPreview() {
       <div className="glass relative rounded-2xl bg-surface/40 p-6">
         <div className="mb-5 flex items-center justify-between">
           <div>
-            <p className="text-[11.5px] text-text-subtle">TKT-1042 · P2</p>
-            <p className="mt-0.5 text-[14px] font-medium text-text">Checkout returns 502 for EU cards</p>
+            <p className="text-xs text-text-subtle">TKT-1042 · P2</p>
+            <p className="mt-0.5 text-base font-medium text-text">Checkout returns 502 for EU cards</p>
           </div>
-          <span className="rounded-md bg-warning-bg px-2 py-0.5 text-[11px] font-medium text-warning">At risk</span>
+          <span className="rounded-md bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">At risk</span>
         </div>
         <div className="flex items-center gap-6">
           <div className="relative size-[140px] shrink-0">
@@ -48,20 +48,20 @@ function SlaPreview() {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[22px] font-semibold tracking-tight text-text">34m</span>
-              <span className="text-[11px] text-text-subtle">to first reply</span>
+              <span className="text-xl font-semibold tracking-tight text-text">34m</span>
+              <span className="text-xs text-text-subtle">to first reply</span>
             </div>
           </div>
           <div className="min-w-0 flex-1 space-y-2.5">
             <div className="rounded-lg border border-border bg-surface-2/60 p-2.5">
-              <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-primary">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
                 <Sparkles className="size-3" aria-hidden /> Draft ready
               </p>
-              <p className="mt-1 text-[12px] leading-snug text-text-muted">2 of 2 claims cited from “EU payments runbook”.</p>
+              <p className="mt-1 text-xs leading-snug text-text-muted">2 of 2 claims cited from “EU payments runbook”.</p>
             </div>
             <div className="rounded-lg border border-border bg-surface-2/60 p-2.5">
-              <p className="text-[11.5px] font-medium text-text">INC-07 · 14 linked</p>
-              <p className="mt-1 text-[12px] leading-snug text-text-muted">Arrival rate 4.2× baseline.</p>
+              <p className="text-xs font-medium text-text">INC-07 · 14 linked</p>
+              <p className="mt-1 text-xs leading-snug text-text-muted">Arrival rate 4.2× baseline.</p>
             </div>
           </div>
         </div>
@@ -76,7 +76,7 @@ export function OrDivider({ label }: { label: string }) {
   const demo = useDemoInfo()
   if (!demo.data?.enabled) return null
   return (
-    <div className="mb-5 flex items-center gap-3 text-[11.5px] uppercase tracking-[0.08em] text-text-subtle">
+    <div className="mb-5 flex items-center gap-3 text-xs uppercase tracking-[0.08em] text-text-subtle">
       <span className="h-px flex-1 bg-border" />
       {label}
       <span className="h-px flex-1 bg-border" />
@@ -90,7 +90,7 @@ export function OrDivider({ label }: { label: string }) {
  */
 export function SlowServerHint() {
   return (
-    <p role="status" className="mt-3 flex items-center gap-2 text-[12.5px] text-text-muted">
+    <p role="status" className="mt-3 flex items-center gap-2 text-sm text-text-muted">
       <Loader2 className="size-3.5 animate-spin" aria-hidden />
       Still working — if the server was idle it can take about 10 seconds to wake up.
     </p>
@@ -119,7 +119,7 @@ function PreviewEntry() {
       }}
     >
       <SlaPreview />
-      <span className="mt-8 flex items-center justify-center gap-1.5 text-[13px] font-medium text-primary">
+      <span className="mt-8 flex items-center justify-center gap-1.5 text-sm font-medium text-primary">
         {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
         See this live in the demo
         <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
@@ -134,30 +134,30 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
       <div className="relative flex w-full flex-col px-6 py-8 sm:px-12 lg:w-[480px] lg:shrink-0 lg:px-14">
         <div className="flex items-center gap-2.5">
           <Logomark size={30} />
-          <span className="text-[15px] font-semibold tracking-tight text-text">ResolveAI</span>
+          <span className="text-lg font-semibold tracking-tight text-text">ResolveAI</span>
         </div>
         {/* Below lg the right-hand panel is hidden, and with it every word about what
             ResolveAI is. One line keeps a phone visitor from signing in to a blank. */}
-        <p className="mt-6 max-w-[360px] text-[13px] leading-relaxed text-text-muted lg:hidden">
+        <p className="mt-6 max-w-[360px] text-sm leading-relaxed text-text-muted lg:hidden">
           <span className="font-medium text-text">An AI-assisted support desk</span> where every ticket has an SLA
           clock, AI replies cite their sources, and outages are grouped into one incident.
         </p>
         <div className="flex flex-1 items-center">
           <div className="w-full max-w-[360px] py-10 lg:py-12">{children}</div>
         </div>
-        <p className="text-[12px] text-text-subtle">© {new Date().getFullYear()} ResolveAI · Support that keeps its promises</p>
+        <p className="text-xs text-text-subtle">© {new Date().getFullYear()} ResolveAI · Support that keeps its promises</p>
       </div>
 
       <div className="relative hidden flex-1 items-center border-l border-border lg:flex">
         <div className="mx-auto w-full max-w-[560px] px-12">
           <Eyebrow>AI-assisted support desk</Eyebrow>
-          <h2 className="mt-5 text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] text-text">
+          <h2 className="mt-5 text-display font-semibold leading-[1.05] tracking-[-0.035em] text-text">
             Every ticket has a clock.
             <span className="block text-text-subtle">Nothing slips through.</span>
           </h2>
           <ul className="mt-6 space-y-2.5">
             {VALUE_PROPS.map((v) => (
-              <li key={v} className="flex items-start gap-2.5 text-[13.5px] leading-relaxed text-text-muted">
+              <li key={v} className="flex items-start gap-2.5 text-base leading-relaxed text-text-muted">
                 <Check className="mt-1 size-3.5 shrink-0 text-primary" aria-hidden />
                 {v}
               </li>

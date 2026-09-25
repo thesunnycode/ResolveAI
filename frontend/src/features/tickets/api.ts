@@ -9,11 +9,15 @@ export interface QueueFilters {
   q?: string
   cursor?: string
   size?: number
+  requesterId?: number
+  sort?: 'created_at' | 'priority' | 'updated_at'
+  order?: 'asc' | 'desc'
 }
 
-export function useTicketQueue(filters: QueueFilters) {
+export function useTicketQueue(filters: QueueFilters, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['tickets', filters],
+    enabled: opts?.enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams()
       filters.status?.forEach((s) => params.append('status', s))
@@ -22,6 +26,9 @@ export function useTicketQueue(filters: QueueFilters) {
       if (filters.q) params.set('q', filters.q)
       if (filters.cursor) params.set('cursor', filters.cursor)
       if (filters.size) params.set('size', String(filters.size))
+      if (filters.requesterId) params.set('requesterId', String(filters.requesterId))
+      if (filters.sort) params.set('sort', filters.sort)
+      if (filters.order) params.set('order', filters.order)
       const res = await api.get<CursorPage<TicketSummary>>(`/tickets?${params}`)
       return res.data
     },
@@ -79,9 +86,38 @@ export function usePriorityRationale(id: string | number, opts?: { enabled?: boo
 export function useAssignTicket() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, etag }: { id: number; etag: string }) =>
-      api.post(`/tickets/${id}/assign`, {}, { headers: { 'If-Match': etag } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tickets'] }),
+    mutationFn: async ({ id, etag, assigneeId, force }: { id: number; etag: string; assigneeId?: number; force?: boolean }) =>
+      api.post(
+        `/tickets/${id}/assign`,
+        assigneeId ? { assigneeId: String(assigneeId), force: force || undefined } : {},
+        { headers: { 'If-Match': etag } },
+      ),
+    onSuccess: (_d, vars) =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['tickets'] }),
+        qc.invalidateQueries({ queryKey: ['ticket', String(vars.id)] }),
+        qc.invalidateQueries({ queryKey: ['agents'] }),
+      ]),
+  })
+}
+
+export interface StaffMember {
+  id: number
+  fullName: string
+  role: 'AGENT' | 'TEAM_LEAD'
+  teamName: string | null
+  openCount: number | null
+  maxConcurrent: number | null
+  available: boolean | null
+}
+
+/** Assignable staff (audit U7/U18) - names and current load for "Assign to…". */
+export function useAgents(enabled = true) {
+  return useQuery({
+    queryKey: ['agents'],
+    queryFn: async () => (await api.get<StaffMember[]>('/agents')).data,
+    enabled,
+    staleTime: 60_000,
   })
 }
 
@@ -154,4 +190,17 @@ export function useCreateTicket() {
         )
       ).data,
   })
+}
+
+/**
+ * Whether "Assign to me" can succeed: assignment needs an agent profile. Every AGENT has
+ * one; a lead or admin only if they also work tickets - otherwise the server answers 404
+ * and the button would be a broken promise.
+ */
+export function useCanSelfAssign(user: { id: number; role: string } | null | undefined) {
+  const staffCheck = !!user && user.role !== 'AGENT' && user.role !== 'CUSTOMER'
+  const agents = useAgents(staffCheck)
+  if (!user || user.role === 'CUSTOMER') return false
+  if (user.role === 'AGENT') return true
+  return !!agents.data?.some((a) => a.id === user.id && a.openCount != null)
 }

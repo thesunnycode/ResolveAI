@@ -1,4 +1,5 @@
 import { ArrowLeft, Clock, MessageSquare, Route } from 'lucide-react'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import * as React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Page, PageHeader } from '@/components/layout/page-header'
@@ -18,6 +19,7 @@ const NEXT_STEPS = [
 ]
 
 export function NewTicketPage() {
+  useDocumentTitle('New ticket')
   const navigate = useNavigate()
   const createTicket = useCreateTicket()
   const idempotencyKey = React.useRef(crypto.randomUUID()).current
@@ -55,7 +57,7 @@ export function NewTicketPage() {
 
   return (
     <Page width="wide">
-      <Link to="/my-tickets" className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text">
+      <Link to="/my-tickets" className="mb-5 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text">
         <ArrowLeft className="size-3.5" aria-hidden /> My tickets
       </Link>
       <PageHeader title="New ticket" description="Tell us what's wrong. The more specific you are, the faster we can help." />
@@ -63,7 +65,7 @@ export function NewTicketPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <form onSubmit={handleSubmit} className="glass space-y-5 rounded-xl p-6">
         {formError && (
-          <div role="alert" className="rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-[13px] text-danger">
+          <div role="alert" className="rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
             {formError}
           </div>
         )}
@@ -99,7 +101,7 @@ export function NewTicketPage() {
           <div className="mt-1 flex justify-between">
             <FieldError message={bodyError} />
             {body.length > MAX_BODY * 0.9 && (
-              <span className="ml-auto text-[12px] text-text-subtle">
+              <span className="ml-auto text-xs text-text-subtle">
                 {body.length.toLocaleString()} / {MAX_BODY.toLocaleString()}
               </span>
             )}
@@ -107,7 +109,7 @@ export function NewTicketPage() {
         </div>
 
         <div className="flex items-center justify-between border-t border-border pt-5">
-          <p className="text-[12px] text-text-subtle">You can add more detail after submitting.</p>
+          <p className="text-xs text-text-subtle">You can add more detail after submitting.</p>
           <Button type="submit" loading={createTicket.isPending}>
             Submit ticket
           </Button>
@@ -115,7 +117,7 @@ export function NewTicketPage() {
       </form>
 
       <aside className="glass h-fit rounded-xl p-5">
-        <p className="mb-4 text-[12px] font-medium uppercase tracking-[0.08em] text-text-subtle">What happens next</p>
+        <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-text-subtle">What happens next</p>
         <ol className="space-y-4">
           {NEXT_STEPS.map((step, i) => (
             <li key={step.title} className="flex gap-3">
@@ -123,11 +125,11 @@ export function NewTicketPage() {
                 <step.icon className="size-3.5" aria-hidden />
               </span>
               <div>
-                <p className="text-[13px] font-medium text-text">
+                <p className="text-sm font-medium text-text">
                   <span className="mr-1 text-text-subtle">{i + 1}.</span>
                   {step.title}
                 </p>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-text-muted">{step.body}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-text-muted">{step.body}</p>
               </div>
             </li>
           ))}

@@ -36,7 +36,7 @@ export function SimulateOutageButton({ size = 'sm' }: { size?: 'sm' | 'xs' }) {
       size="sm"
       loading={start.isPending}
       onClick={run}
-      className={cn(size === 'xs' && 'h-7 px-2.5 text-[12px]')}
+      className={cn(size === 'xs' && 'h-7 px-2.5 text-xs')}
     >
       <Siren className="size-3.5" aria-hidden /> Simulate a payment outage
     </Button>

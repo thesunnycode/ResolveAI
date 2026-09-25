@@ -48,12 +48,69 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
     }
   }
 
+  const [primary, ...others] = roles
+
+  // Compact (sign-in page, audit U9): one recommended role as a card, the rest as a link
+  // row - four full cards used to push "Sign in" below the fold at 900px.
+  if (compact) {
+    const copy = ROLE_COPY[primary]
+    return (
+      <section aria-labelledby="demo-heading" className="mb-5 rounded-xl border border-primary/25 bg-primary-bg/40 p-3">
+        <p id="demo-heading" className="sr-only">
+          Try the demo — no account needed
+        </p>
+        <button
+          type="button"
+          onClick={() => void enter(primary)}
+          disabled={pending !== null}
+          className="group flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 disabled:opacity-60"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-muted">
+            <copy.icon className="size-4" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-medium text-text">Try the demo as {copy.label}</span>
+            <span className="block truncate text-xs text-text-subtle">No account needed · {copy.hint}</span>
+          </span>
+          <ArrowRight
+            className={cn('size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5', pending === primary && 'animate-pulse')}
+            aria-hidden
+          />
+        </button>
+        {others.length > 0 && (
+          <p className="mt-2 flex flex-wrap items-center gap-x-1 px-1 text-sm text-text-muted">
+            or as
+            {others.map((role, i) => (
+              <React.Fragment key={role}>
+                {i > 0 && <span aria-hidden>·</span>}
+                <button
+                  type="button"
+                  onClick={() => void enter(role)}
+                  disabled={pending !== null}
+                  title={ROLE_COPY[role].hint}
+                  className={cn('inline-flex min-h-6 items-center font-medium text-primary hover:underline disabled:opacity-60', pending === role && 'animate-pulse')}
+                >
+                  {ROLE_COPY[role].label}
+                </button>
+              </React.Fragment>
+            ))}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-danger">
+            {error}
+          </p>
+        )}
+      </section>
+    )
+  }
+
   return (
-    <section aria-labelledby="demo-heading" className={cn('rounded-xl border border-primary/25 bg-primary-bg/40 p-4', compact ? 'mb-5' : 'mb-7')}>
-      <p id="demo-heading" className="text-[13px] font-semibold text-text">
+    <section aria-labelledby="demo-heading" className="mb-7 rounded-xl border border-primary/25 bg-primary-bg/40 p-4">
+      <p id="demo-heading" className="text-sm font-semibold text-text">
         Try the demo — no account needed
       </p>
-      <p className="mt-0.5 text-[12.5px] leading-relaxed text-text-muted">
+      <p className="mt-0.5 text-sm leading-relaxed text-text-muted">
         A live workspace with seeded tickets. Pick who you want to be:
       </p>
       <div className="mt-3 grid gap-2">
@@ -75,11 +132,11 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
                 <copy.icon className="size-4" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13.5px] font-medium text-text">
+                <span className="block text-base font-medium text-text">
                   Explore as {copy.label}
-                  {role === 'AGENT' && <span className="ml-1.5 text-[11.5px] font-normal text-primary">recommended</span>}
+                  {role === 'AGENT' && <span className="ml-1.5 text-xs font-normal text-primary">recommended</span>}
                 </span>
-                <span className="block truncate text-[12px] text-text-subtle">{copy.hint}</span>
+                <span className="block truncate text-xs text-text-subtle">{copy.hint}</span>
               </span>
               <ArrowRight
                 className={cn('size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5', pending === role && 'animate-pulse')}
@@ -90,7 +147,7 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
         })}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-[12.5px] text-danger">
+        <p role="alert" className="mt-2 text-sm text-danger">
           {error}
         </p>
       )}

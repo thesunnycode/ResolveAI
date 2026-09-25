@@ -531,6 +531,12 @@
                   "disabled": true
                 },
                 {
+                  "key": "requesterId",
+                  "value": "1204",
+                  "disabled": true,
+                  "description": "AGENT+ only: one customer's tickets (customer-context pane)."
+                },
+                {
                   "key": "slaState",
                   "value": "AT_RISK",
                   "disabled": true
@@ -538,7 +544,8 @@
                 {
                   "key": "q",
                   "value": "upi payment",
-                  "disabled": true
+                  "disabled": true,
+                  "description": "Full-text, or an exact reference such as tkt-1036 (case-insensitive)."
                 },
                 {
                   "key": "cursor",
@@ -547,7 +554,7 @@
                 }
               ]
             },
-            "description": "What the caller sees is decided by role, server-side, and is not overridable by a query parameter. The disabled params above are the full filter surface — enable as needed.\n\nCaptures `nextCursor` so enabling the `cursor` param pages forward."
+            "description": "What the caller sees is decided by role, server-side, and is not overridable by a query parameter. The disabled params above are the full filter surface — enable as needed.\n\nCaptures `nextCursor` so enabling the `cursor` param pages forward.\n\n`requesterId` (AGENT+) narrows to one customer; `q` also matches an exact reference. Rows carry `lastPublicReply` ({at, fromSupport} or null); for a CUSTOMER, `messageCount` counts PUBLIC messages only."
           },
           "event": [
             {
@@ -568,7 +575,14 @@
                   "    pm.expect(b.pagination).to.not.have.property('totalElements');",
                   "});",
                   "",
-                  "if (b.pagination.nextCursor) pm.environment.set('nextCursor', b.pagination.nextCursor);"
+                  "if (b.pagination.nextCursor) pm.environment.set('nextCursor', b.pagination.nextCursor);",
+                  "",
+                  "pm.test('rows carry lastPublicReply (object or null)', function () {",
+                  "    b.data.forEach(t => {",
+                  "        pm.expect(t).to.have.property('lastPublicReply');",
+                  "        if (t.lastPublicReply) pm.expect(t.lastPublicReply).to.have.keys('at', 'fromSupport');",
+                  "    });",
+                  "});"
                 ]
               }
             }
@@ -2579,6 +2593,42 @@
             },
             "description": "`skills[]` drives routing and before Phase 2 could only be changed by editing the database."
           }
+        },
+        {
+          "name": "List staff (agents and leads)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "description": "AGENT+ only. Feeds the ticket page's \"Assign to…\" menu (with each agent's load) and names the team leads who can confirm a proposed incident. No emails. Only entries with a non-null `openCount` are assignable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('a bare array of staff', () => pm.expect(b).to.be.an('array'));",
+                  "pm.test('only AGENT and TEAM_LEAD, never an email', function () {",
+                  "    b.forEach(s => {",
+                  "        pm.expect(['AGENT', 'TEAM_LEAD']).to.include(s.role);",
+                  "        pm.expect(s).to.not.have.property('email');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Set own availability",

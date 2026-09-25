@@ -50,6 +50,11 @@ public class TicketMapper {
     }
 
     public TicketSummaryResponse toSummary(Ticket t, long messageCount) {
+        return toSummary(t, messageCount, null);
+    }
+
+    public TicketSummaryResponse toSummary(Ticket t, long messageCount,
+                                           TicketSummaryResponse.LastReply lastPublicReply) {
         return new TicketSummaryResponse(
                 t.getId(), t.getReference(), t.getSubject(), t.getStatus(), t.getPriority(),
                 t.getCategory(),
@@ -58,7 +63,7 @@ public class TicketMapper {
                 // from, and a customer hears about an incident once a person has confirmed it.
                 refOf(incidentLinks.liveFor(t.getTenantId(), t.getId(), false)),
                 slaSummaries.summaryFor(t.getId()),
-                messageCount, t.getCreatedAt(), t.getUpdatedAt());
+                messageCount, t.getCreatedAt(), t.getUpdatedAt(), lastPublicReply);
     }
 
     /** The full view, for {@code AGENT} and above. Includes {@code INTERNAL} messages. */

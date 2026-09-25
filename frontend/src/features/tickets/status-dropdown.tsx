@@ -3,28 +3,19 @@ import { Check, ChevronDown } from 'lucide-react'
 import * as React from 'react'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { TicketStatus } from '@/lib/types'
-
-const LABELS: Record<TicketStatus, string> = {
-  OPEN: 'Open',
-  TRIAGED: 'Triaged',
-  ASSIGNED: 'Assigned',
-  IN_PROGRESS: 'In progress',
-  WAITING_ON_CUSTOMER: 'Waiting on customer',
-  PENDING_THIRD_PARTY: 'Pending third party',
-  RESOLVED: 'Resolved',
-  CLOSED: 'Closed',
-}
-
-const REASON_REQUIRED: TicketStatus[] = ['WAITING_ON_CUSTOMER', 'PENDING_THIRD_PARTY']
+import { REASON_REQUIRED, STATUS_LABEL as LABELS } from './status-labels'
 
 export function StatusDropdown({
   current,
   allowed,
   onChange,
+  pendingTo,
 }: {
   current: TicketStatus
   allowed: TicketStatus[]
-  onChange: (status: TicketStatus, reason?: string) => Promise<void>
+  onChange: (status: TicketStatus, reason?: string) => void | Promise<void>
+  /** A move being held behind an Undo toast - shown, but not yet committed. */
+  pendingTo?: TicketStatus | null
 }) {
   const [pending, setPending] = React.useState<TicketStatus | null>(null)
 
@@ -36,7 +27,8 @@ export function StatusDropdown({
   return (
     <>
       <Select.Root
-        value={current}
+        value={pendingTo ?? current}
+        disabled={!!pendingTo}
         onValueChange={(v) => {
           const status = v as TicketStatus
           if (REASON_REQUIRED.includes(status)) {
@@ -46,8 +38,11 @@ export function StatusDropdown({
           }
         }}
       >
-        <Select.Trigger className="glass inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium text-text hover:border-border-strong focus-visible:outline-2 focus-visible:outline-primary">
-          <Select.Value />
+        <Select.Trigger
+          aria-label="Status"
+          className="glass inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-text hover:border-border-strong focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70"
+        >
+          <Select.Value>{pendingTo ? `${LABELS[pendingTo]}…` : LABELS[current]}</Select.Value>
           <Select.Icon>
             <ChevronDown className="size-3.5 text-text-subtle" />
           </Select.Icon>
@@ -56,18 +51,18 @@ export function StatusDropdown({
           <Select.Content className="z-50 overflow-hidden rounded-md border border-border bg-surface shadow-popover">
             <Select.Viewport className="p-1">
               <Select.Item
-                value={current}
+                value={pendingTo ?? current}
                 disabled
-                className="flex items-center gap-2 rounded px-2.5 py-1.5 text-[13px] text-text-subtle"
+                className="flex items-center gap-2 rounded px-2.5 py-1.5 text-sm text-text-subtle"
               >
                 <Select.ItemText>{LABELS[current]}</Select.ItemText>
-                <span className="ml-auto text-[11px] text-text-subtle">current</span>
+                <span className="ml-auto text-xs text-text-subtle">current</span>
               </Select.Item>
               {allowed.map((s) => (
                 <Select.Item
                   key={s}
                   value={s}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-[13px] text-text outline-none data-[highlighted]:bg-surface-2"
+                  className="flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-sm text-text outline-none data-[highlighted]:bg-surface-2"
                 >
                   <Select.ItemIndicator>
                     <Check className="size-3" />

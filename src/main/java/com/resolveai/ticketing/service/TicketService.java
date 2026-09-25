@@ -195,7 +195,9 @@ public class TicketService {
             return CursorPage.empty(filters.size());
         }
 
-        Map<Long, Long> counts = ticketQuery.messageCounts(ids, principal.tenantId());
+        Map<Long, Long> counts = ticketQuery.messageCounts(ids, principal.tenantId(),
+                principal.role() == Role.CUSTOMER);
+        var lastReplies = ticketQuery.lastPublicReplies(ids, principal.tenantId());
         // findAllById does not preserve order; the page order came from the SQL and the
         // cursor depends on the last row being the last row.
         Map<Long, Ticket> byId = new LinkedHashMap<>();
@@ -204,7 +206,8 @@ public class TicketService {
 
         return CursorPage.of(ordered, filters.size(),
                         t -> new com.resolveai.common.pagination.Cursor(t.getCreatedAt(), t.getId()))
-                .map(t -> mapper.toSummary(t, counts.getOrDefault(t.getId(), 0L)));
+                .map(t -> mapper.toSummary(t, counts.getOrDefault(t.getId(), 0L),
+                        lastReplies.get(t.getId())));
     }
 
     /**

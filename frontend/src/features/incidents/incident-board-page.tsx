@@ -12,11 +12,13 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useIsDemoWorkspace } from '@/features/demo/api'
 import { SimulateOutageButton } from '@/features/demo/simulate-outage-button'
 import { useConfirmIncident, useIncidents, useRejectIncident } from './api'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { IncidentCard } from './incident-card'
 
 type Tab = 'PROPOSED' | 'LIVE' | 'RESOLVED'
 
 export function IncidentBoardPage() {
+  useDocumentTitle('Incidents')
   const [tab, setTab] = React.useState<Tab>('PROPOSED')
   const { user } = useAuth()
   // Confirm/reject are TEAM_LEAD+ on the server; an agent sees the evidence, not the buttons.

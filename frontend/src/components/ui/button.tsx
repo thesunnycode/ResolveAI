@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 // a spinner moves the layout, and the pointer that was over the button ends
 // up over whatever was behind it.
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13.5px] font-medium tracking-[-0.005em] transition-all duration-150 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98]',
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-base font-medium tracking-[-0.005em] transition-all duration-150 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98]',
   {
     variants: {
       variant: {
@@ -24,9 +24,9 @@ const buttonVariants = cva(
         link: 'bg-transparent text-primary hover:text-primary-hover underline-offset-4 hover:underline p-0 h-auto active:scale-100',
       },
       size: {
-        sm: 'h-8 px-3 text-[13px]',
+        sm: 'h-8 px-3 text-sm',
         md: 'h-9 px-4',
-        lg: 'h-11 px-5 text-[14.5px]',
+        lg: 'h-11 px-5 text-base',
         icon: 'h-9 w-9',
       },
     },

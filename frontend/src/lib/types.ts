@@ -129,6 +129,8 @@ export interface TicketSummary {
   messageCount: number
   createdAt: string
   updatedAt: string
+  /** Newest customer-visible message; null until someone has replied. */
+  lastPublicReply?: { at: string; fromSupport: boolean } | null
 }
 
 export interface CursorPage<T> {

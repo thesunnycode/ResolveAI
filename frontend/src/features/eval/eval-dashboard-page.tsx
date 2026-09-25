@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Coins, FlaskConical, Play, XCircle } from 'lucide-react'
 import { Page, PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -58,6 +59,7 @@ function useEvalRunner() {
 }
 
 export function EvalDashboardPage() {
+  useDocumentTitle('Evaluation')
   const { push } = useToast()
   const { running, start } = useEvalRunner()
   const runs = useQuery({
@@ -105,7 +107,7 @@ export function EvalDashboardPage() {
       />
 
       <section className="mb-8">
-        <h2 className="mb-3 text-[13px] font-medium text-text-muted">Suites</h2>
+        <h2 className="mb-3 text-sm font-medium text-text-muted">Suites</h2>
         {runs.isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Skeleton className="h-40 rounded-xl" />
@@ -133,39 +135,72 @@ export function EvalDashboardPage() {
                 <div key={suite} className="glass rounded-xl p-5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-[13px] font-medium text-text">{suite}</p>
-                      <p className="mt-0.5 text-[12px] text-text-subtle">{latest.modelId}</p>
+                      <p className="text-sm font-medium text-text">{suite}</p>
+                      <p className="mt-0.5 text-xs text-text-subtle">{latest.modelId}</p>
                     </div>
                     {latest.passed ? (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-success-bg px-2 py-0.5 text-[11.5px] font-medium text-success">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
                         <CheckCircle2 className="size-3" aria-hidden /> Passing
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-0.5 text-[11.5px] font-medium text-danger">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger">
                         <XCircle className="size-3" aria-hidden /> Failing
                       </span>
                     )}
                   </div>
-                  <p className="mt-4 text-[30px] font-semibold tabular-nums tracking-[-0.03em] text-text">
+                  <p className="mt-4 text-2xl font-semibold tabular-nums tracking-[-0.03em] text-text">
                     {(metricValue * 100).toFixed(1)}%
                   </p>
-                  <p className="text-[12px] capitalize text-text-subtle">{humanize(metricName)}</p>
-                  <div className="mt-4 flex h-12 items-end gap-1">
-                    {suiteRuns
-                      .slice(0, 12)
-                      .reverse()
-                      .map((r) => {
-                        const value = Object.values(r.metrics)[0] ?? 0
-                        return (
+                  <p className="text-xs capitalize text-text-subtle">{humanize(metricName)}</p>
+                  {/* Audit N6: a y-axis, gridlines and dated ends, so the trend can be read. */}
+                  {(() => {
+                    const shown = suiteRuns.slice(0, 12).reverse()
+                    const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    return (
+                      <figure className="mt-4">
+                        <div className="flex gap-2">
+                          <div className="flex h-16 flex-col justify-between text-right text-xs tabular-nums text-text-subtle" aria-hidden>
+                            <span>100%</span>
+                            <span>50%</span>
+                            <span>0%</span>
+                          </div>
                           <div
-                            key={r.id}
-                            title={`${(value * 100).toFixed(0)}%`}
-                            className={cn('flex-1 rounded-sm', r.passed ? 'bg-primary/70' : 'bg-danger/70')}
-                            style={{ height: `${Math.max(8, value * 100)}%` }}
-                          />
-                        )
-                      })}
-                  </div>
+                            className="relative flex h-16 flex-1 items-end gap-1 border-b border-l border-border-strong"
+                            role="img"
+                            aria-label={`Last ${shown.length} runs: ${shown
+                              .map((r) => `${((Object.values(r.metrics)[0] ?? 0) * 100).toFixed(0)}% ${r.passed ? 'pass' : 'fail'}`)
+                              .join(', ')}`}
+                          >
+                            <div className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border" aria-hidden />
+                            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-border" aria-hidden />
+                            {shown.map((r) => {
+                              const value = Object.values(r.metrics)[0] ?? 0
+                              return (
+                                <div
+                                  key={r.id}
+                                  title={`${day(r.startedAt)} · ${(value * 100).toFixed(1)}% · ${r.passed ? 'passed' : 'failed'}`}
+                                  className={cn('relative flex-1 rounded-t-sm', r.passed ? 'bg-primary/70' : 'bg-danger/70')}
+                                  style={{ height: `${Math.max(4, value * 100)}%` }}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                        <figcaption className="mt-1 flex justify-between pl-10 text-xs text-text-subtle">
+                          <span>{day(shown[0].startedAt)}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="size-2 rounded-sm bg-primary/70" aria-hidden /> passed
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="size-2 rounded-sm bg-danger/70" aria-hidden /> failed
+                            </span>
+                          </span>
+                          <span>{day(shown[shown.length - 1].startedAt)}</span>
+                        </figcaption>
+                      </figure>
+                    )
+                  })()}
                 </div>
               )
             })}
@@ -174,7 +209,7 @@ export function EvalDashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-[13px] font-medium text-text-muted">
+        <h2 className="mb-3 text-sm font-medium text-text-muted">
           Token spend {u && <span className="font-normal text-text-subtle">· {u.period.from} to {u.period.to}</span>}
         </h2>
         {usage.isLoading ? (
@@ -191,29 +226,29 @@ export function EvalDashboardPage() {
           <>
             <div className="mb-3 grid gap-3 sm:grid-cols-3">
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-[12px] text-text-muted">Spent this month</p>
-                <p className="mt-1 text-[20px] font-semibold tabular-nums text-text">{dollars(u.totals.costMicros)}</p>
+                <p className="text-xs text-text-muted">Spent this month</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-text">{dollars(u.totals.costMicros)}</p>
                 {u.budget && (
-                  <p className={cn('text-[12px]', u.budget.status === 'OK' ? 'text-text-subtle' : 'text-warning')}>
+                  <p className={cn('text-xs', u.budget.status === 'OK' ? 'text-text-subtle' : 'text-warning')}>
                     of {dollars(u.budget.monthlyMicros)} budget · {u.budget.remainingPct}% left
                   </p>
                 )}
               </div>
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-[12px] text-text-muted">Model calls</p>
-                <p className="mt-1 text-[20px] font-semibold tabular-nums text-text">{u.totals.calls.toLocaleString()}</p>
+                <p className="text-xs text-text-muted">Model calls</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-text">{u.totals.calls.toLocaleString()}</p>
               </div>
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-[12px] text-text-muted">Tokens in / out</p>
-                <p className="mt-1 text-[20px] font-semibold tabular-nums text-text">
+                <p className="text-xs text-text-muted">Tokens in / out</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-text">
                   {u.totals.tokensIn.toLocaleString()} / {u.totals.tokensOut.toLocaleString()}
                 </p>
               </div>
             </div>
             <div className="glass overflow-x-auto rounded-xl">
-              <table className="w-full text-left text-[13px]">
+              <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-border text-[11.5px] uppercase tracking-[0.08em] text-text-subtle">
+                  <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
                     <th className="px-4 py-2.5 font-medium">Feature</th>
                     <th className="px-4 py-2.5 font-medium">Prompt · model</th>
                     <th className="px-4 py-2.5 text-right font-medium">Calls</th>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { FieldError, Label } from '@/components/ui/field-error'
 import { Input } from '@/components/ui/input'
 import { DemoAccess } from '@/features/demo/demo-access'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
 import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
@@ -36,6 +37,7 @@ function localErrors(fullName: string, password: string): Record<string, string>
 }
 
 export function RegisterPage() {
+  useDocumentTitle('Create an account')
   const { register, user } = useAuth()
   const navigate = useNavigate()
 
@@ -103,8 +105,8 @@ export function RegisterPage() {
     <AuthShell>
       <div className="animate-slide-up">
         <div className="mb-7">
-          <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.03em] text-text">Create your account</h1>
-          <p className="mt-1 text-[13px] leading-relaxed text-text-muted">
+          <h1 className="text-2xl font-semibold leading-tight tracking-[-0.03em] text-text">Create your account</h1>
+          <p className="mt-1 text-sm leading-relaxed text-text-muted">
             For customers of a company that uses ResolveAI. Support agents get an invite from their workspace admin
             instead.
           </p>
@@ -115,7 +117,7 @@ export function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
-            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-[13px] text-danger">
+            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
               {formError}
             </div>
           )}
@@ -136,7 +138,7 @@ export function RegisterPage() {
             {fieldErrors.tenantSlug ? (
               <FieldError message={fieldErrors.tenantSlug} />
             ) : (
-              <p id="tenantSlug-help" className="mt-1.5 text-[12px] text-text-subtle">
+              <p id="tenantSlug-help" className="mt-1.5 text-xs text-text-subtle">
                 The company name from the support link you were given — for example <span className="font-mono">acme</span>.
               </p>
             )}
@@ -203,12 +205,12 @@ export function RegisterPage() {
             {fieldErrors.password ? (
               <FieldError message={fieldErrors.password} />
             ) : strength ? (
-              <p className={`mt-1.5 text-[13px] ${strength.ok ? 'text-success' : 'text-text-muted'}`}>
+              <p className={`mt-1.5 text-sm ${strength.ok ? 'text-success' : 'text-text-muted'}`}>
                 {strength.label}
               </p>
             ) : (
               // The rule up front, so nobody has to fail once to learn it.
-              <p className="mt-1.5 text-[12px] text-text-subtle">{PASSWORD_RULE}</p>
+              <p className="mt-1.5 text-xs text-text-subtle">{PASSWORD_RULE}</p>
             )}
           </div>
 
@@ -218,7 +220,7 @@ export function RegisterPage() {
           {slow && <SlowServerHint />}
         </form>
 
-        <p className="mt-5 text-[13px] text-text-muted">
+        <p className="mt-5 text-sm text-text-muted">
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
             Sign in

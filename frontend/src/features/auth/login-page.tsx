@@ -9,7 +9,8 @@ import { DemoAccess } from '@/features/demo/demo-access'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
 import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
-import { useAuth } from './auth-context'
+import { LAST_WORKSPACE_KEY, useAuth } from './auth-context'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
 
 export function LoginPage() {
   const { login, user } = useAuth()
@@ -17,7 +18,16 @@ export function LoginPage() {
   const [params] = useSearchParams()
   const next = params.get('next')
 
-  const [tenantSlug, setTenantSlug] = React.useState('')
+  useDocumentTitle('Sign in')
+  // Only someone who has signed in on this browser before is "back" (audit U9).
+  const [lastWorkspace] = React.useState(() => {
+    try {
+      return localStorage.getItem(LAST_WORKSPACE_KEY)
+    } catch {
+      return null
+    }
+  })
+  const [tenantSlug, setTenantSlug] = React.useState(lastWorkspace ?? '')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [showPassword, setShowPassword] = React.useState(false)
@@ -63,17 +73,27 @@ export function LoginPage() {
   return (
     <AuthShell>
       <div className="animate-slide-up">
-        <div className="mb-7">
-          <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.03em] text-text">Welcome back</h1>
-          <p className="mt-1 text-[13px] text-text-muted">Sign in to your workspace</p>
+        <div className="mb-5">
+          <h1 tabIndex={-1} className="text-2xl font-semibold leading-tight tracking-[-0.03em] text-text">
+            {lastWorkspace ? 'Welcome back' : 'Sign in to ResolveAI'}
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            {lastWorkspace ? (
+              <>
+                Signing in to <span className="font-medium text-text">{lastWorkspace}</span>
+              </>
+            ) : (
+              'Sign in to your workspace, or try the demo first.'
+            )}
+          </p>
         </div>
 
-        <DemoAccess />
+        <DemoAccess compact />
         <OrDivider label="or sign in to your workspace" />
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
-            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-[13px] text-danger">
+            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
               {formError}
             </div>
           )}
@@ -91,7 +111,7 @@ export function LoginPage() {
               aria-describedby="tenantSlug-help"
               required
             />
-            <p id="tenantSlug-help" className="mt-1.5 text-[12px] text-text-subtle">
+            <p id="tenantSlug-help" className="mt-1.5 text-xs text-text-subtle">
               Your company's ResolveAI name, from your invite — for example <span className="font-mono">acme</span>.
             </p>
           </div>
@@ -119,7 +139,7 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowReset((v) => !v)}
-                className="text-[12px] font-medium text-primary hover:underline"
+                className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline"
                 aria-expanded={showReset}
                 aria-controls="reset-help"
               >
@@ -139,14 +159,14 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text"
+                className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-text-subtle hover:text-text"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
             {showReset && (
-              <p id="reset-help" className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-text-muted">
+              <p id="reset-help" className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-sm leading-relaxed text-text-muted">
                 Passwords are reset by your workspace admin — ask them and they can set a new one for you.
                 Self-service reset by email isn't available yet.
               </p>
@@ -159,7 +179,7 @@ export function LoginPage() {
           {slow && <SlowServerHint />}
         </form>
 
-        <p className="mt-5 text-[13px] text-text-muted">
+        <p className="mt-5 text-sm text-text-muted">
           New here?{' '}
           <Link to="/register" className="font-medium text-primary hover:underline">
             Create an account

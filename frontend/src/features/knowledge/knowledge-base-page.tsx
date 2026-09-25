@@ -1,6 +1,8 @@
-import { BookOpen, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, Search, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Page, PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/components/layout/route-a11y'
+import { Segmented } from '@/components/ui/segmented'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -12,18 +14,30 @@ import { useAuth } from '@/features/auth/auth-context'
 import { ApiError } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import * as React from 'react'
+import type { KnowledgeDocumentSummary } from '@/lib/types'
 import { useDeleteKnowledgeDocument, useKnowledgeDocuments } from './api'
+import { DocumentDrawer } from './document-drawer'
 
 const SOURCE_VARIANT = { RUNBOOK: 'primary', ARTICLE: 'neutral', RESOLVED_TICKET: 'success' } as const
+const SOURCE_LABEL = { RUNBOOK: 'Runbook', ARTICLE: 'Article', RESOLVED_TICKET: 'Resolved ticket' } as const
+type SourceFilter = 'all' | KnowledgeDocumentSummary['source']
 
 export function KnowledgeBasePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { push } = useToast()
-  const { data, isLoading, isError, refetch } = useKnowledgeDocuments()
+  useDocumentTitle('Knowledge base')
+  // Audit N4: a source filter (server-side) and a title search (on the loaded page).
+  const [source, setSource] = React.useState<SourceFilter>('all')
+  const [query, setQuery] = React.useState('')
+  const [preview, setPreview] = React.useState<number | null>(null)
+  const { data, isLoading, isError, refetch } = useKnowledgeDocuments(source === 'all' ? undefined : source)
   const deleteDoc = useDeleteKnowledgeDocument()
   const [deleteTarget, setDeleteTarget] = React.useState<number | null>(null)
-  const docs = data?.data ?? []
+  const all = data?.data ?? []
+  const q = query.trim().toLowerCase()
+  const docs = q ? all.filter((d) => d.title.toLowerCase().includes(q)) : all
+  const filtering = source !== 'all' || q !== ''
 
   return (
     <Page>
@@ -41,6 +55,30 @@ export function KnowledgeBasePage() {
         }
       />
 
+      <div className="mb-3 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-subtle" aria-hidden />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by title…"
+            aria-label="Search documents"
+            className="h-10 w-full rounded-lg border border-border-control bg-surface pl-9 pr-3 text-base text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          />
+        </div>
+        <Segmented
+          label="Source"
+          value={source}
+          onChange={setSource}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'RUNBOOK', label: 'Runbooks' },
+            { value: 'ARTICLE', label: 'Articles' },
+            { value: 'RESOLVED_TICKET', label: 'Resolved' },
+          ]}
+        />
+      </div>
+
       <div className="glass overflow-hidden rounded-xl">
         {isError && (
           <div className="p-4">
@@ -49,6 +87,13 @@ export function KnowledgeBasePage() {
         )}
         {isLoading ? (
           <SkeletonRow count={5} />
+        ) : docs.length === 0 && filtering ? (
+          <EmptyState
+            icon={Search}
+            title="No documents match"
+            description="Try a different word, or show every source."
+            action={{ label: 'Clear filters', onClick: () => { setQuery(''); setSource('all') } }}
+          />
         ) : docs.length === 0 ? (
           <EmptyState
             icon={BookOpen}
@@ -61,9 +106,9 @@ export function KnowledgeBasePage() {
             action={user?.role === 'ADMIN' ? { label: 'Add your first article', onClick: () => navigate('/knowledge/new') } : undefined}
           />
         ) : (
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-[11.5px] uppercase tracking-[0.08em] text-text-subtle">
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
                 <th className="px-5 py-3 font-medium">Title</th>
                 <th className="px-4 py-2.5 font-medium">Source</th>
                 <th className="px-4 py-2.5 font-medium">Chunks</th>
@@ -74,9 +119,13 @@ export function KnowledgeBasePage() {
             <tbody>
               {docs.map((d) => (
                 <tr key={d.id} className="border-b border-border last:border-0 transition-colors hover:bg-surface-2/50">
-                  <td className="px-5 py-3.5 font-medium text-text">{d.title}</td>
+                  <td className="px-5 py-3.5 font-medium text-text">
+                    <button type="button" onClick={() => setPreview(d.id)} className="text-left hover:text-primary hover:underline">
+                      {d.title}
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5">
-                    <Badge variant={SOURCE_VARIANT[d.source]}>{d.source}</Badge>
+                    <Badge variant={SOURCE_VARIANT[d.source]}>{SOURCE_LABEL[d.source]}</Badge>
                   </td>
                   <td className="px-4 py-2.5 text-text-muted">{d.chunkCount}</td>
                   <td className="px-4 py-2.5 text-text-muted">
@@ -91,7 +140,11 @@ export function KnowledgeBasePage() {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {user?.role === 'ADMIN' && (
-                      <button onClick={() => setDeleteTarget(d.id)} className="text-text-subtle hover:text-danger" aria-label="Delete">
+                      <button
+                        onClick={() => setDeleteTarget(d.id)}
+                        className="inline-flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-danger-bg hover:text-danger"
+                        aria-label={`Delete ${d.title}`}
+                      >
                         <Trash2 className="size-3.5" aria-hidden />
                       </button>
                     )}
@@ -102,6 +155,8 @@ export function KnowledgeBasePage() {
           </table>
         )}
       </div>
+
+      <DocumentDrawer documentId={preview} onClose={() => setPreview(null)} />
 
       <ConfirmDialog
         open={deleteTarget !== null}
