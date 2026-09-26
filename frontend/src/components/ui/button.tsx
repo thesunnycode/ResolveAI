@@ -8,26 +8,27 @@ import { cn } from '@/lib/utils'
 // between default and loading: a button that shrinks when its label becomes
 // a spinner moves the layout, and the pointer that was over the button ends
 // up over whatever was behind it.
+//
+// Variant/size names kept from the pre-reskin API (primary/secondary/danger/
+// ghost/link, sm/md/lg/icon) so existing call sites don't need to change;
+// only the visual treatment underneath is Lovable's.
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-base font-medium tracking-[-0.005em] transition-all duration-150 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-[0.98]',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        // Krea's primary: the inverse of the canvas (white on dark, black on
-        // light). The accent never fills a button - it would read as a second
-        // brand color competing with priority and SLA signals.
-        primary: 'bg-action text-action-fg hover:bg-action-hover',
+        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
         secondary:
-          'glass text-text hover:bg-surface-2 hover:border-border-strong',
-        danger: 'bg-danger-bg text-danger border border-danger/25 hover:bg-danger/15',
-        ghost: 'bg-transparent text-text-muted hover:bg-surface-2 hover:text-text',
-        link: 'bg-transparent text-primary hover:text-primary-hover underline-offset-4 hover:underline p-0 h-auto active:scale-100',
+          'border border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground',
+        danger: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+        ghost: 'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+        link: 'bg-transparent text-primary underline-offset-4 hover:underline p-0 h-auto active:scale-100',
       },
       size: {
-        sm: 'h-8 px-3 text-sm',
-        md: 'h-9 px-4',
-        lg: 'h-11 px-5 text-base',
-        icon: 'h-9 w-9',
+        sm: 'h-9 rounded-lg px-3.5 text-[13px]',
+        md: 'h-11 px-5',
+        lg: 'h-12 rounded-xl px-7 text-base',
+        icon: 'h-10 w-10',
       },
     },
     defaultVariants: { variant: 'primary', size: 'md' },
@@ -68,3 +69,5 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   },
 )
 Button.displayName = 'Button'
+
+export { buttonVariants }

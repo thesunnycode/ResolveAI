@@ -10,11 +10,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        'flex h-10 w-full rounded-md border bg-surface px-3 py-2 text-base text-text transition-colors placeholder:text-text-subtle',
-        'border-border-control hover:border-text-subtle',
-        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
-        'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle',
-        error && 'border-danger focus-visible:border-danger focus-visible:ring-danger-bg',
+        'flex h-11 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-base transition-colors placeholder:text-muted-foreground md:text-[15px]',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        error && 'border-destructive focus-visible:ring-destructive',
         className,
       )}
       aria-invalid={error || undefined}
@@ -31,11 +30,10 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'flex w-full rounded-md border bg-surface px-3 py-2.5 text-base text-text transition-colors placeholder:text-text-subtle resize-y',
-      'border-border-control hover:border-text-subtle',
-      'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
-      'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle',
-      error && 'border-danger focus-visible:border-danger focus-visible:ring-danger-bg',
+      'flex w-full rounded-xl border border-input bg-transparent px-3 py-2.5 text-base transition-colors placeholder:text-muted-foreground resize-y md:text-[15px]',
+      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+      'disabled:cursor-not-allowed disabled:opacity-50',
+      error && 'border-destructive focus-visible:ring-destructive',
       className,
     )}
     aria-invalid={error || undefined}
