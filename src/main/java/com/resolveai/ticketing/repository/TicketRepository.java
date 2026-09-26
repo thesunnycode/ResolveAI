@@ -2,7 +2,10 @@ package com.resolveai.ticketing.repository;
 
 import com.resolveai.ticketing.domain.Ticket;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -20,6 +23,17 @@ import org.springframework.data.repository.query.Param;
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     Optional<Ticket> findByReference(String reference);
+
+    /**
+     * A list page's tickets with the people and team every row renders, in one statement.
+     *
+     * <p>{@code findAllById} left requester, assignee and team as lazy proxies, so mapping a
+     * page of 25 issued up to 75 more selects. Order is not preserved; the caller reorders
+     * by the id list the page query produced.
+     */
+    @EntityGraph(attributePaths = {"requester", "assignee", "team"})
+    @Query("SELECT t FROM Ticket t WHERE t.id IN :ids")
+    List<Ticket> findAllForListByIdIn(@Param("ids") Collection<Long> ids);
 
     /**
      * The lock the assignment path and Phase 6's routing both need.

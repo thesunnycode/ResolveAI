@@ -201,13 +201,16 @@ public class TicketService {
         // findAllById does not preserve order; the page order came from the SQL and the
         // cursor depends on the last row being the last row.
         Map<Long, Ticket> byId = new LinkedHashMap<>();
-        tickets.findAllById(ids).forEach(t -> byId.put(t.getId(), t));
+        // Requester, assignee and team come with the tickets: every row renders them.
+        tickets.findAllForListByIdIn(ids).forEach(t -> byId.put(t.getId(), t));
         List<Ticket> ordered = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+        TicketMapper.PageContext page = mapper.pageContext(principal.tenantId(), ids);
 
         return CursorPage.of(ordered, filters.size(),
                         t -> new com.resolveai.common.pagination.Cursor(t.getCreatedAt(), t.getId()))
                 .map(t -> mapper.toSummary(t, counts.getOrDefault(t.getId(), 0L),
-                        lastReplies.get(t.getId())));
+                        lastReplies.get(t.getId()), page.incidents().get(t.getId()),
+                        page.sla().get(t.getId())));
     }
 
     /**

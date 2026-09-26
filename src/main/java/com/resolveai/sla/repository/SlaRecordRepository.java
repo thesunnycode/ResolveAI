@@ -3,6 +3,7 @@ package com.resolveai.sla.repository;
 import com.resolveai.sla.domain.SlaKind;
 import com.resolveai.sla.domain.SlaRecord;
 import com.resolveai.sla.domain.SlaState;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,9 @@ import org.springframework.data.repository.query.Param;
 public interface SlaRecordRepository extends JpaRepository<SlaRecord, Long> {
 
     List<SlaRecord> findByTicketId(Long ticketId);
+
+    /** Every clock for a page of tickets at once - the list's SLA column. */
+    List<SlaRecord> findByTicketIdIn(Collection<Long> ticketIds);
 
     Optional<SlaRecord> findByTicketIdAndKindAndStateNot(Long ticketId, SlaKind kind,
                                                          SlaState state);

@@ -14,7 +14,11 @@ import com.resolveai.ticketing.web.dto.SlaSummary;
 import com.resolveai.platform.time.DatabaseClock;
 import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,33 +56,67 @@ public class SlaReadService implements SlaSummaryProvider {
     /**
      * The compact form for a queue row.
      *
-     * <p>No segments, no escalations, no prediction. A page of twenty-five tickets each
-     * carrying a full segment history is a few hundred rows of JSON to colour a table,
-     * and the prediction alone would be twenty-five percentile queries.
+     * <p>No segments and no escalations in the response - a page of twenty-five tickets
+     * each carrying a full segment history is a few hundred rows of JSON to colour a
+     * table. The at-risk flag does come from the prediction; for a list page, see
+     * {@link #summariesFor}, which shares its percentile lookups across rows.
      */
     @Override
     @Transactional(readOnly = true)
     public SlaSummary summaryFor(Long ticketId) {
-        List<SlaRecord> all = activeRecords(ticketId);
+        return summariesFor(List.of(ticketId)).get(ticketId);
+    }
+
+    /**
+     * A list page's clocks in a fixed number of reads: the records, their segments, the
+     * database clock and the calendar once each, and one set of percentile aggregates per
+     * class of ticket on the page rather than per row.
+     *
+     * <p>This used to be {@link #summaryFor} in a loop - a records query, a {@code SELECT
+     * NOW()}, a segments query per clock and up to three percentile aggregates per running
+     * resolution clock, for every row. The arithmetic is unchanged: the same
+     * {@code elapsedOver} over the same segments, and the same prediction.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, SlaSummary> summariesFor(Collection<Long> ticketIds) {
+        if (ticketIds.isEmpty()) {
+            return Map.of();
+        }
+        List<SlaRecord> all = records.findByTicketIdIn(ticketIds).stream()
+                .filter(r -> r.getState() != SlaState.CANCELLED)
+                .toList();
         if (all.isEmpty()) {
-            return null;
+            return Map.of();
         }
         CalendarSpec calendar = calendars.current();
         OffsetDateTime now = clock.now();
+        Map<Long, List<SlaClockSegment>> segmentsByRecord = segments
+                .findBySlaRecordIdInOrderByStartedAtAsc(all.stream().map(SlaRecord::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(SlaClockSegment::getSlaRecordId));
+        BreachPredictor.PercentileCache cache = predictor.newCache();
 
-        SlaSummary.Clock first = null;
-        SlaSummary.Clock resolution = null;
+        Map<Long, SlaSummary.Clock[]> clocks = new HashMap<>();
         for (SlaRecord record : all) {
-            SlaSummary.Clock clock = new SlaSummary.Clock(record.getState().name(),
-                    remaining(record, calendar, now),
+            long elapsed = calculator.elapsedOver(
+                    segmentsByRecord.getOrDefault(record.getId(), List.of()), calendar, now);
+            // Remaining goes negative once the target is passed rather than clamping at
+            // zero: "twelve minutes over" and "just on time" are different situations.
+            SlaSummary.Clock view = new SlaSummary.Clock(record.getState().name(),
+                    record.getTargetMinutes() - elapsed,
                     record.getState() == SlaState.RUNNING
-                            && predictor.isAtRisk(record, calendar, now));
+                            && predictor.isAtRisk(record, elapsed, cache));
+            SlaSummary.Clock[] pair = clocks.computeIfAbsent(record.getTicket().getId(),
+                    id -> new SlaSummary.Clock[2]);
             switch (record.getKind()) {
-                case FIRST_RESPONSE -> first = clock;
-                case RESOLUTION -> resolution = clock;
+                case FIRST_RESPONSE -> pair[0] = view;
+                case RESOLUTION -> pair[1] = view;
             }
         }
-        return new SlaSummary(first, resolution);
+        Map<Long, SlaSummary> out = new HashMap<>();
+        clocks.forEach((ticketId, pair) -> out.put(ticketId, new SlaSummary(pair[0], pair[1])));
+        return out;
     }
 
     /** The full view: both clocks, every segment, every escalation, the calendar. */
@@ -136,16 +174,6 @@ public class SlaReadService implements SlaSummaryProvider {
                 calendar.zone().getId(),
                 calendar.workingDays().stream().map(DayOfWeek::getValue).sorted().toList(),
                 calendar.dayStart().toString(), calendar.dayEnd().toString());
-    }
-
-    /**
-     * Remaining budget, which <b>goes negative once the target is passed</b> rather than
-     * clamping at zero. "Twelve minutes over" and "just on time" are different situations,
-     * and a queue should be able to show which one it is looking at.
-     */
-    private long remaining(SlaRecord record, CalendarSpec calendar, OffsetDateTime now) {
-        return record.getTargetMinutes()
-                - calculator.elapsedBusinessMinutes(record.getId(), calendar, now);
     }
 
     private List<SlaRecord> activeRecords(Long ticketId) {

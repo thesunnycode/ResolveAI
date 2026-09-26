@@ -2,6 +2,7 @@ package com.resolveai.sla.repository;
 
 import com.resolveai.sla.domain.SlaClockSegment;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,9 @@ import org.springframework.data.repository.query.Param;
 public interface SlaClockSegmentRepository extends JpaRepository<SlaClockSegment, Long> {
 
     List<SlaClockSegment> findBySlaRecordIdOrderByStartedAtAsc(Long slaRecordId);
+
+    /** Segments for many clocks in one read; group by {@code slaRecordId}. */
+    List<SlaClockSegment> findBySlaRecordIdInOrderByStartedAtAsc(Collection<Long> slaRecordIds);
 
     Optional<SlaClockSegment> findBySlaRecordIdAndEndedAtIsNull(Long slaRecordId);
 

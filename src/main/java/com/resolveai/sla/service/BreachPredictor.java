@@ -7,7 +7,10 @@ import com.resolveai.sla.domain.SlaState;
 import com.resolveai.sla.web.dto.SlaResponse;
 import com.resolveai.ticketing.domain.Ticket;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +76,22 @@ public class BreachPredictor {
     }
 
     /**
+     * Percentiles already looked up during one read, keyed by (tenant, priority, category,
+     * team) - the inputs of the fallback ladder.
+     *
+     * <p>A queue page is a handful of classes of ticket repeated many times; without this,
+     * each row of the same class ran the same one-to-three aggregates again. Scoped to a
+     * single request by the caller, so it never serves a stale figure.
+     */
+    public static final class PercentileCache {
+        private final Map<List<Object>, Optional<Percentile>> byClass = new HashMap<>();
+    }
+
+    public PercentileCache newCache() {
+        return new PercentileCache();
+    }
+
+    /**
      * Records a resolution. Called from the resolve transaction, with the business-minute
      * figure the real arithmetic produced.
      *
@@ -114,20 +133,34 @@ public class BreachPredictor {
     public Optional<SlaResponse.PredictionView> predict(SlaRecord record,
                                                         CalendarSpec calendar,
                                                         OffsetDateTime now) {
-        if (record.getKind() != SlaKind.RESOLUTION || record.getState() != SlaState.RUNNING) {
-            // Only the resolution clock is predictable this way. A first response is a
-            // human deciding to type, not a duration with a distribution.
+        if (!predictable(record)) {
+            return Optional.empty();
+        }
+        return predictWith(record, elapsedOf(record, calendar, now), null);
+    }
+
+    /** Only the resolution clock is predictable this way. A first response is a human
+     *  deciding to type, not a duration with a distribution. */
+    private static boolean predictable(SlaRecord record) {
+        return record.getKind() == SlaKind.RESOLUTION && record.getState() == SlaState.RUNNING;
+    }
+
+    private Optional<SlaResponse.PredictionView> predictWith(SlaRecord record, long elapsed,
+                                                             PercentileCache cache) {
+        if (!predictable(record)) {
             return Optional.empty();
         }
         Ticket ticket = record.getTicket();
-        Optional<Percentile> found = percentileFor(ticket);
+        Optional<Percentile> found = cache == null
+                ? percentileFor(ticket)
+                : cache.byClass.computeIfAbsent(classOf(ticket), k -> percentileFor(ticket));
         if (found.isEmpty()) {
             return Optional.empty();
         }
 
         Percentile p = found.get();
         long predicted = Math.round(p.p75());
-        long remaining = record.getTargetMinutes() - elapsedOf(record, calendar, now);
+        long remaining = record.getTargetMinutes() - elapsed;
 
         return Optional.of(new SlaResponse.PredictionView(predicted,
                 "p75 over %d days for (%s), n=%d".formatted(WINDOW_DAYS, p.grouping(),
@@ -139,6 +172,17 @@ public class BreachPredictor {
     @Transactional(readOnly = true)
     public boolean isAtRisk(SlaRecord record, CalendarSpec calendar, OffsetDateTime now) {
         return predict(record, calendar, now)
+                .map(SlaResponse.PredictionView::atRisk)
+                .orElse(false);
+    }
+
+    /**
+     * The same answer for a list page: the elapsed figure the caller already computed, and
+     * percentiles shared across rows of the same class through {@code cache}.
+     */
+    @Transactional(readOnly = true)
+    public boolean isAtRisk(SlaRecord record, long elapsedBusinessMinutes, PercentileCache cache) {
+        return predictWith(record, elapsedBusinessMinutes, cache)
                 .map(SlaResponse.PredictionView::atRisk)
                 .orElse(false);
     }
@@ -203,6 +247,12 @@ public class BreachPredictor {
             log.trace("Prediction basis {} at n={}", grouping, n);
             return Optional.of(new Percentile(p75, n, grouping));
         });
+    }
+
+    /** The ladder's inputs. {@code Arrays.asList} because category and team may be null. */
+    private static List<Object> classOf(Ticket ticket) {
+        return Arrays.asList(ticket.getTenantId(), ticket.getPriority(), ticket.getCategory(),
+                ticket.getTeam() == null ? null : ticket.getTeam().getId());
     }
 
     private static String describe(String category, Long teamId) {

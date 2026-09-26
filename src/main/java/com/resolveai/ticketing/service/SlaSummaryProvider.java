@@ -2,6 +2,9 @@ package com.resolveai.ticketing.service;
 
 import com.resolveai.sla.web.dto.SlaResponse;
 import com.resolveai.ticketing.web.dto.SlaSummary;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +21,22 @@ public interface SlaSummaryProvider {
 
     /** The compact form on a queue row. {@code null} before the clocks have started. */
     SlaSummary summaryFor(Long ticketId);
+
+    /**
+     * The compact form for a whole list page. Tickets with no clocks yet are absent from the
+     * map. The default is the per-ticket loop; the real provider answers in a fixed number
+     * of reads however long the page is.
+     */
+    default Map<Long, SlaSummary> summariesFor(Collection<Long> ticketIds) {
+        Map<Long, SlaSummary> out = new HashMap<>();
+        for (Long id : ticketIds) {
+            SlaSummary summary = summaryFor(id);
+            if (summary != null) {
+                out.put(id, summary);
+            }
+        }
+        return out;
+    }
 
     /** The full form with segment histories, for the detail view. */
     SlaResponse detailFor(Long ticketId);

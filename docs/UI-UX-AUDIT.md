@@ -624,6 +624,22 @@ Every finding was worked. **72 are resolved** and **4 are partly resolved**, wit
 - A customer's `messageCount` included internal notes, which revealed that they exist. It now counts PUBLIC messages only for customers.
 - The OpenAPI `sort` enum listed `sla_deadline`, which the server rejects. The enum is now `created_at | priority | updated_at`.
 
-### Follow-up (not a UI finding)
+### Follow-up (not a UI finding): fixed
 
-`GET /tickets` costs about 50ms per row: SLA summary, breach prediction and the incident link are loaded one ticket at a time (1.3s for 25 rows on a fresh backend). This was flagged separately for batching.
+`GET /tickets` used to cost about 8 SQL statements per row. Each row separately loaded:
+- its SLA records, plus a `SELECT NOW()`;
+- each clock's segments;
+- up to three percentile aggregates for the breach prediction;
+- its incident link;
+- its requester, assignee and team, lazily.
+
+A page of 25 took 1.3s on a fresh backend, and up to 40s for 100 rows on a loaded one.
+
+The list now makes a fixed number of reads per page:
+- the tickets with their people and team, fetched together;
+- every clock and every segment on the page;
+- the clock and the calendar, once each;
+- the percentiles, once per class of ticket on the page;
+- the incident links.
+
+Measured on the same machine: 25 rows went from 1.3s to 0.05s, and 100 rows now take 0.08s. `TicketListQueryCountTest` counts statements at the JDBC layer: 17 for a page of 2 or 12, down from 26 and 106. It fails the build if the count starts growing with page size or goes above 20. The same test checks that clock state, remaining time, at-risk and incident refs still match the single-ticket paths.

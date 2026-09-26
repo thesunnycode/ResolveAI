@@ -55,15 +55,38 @@ public class TicketMapper {
 
     public TicketSummaryResponse toSummary(Ticket t, long messageCount,
                                            TicketSummaryResponse.LastReply lastPublicReply) {
+        return toSummary(t, messageCount, lastPublicReply,
+                // Confirmed incidents only: this row is also what a customer's list is built
+                // from, and a customer hears about an incident once a person has confirmed it.
+                incidentLinks.liveFor(t.getTenantId(), t.getId(), false),
+                slaSummaries.summaryFor(t.getId()));
+    }
+
+    /**
+     * A row from values the caller already fetched for the whole page - see
+     * {@link #pageContext}. Same output as the per-ticket overloads.
+     */
+    public TicketSummaryResponse toSummary(Ticket t, long messageCount,
+                                           TicketSummaryResponse.LastReply lastPublicReply,
+                                           IncidentLinkLookup.Link incident, SlaSummary sla) {
         return new TicketSummaryResponse(
                 t.getId(), t.getReference(), t.getSubject(), t.getStatus(), t.getPriority(),
                 t.getCategory(),
                 UserRef.of(t.getRequester()), UserRef.of(t.getAssignee()), TeamRef.of(t.getTeam()),
-                // Confirmed incidents only: this row is also what a customer's list is built
-                // from, and a customer hears about an incident once a person has confirmed it.
-                refOf(incidentLinks.liveFor(t.getTenantId(), t.getId(), false)),
-                slaSummaries.summaryFor(t.getId()),
+                refOf(incident), sla,
                 messageCount, t.getCreatedAt(), t.getUpdatedAt(), lastPublicReply);
+    }
+
+    /** The per-page lookups a list needs, each one statement however long the page. */
+    public record PageContext(java.util.Map<Long, IncidentLinkLookup.Link> incidents,
+                              java.util.Map<Long, SlaSummary> sla) {
+    }
+
+    public PageContext pageContext(Long tenantId, List<Long> ticketIds) {
+        return new PageContext(
+                // Confirmed only - the same rule as the per-ticket overload, for the same reason.
+                incidentLinks.liveForAll(tenantId, ticketIds, false),
+                slaSummaries.summariesFor(ticketIds));
     }
 
     /** The full view, for {@code AGENT} and above. Includes {@code INTERNAL} messages. */
