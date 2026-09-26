@@ -22,15 +22,15 @@ export function PriorityGlyph({ priority, className }: { priority: Priority; cla
   const level = LEVEL[priority]
   if (priority === 'P1') {
     return (
-      <svg viewBox="0 0 14 14" className={cn('size-3.5 shrink-0 text-text', className)} aria-hidden>
+      <svg viewBox="0 0 14 14" className={cn('size-3.5 shrink-0 text-foreground', className)} aria-hidden>
         <rect x="0.5" y="0.5" width="13" height="13" rx="3" fill="currentColor" />
-        <rect x="6.1" y="3" width="1.8" height="5" rx="0.9" className="fill-surface" />
-        <rect x="6.1" y="9.3" width="1.8" height="1.8" rx="0.9" className="fill-surface" />
+        <rect x="6.1" y="3" width="1.8" height="5" rx="0.9" className="fill-card" />
+        <rect x="6.1" y="9.3" width="1.8" height="1.8" rx="0.9" className="fill-card" />
       </svg>
     )
   }
   return (
-    <svg viewBox="0 0 14 14" className={cn('size-3.5 shrink-0 text-text-muted', className)} aria-hidden>
+    <svg viewBox="0 0 14 14" className={cn('size-3.5 shrink-0 text-muted-foreground', className)} aria-hidden>
       {[0, 1, 2].map((i) => (
         <rect
           key={i}
@@ -53,7 +53,7 @@ export function PriorityLabel({ priority, showName }: { priority: Priority; show
     <span
       className={cn(
         'inline-flex items-center gap-1.5 text-xs',
-        priority === 'P1' ? 'font-semibold text-text' : 'font-medium text-text-muted',
+        priority === 'P1' ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground',
       )}
       title={`${priority === 'UNTRIAGED' ? '' : priority + ' · '}${NAME[priority]}`}
     >

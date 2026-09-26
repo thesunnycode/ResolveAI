@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
-export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cn('skeleton rounded-md', className)} />
+export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return <div aria-hidden className={cn('skeleton rounded-md', className)} style={style} />
 }
 
 /** Same height as a real TicketRow, per doc 06: "a page that jumps on load is worse than a spinner." */

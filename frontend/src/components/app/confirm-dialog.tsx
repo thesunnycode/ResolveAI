@@ -1,9 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { AlertTriangle, X } from 'lucide-react'
 import * as React from 'react'
-import { Button } from './button'
-import { FieldError, Label } from './field-error'
-import { Textarea } from './input'
+import { Button } from '../ui/button'
+import { FieldError, Label } from '../ui/field-error'
+import { Textarea } from '../ui/input'
 
 export interface ConfirmDialogProps {
   open: boolean
@@ -61,18 +61,18 @@ export function ConfirmDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-fade-in" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-popover data-[state=open]:animate-slide-up">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover p-6 shadow-popover data-[state=open]:animate-slide-up">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
               {destructive && (
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-danger-bg">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-danger-soft">
                   <AlertTriangle className="size-4 text-danger" aria-hidden />
                 </span>
               )}
-              <Dialog.Title className="text-lg font-semibold text-text">{title}</Dialog.Title>
+              <Dialog.Title className="text-lg font-semibold text-foreground">{title}</Dialog.Title>
             </div>
             <Dialog.Close
-              className="-m-1.5 flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-surface-2 hover:text-text"
+              className="-m-1.5 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               aria-label="Close"
             >
               <X className="size-4" aria-hidden />
@@ -81,10 +81,10 @@ export function ConfirmDialog({
 
           {consequences && consequences.length > 0 ? (
             <Dialog.Description asChild>
-              <ul className="mt-3 space-y-1 rounded-md bg-surface-2 p-3 text-sm text-text-muted">
+              <ul className="mt-3 space-y-1 rounded-md bg-muted p-3 text-sm text-muted-foreground">
                 {consequences.map((c, i) => (
                   <li key={i} className="flex gap-1.5">
-                    <span aria-hidden className="text-text-subtle">&bull;</span>
+                    <span aria-hidden className="text-muted-foreground">&bull;</span>
                     {c}
                   </li>
                 ))}

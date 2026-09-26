@@ -25,20 +25,20 @@ export function SlaChip({ clock, label }: { clock: SlaChipClock; label?: string 
   }
   if (clock.state === 'PAUSED') {
     return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-text-muted">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-muted-foreground">
         <Pause className="size-3.5" aria-hidden />
         {prefix}paused
       </span>
     )
   }
   if (clock.remainingBusinessMinutes == null) {
-    return <span className="text-sm text-text-subtle">{prefix}—</span>
+    return <span className="text-sm text-muted-foreground">{prefix}—</span>
   }
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1 whitespace-nowrap text-sm',
-        clock.atRisk ? 'font-medium text-warning' : 'text-text-muted',
+        clock.atRisk ? 'font-medium text-warning' : 'text-muted-foreground',
       )}
     >
       {clock.atRisk && <AlertCircle className="size-3.5" aria-hidden />}
@@ -64,16 +64,16 @@ export function SlaStrip({ clocks }: { clocks: SlaClockDetail[] | undefined }) {
     : 0
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 border-b border-border bg-glass px-4 py-2.5 text-sm backdrop-blur-xl sm:px-6">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 border-b border-border bg-popover/80 px-4 py-2.5 text-sm backdrop-blur-xl sm:px-6">
       {firstResponse && (
         <div className="flex items-center gap-2">
-          <span className="text-text-subtle">First response</span>
+          <span className="text-muted-foreground">First response</span>
           <SlaChip clock={{ ...firstResponse, atRisk: firstResponse.prediction?.atRisk ?? false }} />
         </div>
       )}
       {resolution && (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="text-text-subtle">Resolution</span>
+          <span className="text-muted-foreground">Resolution</span>
           <SlaChip clock={{ ...resolution, atRisk: resolution.prediction?.atRisk ?? false }} />
           {resolution.state === 'RUNNING' && (
             <div
@@ -83,7 +83,7 @@ export function SlaStrip({ clocks }: { clocks: SlaClockDetail[] | undefined }) {
               aria-valuemax={100}
               aria-valuenow={pct}
               aria-valuetext={`${pct}% of the resolution target used`}
-              className="ml-1 h-1.5 w-full min-w-10 max-w-32 overflow-hidden rounded-full bg-surface-2"
+              className="ml-1 h-1.5 w-full min-w-10 max-w-32 overflow-hidden rounded-full bg-muted"
             >
               <div
                 className={cn('h-full rounded-full', resolution.prediction?.atRisk ? 'bg-warning' : 'bg-primary')}

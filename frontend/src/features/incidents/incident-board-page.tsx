@@ -1,7 +1,7 @@
 import { ShieldCheck } from 'lucide-react'
 import * as React from 'react'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ConfirmDialog } from '@/components/app/confirm-dialog'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'

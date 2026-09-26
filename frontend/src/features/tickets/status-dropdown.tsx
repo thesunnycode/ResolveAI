@@ -1,7 +1,7 @@
 import * as Select from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
 import * as React from 'react'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ConfirmDialog } from '@/components/app/confirm-dialog'
 import type { TicketStatus } from '@/lib/types'
 import { REASON_REQUIRED, STATUS_LABEL as LABELS } from './status-labels'
 
