@@ -74,13 +74,13 @@ export function LoginPage() {
     <AuthShell>
       <div className="animate-slide-up">
         <div className="mb-5">
-          <h1 tabIndex={-1} className="text-2xl font-semibold leading-tight tracking-[-0.03em] text-text">
+          <h1 tabIndex={-1} className="font-heading text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground">
             {lastWorkspace ? 'Welcome back' : 'Sign in to ResolveAI'}
           </h1>
-          <p className="mt-1 text-sm text-text-muted">
+          <p className="mt-1 text-sm text-muted-foreground">
             {lastWorkspace ? (
               <>
-                Signing in to <span className="font-medium text-text">{lastWorkspace}</span>
+                Signing in to <span className="font-medium text-foreground">{lastWorkspace}</span>
               </>
             ) : (
               'Sign in to your workspace, or try the demo first.'
@@ -93,7 +93,7 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
-            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
+            <div role="alert" className="mb-4 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">
               {formError}
             </div>
           )}
@@ -111,7 +111,7 @@ export function LoginPage() {
               aria-describedby="tenantSlug-help"
               required
             />
-            <p id="tenantSlug-help" className="mt-1.5 text-xs text-text-subtle">
+            <p id="tenantSlug-help" className="mt-1.5 text-xs text-muted-foreground">
               Your company's ResolveAI name, from your invite — for example <span className="font-mono">acme</span>.
             </p>
           </div>
@@ -159,14 +159,14 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-text-subtle hover:text-text"
+                className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
             {showReset && (
-              <p id="reset-help" className="mt-2 rounded-md bg-surface-2 px-3 py-2 text-sm leading-relaxed text-text-muted">
+              <p id="reset-help" className="mt-2 rounded-md bg-muted px-3 py-2 text-sm leading-relaxed text-muted-foreground">
                 Passwords are reset by your workspace admin — ask them and they can set a new one for you.
                 Self-service reset by email isn't available yet.
               </p>
@@ -179,7 +179,7 @@ export function LoginPage() {
           {slow && <SlowServerHint />}
         </form>
 
-        <p className="mt-5 text-sm text-text-muted">
+        <p className="mt-5 text-sm text-muted-foreground">
           New here?{' '}
           <Link to="/register" className="font-medium text-primary hover:underline">
             Create an account

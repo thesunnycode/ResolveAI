@@ -55,7 +55,7 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
   if (compact) {
     const copy = ROLE_COPY[primary]
     return (
-      <section aria-labelledby="demo-heading" className="mb-5 rounded-xl border border-primary/25 bg-primary-bg/40 p-3">
+      <section aria-labelledby="demo-heading" className="mb-5 rounded-xl border border-primary/25 bg-secondary/40 p-3">
         <p id="demo-heading" className="sr-only">
           Try the demo — no account needed
         </p>
@@ -63,22 +63,22 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
           type="button"
           onClick={() => void enter(primary)}
           disabled={pending !== null}
-          className="group flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 disabled:opacity-60"
+          className="group flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-card px-3 py-2.5 text-left transition-colors hover:border-input hover:bg-muted disabled:opacity-60"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-muted">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <copy.icon className="size-4" aria-hidden />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-base font-medium text-text">Try the demo as {copy.label}</span>
-            <span className="block truncate text-xs text-text-subtle">No account needed · {copy.hint}</span>
+            <span className="block text-base font-medium text-foreground">Try the demo as {copy.label}</span>
+            <span className="block truncate text-xs text-muted-foreground">No account needed · {copy.hint}</span>
           </span>
           <ArrowRight
-            className={cn('size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5', pending === primary && 'animate-pulse')}
+            className={cn('size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5', pending === primary && 'animate-pulse')}
             aria-hidden
           />
         </button>
         {others.length > 0 && (
-          <p className="mt-2 flex flex-wrap items-center gap-x-1 px-1 text-sm text-text-muted">
+          <p className="mt-2 flex flex-wrap items-center gap-x-1 px-1 text-sm text-muted-foreground">
             or as
             {others.map((role, i) => (
               <React.Fragment key={role}>
@@ -106,11 +106,11 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <section aria-labelledby="demo-heading" className="mb-7 rounded-xl border border-primary/25 bg-primary-bg/40 p-4">
-      <p id="demo-heading" className="text-sm font-semibold text-text">
+    <section aria-labelledby="demo-heading" className="mb-7 rounded-xl border border-primary/25 bg-secondary/40 p-4">
+      <p id="demo-heading" className="text-sm font-semibold text-foreground">
         Try the demo — no account needed
       </p>
-      <p className="mt-0.5 text-sm leading-relaxed text-text-muted">
+      <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
         A live workspace with seeded tickets. Pick who you want to be:
       </p>
       <div className="mt-3 grid gap-2">
@@ -123,23 +123,23 @@ export function DemoAccess({ compact }: { compact?: boolean }) {
               onClick={() => void enter(role)}
               disabled={pending !== null}
               className={cn(
-                'group flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left transition-colors',
-                'hover:border-border-strong hover:bg-surface-2 disabled:opacity-60',
+                'group flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors',
+                'hover:border-input hover:bg-muted disabled:opacity-60',
                 role === 'AGENT' && 'border-primary/40',
               )}
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-muted">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                 <copy.icon className="size-4" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-base font-medium text-text">
+                <span className="block text-base font-medium text-foreground">
                   Explore as {copy.label}
                   {role === 'AGENT' && <span className="ml-1.5 text-xs font-normal text-primary">recommended</span>}
                 </span>
-                <span className="block truncate text-xs text-text-subtle">{copy.hint}</span>
+                <span className="block truncate text-xs text-muted-foreground">{copy.hint}</span>
               </span>
               <ArrowRight
-                className={cn('size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5', pending === role && 'animate-pulse')}
+                className={cn('size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5', pending === role && 'animate-pulse')}
                 aria-hidden
               />
             </button>

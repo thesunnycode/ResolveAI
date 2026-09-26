@@ -20,7 +20,7 @@ export function Label({
   required?: boolean
 }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-text-muted">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted-foreground">
       {children}
       {required && <span className="text-danger ml-0.5">*</span>}
     </label>

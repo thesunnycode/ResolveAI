@@ -105,8 +105,8 @@ export function RegisterPage() {
     <AuthShell>
       <div className="animate-slide-up">
         <div className="mb-7">
-          <h1 className="text-2xl font-semibold leading-tight tracking-[-0.03em] text-text">Create your account</h1>
-          <p className="mt-1 text-sm leading-relaxed text-text-muted">
+          <h1 className="font-heading text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground">Create your account</h1>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
             For customers of a company that uses ResolveAI. Support agents get an invite from their workspace admin
             instead.
           </p>
@@ -117,7 +117,7 @@ export function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
-            <div role="alert" className="mb-4 rounded-md border border-danger/20 bg-danger-bg px-3 py-2 text-sm text-danger">
+            <div role="alert" className="mb-4 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">
               {formError}
             </div>
           )}
@@ -138,7 +138,7 @@ export function RegisterPage() {
             {fieldErrors.tenantSlug ? (
               <FieldError message={fieldErrors.tenantSlug} />
             ) : (
-              <p id="tenantSlug-help" className="mt-1.5 text-xs text-text-subtle">
+              <p id="tenantSlug-help" className="mt-1.5 text-xs text-muted-foreground">
                 The company name from the support link you were given — for example <span className="font-mono">acme</span>.
               </p>
             )}
@@ -194,7 +194,7 @@ export function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -205,12 +205,12 @@ export function RegisterPage() {
             {fieldErrors.password ? (
               <FieldError message={fieldErrors.password} />
             ) : strength ? (
-              <p className={`mt-1.5 text-sm ${strength.ok ? 'text-success' : 'text-text-muted'}`}>
+              <p className={`mt-1.5 text-sm ${strength.ok ? 'text-success' : 'text-muted-foreground'}`}>
                 {strength.label}
               </p>
             ) : (
               // The rule up front, so nobody has to fail once to learn it.
-              <p className="mt-1.5 text-xs text-text-subtle">{PASSWORD_RULE}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">{PASSWORD_RULE}</p>
             )}
           </div>
 
@@ -220,7 +220,7 @@ export function RegisterPage() {
           {slow && <SlowServerHint />}
         </form>
 
-        <p className="mt-5 text-sm text-text-muted">
+        <p className="mt-5 text-sm text-muted-foreground">
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
             Sign in
