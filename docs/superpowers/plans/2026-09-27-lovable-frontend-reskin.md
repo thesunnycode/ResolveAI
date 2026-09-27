@@ -49,27 +49,27 @@
 **Interfaces:**
 - Produces: every CSS custom property new/re-skinned components will reference — `--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--primary-foreground`, `--secondary`, `--muted`, `--muted-foreground`, `--accent`, `--destructive`, `--border`, `--input`, `--ring`, `--danger`/`--danger-soft`/`--danger-border`, `--warning`/`--warning-soft`/`--warning-border`, `--success`/`--success-soft`/`--success-border`, `--internal`/`--internal-border`, `--link`, `--chart-1`..`--chart-5`, `--sidebar*`, `--radius`. All later tasks assume these names exist in both `:root` and `.dark`.
 
-- [ ] **Step 1: Read both token files side by side**
+- [x] **Step 1: Read both token files side by side**
 
 Run: view `frontend/src/index.css` and `$LOVABLE/src/styles.css` in full.
 
-- [ ] **Step 2: Replace the `@theme`/`:root` token block in `frontend/src/index.css` with the Lovable token set**
+- [x] **Step 2: Replace the `@theme`/`:root` token block in `frontend/src/index.css` with the Lovable token set**
 
 Copy the `:root { ... }` and `@theme inline { ... }` blocks verbatim from `$LOVABLE/src/styles.css` into `frontend/src/index.css`, keeping OLD's `@import "tailwindcss";` line and any OLD-specific utility classes (e.g. `.glass`) that aren't token-related — re-point those utility classes at the new token names (e.g. if `.glass` referenced `--color-surface`, repoint it to `--card`/`--popover` as appropriate) rather than deleting them, since `features/*` still reference `.glass` until later tasks re-skin those pages.
 
-- [ ] **Step 3: Add a `.dark { ... }` block**
+- [x] **Step 3: Add a `.dark { ... }` block**
 
 Copy Lovable's dark-mode values if present in `$LOVABLE/src/styles.css`; if Lovable's export has no `.dark` block (per the exploration report, it doesn't ship one wired into the UI), derive one by darkening each oklch lightness channel consistently with the existing OLD `.dark` block's relationships (e.g. same delta between `--background` and `--card` that OLD's old dark block had). Keep the selector `.dark` (matches `lib/theme.ts`'s `document.documentElement.classList.toggle('dark', ...)`).
 
-- [ ] **Step 4: Swap fonts**
+- [x] **Step 4: Swap fonts**
 
 In `frontend/src/index.css` (or `frontend/index.html`, wherever OLD currently loads Inter/JetBrains Mono), replace the Google Fonts `<link>`/`@import` with Figtree + Outfit, matching `$LOVABLE/src/routes/__root.tsx`. Add `--font-heading: 'Outfit', ...` and body font `--font-sans: 'Figtree', ...` custom properties, and confirm `frontend/src/index.css` maps Tailwind's `font-sans`/heading utility to them the same way Lovable's `@theme inline` does.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd frontend && npm run dev`, open the app, confirm the page renders (existing components will look broken/unstyled in places until Task 2+ — that's expected), confirm no console errors about missing CSS variables, and toggle dark mode via the existing UI control to confirm `.dark` applies without a flash of unstyled colors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/index.css frontend/index.html
@@ -90,27 +90,27 @@ git commit -m "style(frontend): adopt Lovable design tokens, fonts, and dark the
 - Consumes: `cn()` from `frontend/src/lib/utils.ts` (already exists, already `clsx` + `tailwind-merge` per the exploration — every copied primitive imports `import { cn } from "@/lib/utils"`, path must resolve the same in OLD as it did in `$LOVABLE`).
 - Produces: standard shadcn component exports (e.g. `Dialog`, `DialogContent`, `DialogHeader`, `Select`, `SelectTrigger`, `SelectContent`, `SelectItem`, `Sheet`, `SheetContent`, `Tabs`, `TabsList`, `TabsTrigger`, `Popover`, `PopoverTrigger`, `PopoverContent`, `Table`, `TableHeader`, `TableBody`, `TableRow`, `TableCell`, `Tooltip`, `TooltipTrigger`, `TooltipContent`, etc.) — later tasks import these by name from `@/components/ui/<file>`.
 
-- [ ] **Step 1: Diff dependency lists**
+- [x] **Step 1: Diff dependency lists**
 
 Run: `diff <(node -e "console.log(Object.keys(require('./frontend/package.json').dependencies).sort().join('\n'))") <(node -e "console.log(Object.keys(require('<path-to-lovable-package-json>').dependencies).sort().join('\n'))")` (substitute the real `$LOVABLE/package.json` path) to get the exact list of new packages OLD needs: at minimum `@radix-ui/react-accordion`, `@radix-ui/react-alert-dialog`, `@radix-ui/react-aspect-ratio`, `@radix-ui/react-avatar`, `@radix-ui/react-checkbox`, `@radix-ui/react-collapsible`, `@radix-ui/react-context-menu`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu` (OLD may already have this raw, confirm), `@radix-ui/react-hover-card`, `@radix-ui/react-label`, `@radix-ui/react-menubar`, `@radix-ui/react-navigation-menu`, `@radix-ui/react-popover`, `@radix-ui/react-progress`, `@radix-ui/react-radio-group`, `@radix-ui/react-scroll-area`, `@radix-ui/react-select`, `@radix-ui/react-separator`, `@radix-ui/react-slider`, `@radix-ui/react-slot`, `@radix-ui/react-switch`, `@radix-ui/react-tabs`, `@radix-ui/react-toggle`, `@radix-ui/react-toggle-group`, `@radix-ui/react-tooltip`, `@hookform/resolvers`, `cmdk`, `embla-carousel-react`, `input-otp`, `react-day-picker`, `react-hook-form`, `react-resizable-panels`, `recharts`, `sonner`, `tw-animate-css`, `vaul`, `zod`.
 
-- [ ] **Step 2: Install**
+- [x] **Step 2: Install**
 
 Run: `cd frontend && npm install <each package from Step 1 at the version pinned in $LOVABLE/package.json>`.
 
-- [ ] **Step 3: Copy primitive files**
+- [x] **Step 3: Copy primitive files**
 
 Copy every file in `$LOVABLE/src/components/ui/` that doesn't already exist in `frontend/src/components/ui/` into `frontend/src/components/ui/`, unmodified except for import paths if OLD's `@/` alias resolves differently (check `frontend/vite.config.ts` / `tsconfig.json` `paths` — it already uses `@/` per the existing feature imports, so this should be a straight copy).
 
-- [ ] **Step 4: Replace OLD's `badge.tsx`, `button.tsx`, `card.tsx`, `input.tsx`**
+- [x] **Step 4: Replace OLD's `badge.tsx`, `button.tsx`, `card.tsx`, `input.tsx`**
 
 Copy `$LOVABLE/src/components/ui/{badge,button,card,input}.tsx` over OLD's versions. Grep for every current usage of these four (`grep -rn "from '@/components/ui/button'" frontend/src`, etc.) and fix any prop/variant name that changed (e.g. if OLD called `<Button variant="ghost">` and Lovable's `button.tsx` renamed a variant, update call sites) — do this fix inline in this task, not deferred, since a broken `Button` import breaks every page.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd frontend && npm run build` — must complete with zero TypeScript errors. Any error naming a missing export means Step 4's grep missed a call site; fix it.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/src/components/ui
@@ -135,31 +135,31 @@ git commit -m "feat(frontend): add shadcn/ui primitive components from Lovable e
 - Consumes: `cn()` from `lib/utils.ts`; `Card`, `Badge` etc. from Task 2.
 - Produces: `Field`, `Card`, `CardHeader`, `PageHeader` (from `field.tsx`); `EmptyState`, `ErrorState`, `FormBanner`, `RowsSkeleton`, `StaleBanner` (from `states.tsx`); `Pill`, `Avatar`, `PriorityMark`, `SlaChip`, `SlaChipFromState`, `StatusPill`, `PRIORITY_WORD` (from `status.tsx`); `ConfirmDialog` (from `confirm-dialog.tsx`); `UnsavedGuard` (from `unsaved-guard.tsx`); `Evidence`, `IncidentStatusPill` (from `incident-parts.tsx`). These are the names every route task below imports.
 
-- [ ] **Step 1: Copy `field.tsx`, `states.tsx`, `status.tsx`, `incident-parts.tsx` verbatim**
+- [x] **Step 1: Copy `field.tsx`, `states.tsx`, `status.tsx`, `incident-parts.tsx` verbatim**
 
 These four have no OLD equivalent with routing/data dependencies baked in — copy as-is into `frontend/src/components/app/`.
 
-- [ ] **Step 2: Adapt `confirm-dialog.tsx`**
+- [x] **Step 2: Adapt `confirm-dialog.tsx`**
 
 Copy Lovable's version, but check every existing call site of OLD's `components/ui/confirm-dialog.tsx` (`grep -rn "confirm-dialog" frontend/src`) and match its prop signature — if OLD's callers pass e.g. `onConfirm: () => Promise<void>` and Lovable's expects `onConfirm: () => void`, keep the async signature (real network calls need it) and adjust the new component to await it.
 
-- [ ] **Step 3: Adapt `unsaved-guard.tsx` for react-router-dom**
+- [x] **Step 3: Adapt `unsaved-guard.tsx` for react-router-dom**
 
 Read `$LOVABLE/src/components/app/unsaved-guard.tsx` to see what it blocks on (likely a `when: boolean` prop + a confirm dialog on navigation attempt). Reimplement using react-router-dom's `useBlocker(when)` hook: when the blocker state is `"blocked"`, render the same confirm-leave UI Lovable used, calling `blocker.proceed()` / `blocker.reset()` instead of TanStack Router's navigation API.
 
-- [ ] **Step 4: Re-point priority/SLA rendering**
+- [x] **Step 4: Re-point priority/SLA rendering**
 
 In `frontend/src/features/tickets/priority-badge.tsx` and `sla-chip.tsx`, keep the exported function names and prop types identical (so call sites in ticket pages don't need changes yet), but change the JSX body to call `PriorityMark`/`SlaChip` from `components/app/status.tsx` instead of rendering raw markup.
 
-- [ ] **Step 5: Grep-and-delete superseded files**
+- [x] **Step 5: Grep-and-delete superseded files**
 
 For each of `empty-state.tsx`, `error-banner.tsx`, `field-error.tsx`, `segmented.tsx`, `toast.tsx`, `page-header.tsx`: run `grep -rln "<old-file-basename>" frontend/src`. Do not delete yet — deletion happens per-file only after Task 4+ route work has replaced every remaining caller (track this as a running checklist in this task's PR description, not in code).
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `cd frontend && npm run build`. Fix any type errors from the adapted signatures.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/components/app frontend/src/features/tickets/priority-badge.tsx frontend/src/features/tickets/sla-chip.tsx
@@ -180,27 +180,27 @@ git commit -m "feat(frontend): add shared app-level UI components (states, statu
 - Consumes: `useAuth()` from `features/auth/auth-context.tsx` (existing hook, must not change its signature); `getStoredTheme`/`setThemePreference`/`applyTheme` from `lib/theme.ts`; primitives from Task 2 (`Sheet`, `SheetContent`, `DropdownMenu*`, `Avatar`).
 - Produces: `AppShell` component with the same external contract `App.tsx`'s `<ProtectedRoute><AppShell /></ProtectedRoute>` expects (renders `<Outlet />` for nested routes).
 
-- [ ] **Step 1: Read Lovable's app-shell for structure**
+- [x] **Step 1: Read Lovable's app-shell for structure**
 
 Read `$LOVABLE/src/components/app/app-shell.tsx` in full — note its nav item list (labels per role), the mobile `Sheet` trigger, and the user menu.
 
-- [ ] **Step 2: Rewrite `nav-bar.tsx`**
+- [x] **Step 2: Rewrite `nav-bar.tsx`**
 
 Build the horizontal top nav using Lovable's markup/classes, but source the nav items from OLD's existing role-based item list (do not hardcode Lovable's mock nav items — reuse OLD's existing `NAV_ITEMS`-style config if `nav-bar.tsx` has one, updating labels per the copy changes noted in the mapping: "Incidents"→"Outages", "Knowledge base"→"Help articles", keep "/queue" URL but label it "Tickets" for agent roles). Wire the mobile hamburger to a `Sheet` from Task 2 instead of OLD's bottom tab bar.
 
-- [ ] **Step 3: Add the theme toggle and command palette trigger to the new user menu / header**
+- [x] **Step 3: Add the theme toggle and command palette trigger to the new user menu / header**
 
 Keep both features (Global Constraints) — place the theme toggle switch inside the `DropdownMenu` user menu (matching where OLD currently has it), and keep a visible button that opens `features/command/command-palette.tsx` (⌘K), styled with the new `Button`/`DropdownMenu` primitives.
 
-- [ ] **Step 4: Rewrite `app-shell.tsx`**
+- [x] **Step 4: Rewrite `app-shell.tsx`**
 
 Swap the sidebar/bottom-nav wrapper markup for the new top-header wrapper, keeping `<Outlet />` (or `children`, whatever OLD currently uses) in the same place so `App.tsx`'s route tree needs no structural change.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd frontend && npm run dev`, log in as each of CUSTOMER/AGENT/TEAM_LEAD/ADMIN test accounts, confirm the header shows the right nav items per role, the mobile drawer opens/closes, dark mode toggle still works, and the command palette still opens with ⌘K.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/components/layout/app-shell.tsx frontend/src/components/layout/nav-bar.tsx
@@ -219,17 +219,17 @@ git commit -m "feat(frontend): rebuild app shell as top-header layout per Lovabl
 - Consumes: OLD's existing `useAuth().login(email, password)` / `.register(...)` (real network calls — do not touch their signatures), `Field` and `FormBanner` from Task 1/3.
 - Produces: same page components, same route paths (`/login`, `/register`).
 
-- [ ] **Step 1: Rewrite `auth-shell.tsx` markup to match `auth-layout.tsx`**, keeping it a wrapper that takes `children` (or whatever prop OLD's version currently takes).
+- [x] **Step 1: Rewrite `auth-shell.tsx` markup to match `auth-layout.tsx`**, keeping it a wrapper that takes `children` (or whatever prop OLD's version currently takes).
 
-- [ ] **Step 2: Rewrite `login-page.tsx` form markup** using `Field`, `Input` (Task 2), password show/hide toggle (`Eye`/`EyeOff` from `lucide-react`, already a dependency), and `FormBanner` for error display — but keep the existing `onSubmit` handler calling OLD's real `useAuth().login`, do not switch to react-hook-form/zod unless it's a small lift; if OLD's current login page already manages simple two-field state, keep that state management and only change the JSX/classes, to minimize risk of breaking the real submit flow. (RHF+zod adoption for this form is optional polish, not required for the reskin.)
+- [x] **Step 2: Rewrite `login-page.tsx` form markup** using `Field`, `Input` (Task 2), password show/hide toggle (`Eye`/`EyeOff` from `lucide-react`, already a dependency), and `FormBanner` for error display — but keep the existing `onSubmit` handler calling OLD's real `useAuth().login`, do not switch to react-hook-form/zod unless it's a small lift; if OLD's current login page already manages simple two-field state, keep that state management and only change the JSX/classes, to minimize risk of breaking the real submit flow. (RHF+zod adoption for this form is optional polish, not required for the reskin.)
 
-- [ ] **Step 3: Rewrite `register-page.tsx`** the same way.
+- [x] **Step 3: Rewrite `register-page.tsx`** the same way.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd frontend && npm run dev`, submit login with a real test account (wrong password → see error banner render correctly; correct password → redirects per `RoleHome`), then log out and register a new test account.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/features/auth
@@ -250,31 +250,31 @@ git commit -m "style(frontend): reskin login and register pages"
 - Consumes: OLD's existing `features/tickets/api.ts` fetchers (unchanged), `UnsavedGuard` and `Field`/`FormBanner` (Task 3).
 - Produces: same components, new route path `/tickets`.
 
-- [ ] **Step 1: Rename the route**
+- [x] **Step 1: Rename the route**
 
 In `App.tsx`, change `<Route path="/my-tickets" ...>` to `<Route path="/tickets" ...>` and update `RoleHome`'s `user.role === 'CUSTOMER' ? '/my-tickets' : '/queue'` to `'/tickets'`.
 
-- [ ] **Step 2: Grep for stale path references**
+- [x] **Step 2: Grep for stale path references**
 
 Run: `grep -rn "/my-tickets" frontend/src` — fix every hit.
 
-- [ ] **Step 3: Re-skin `my-tickets-page.tsx`**
+- [x] **Step 3: Re-skin `my-tickets-page.tsx`**
 
 Swap markup for `Card`/`PageHeader` (Task 3 `field.tsx`) as the page frame, `Pill`/`StatusPill` (Task 3 `status.tsx`) for ticket status badges, and `EmptyState`/`ErrorState`/`RowsSkeleton`/`StaleBanner` (Task 3 `states.tsx`) for the loading/empty/error/stale states — keep the existing `useQuery`/fetch call and list-rendering logic untouched, this is a markup-and-className swap only.
 
-- [ ] **Step 4: Re-skin `new-ticket-page.tsx`**
+- [x] **Step 4: Re-skin `new-ticket-page.tsx`**
 
 Swap form field markup for `Field`, wrap the form in `UnsavedGuard` (Task 3) — new UX addition, OLD didn't have this. Keep the existing submit handler/mutation.
 
-- [ ] **Step 5: Re-skin the customer branch of `ticket-detail-page.tsx`**
+- [x] **Step 5: Re-skin the customer branch of `ticket-detail-page.tsx`**
 
 If OLD's `ticket-detail-page.tsx` already branches on role internally (render a simpler view for CUSTOMER vs a richer one for AGENT/TEAM_LEAD/ADMIN), re-skin only the CUSTOMER branch here using Lovable's `_shell.tickets.$ticketId.tsx` as the reference; the agent-facing branch is Task 7. If it does NOT currently branch (single view for all roles), leave it fully alone in this task and do the split in Task 7 instead — do not duplicate work.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `cd frontend && npm run dev`, log in as a CUSTOMER test account, view `/tickets`, create a new ticket (confirm the unsaved-guard fires if you navigate away mid-form), open a ticket detail.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/features/tickets
@@ -294,27 +294,27 @@ git commit -m "style(frontend): reskin customer ticket pages, rename /my-tickets
 - Consumes: OLD's existing ticket-workspace data hooks/mutations (unchanged) — do not adopt Lovable's inline data-fetching, only its visual structure.
 - Produces: same subcomponent file set and exported names OLD already has (keep the modular split — do not flatten into one file, per the exploration report's recommendation), just re-skinned with `Popover`, `Select`, `Collapsible` (Task 2) and `Pill`/`SlaChip`/`PriorityMark` (Task 3).
 
-- [ ] **Step 1: Re-skin `agent-queue-page.tsx`**
+- [x] **Step 1: Re-skin `agent-queue-page.tsx`**
 
 Reference `_shell.queue.index.tsx`'s `Table` usage and filter UI; keep OLD's existing `useSearchParams`-driven filter state (do not migrate to zod `validateSearch`, that's a TanStack Router API OLD doesn't have — react-router-dom's `useSearchParams` already does the equivalent job, just restyle the filter controls with `Select`/`Tabs` from Task 2).
 
-- [ ] **Step 2: Re-skin `ai-assist-panel.tsx` and `citation-popover.tsx`**
+- [x] **Step 2: Re-skin `ai-assist-panel.tsx` and `citation-popover.tsx`**
 
 Use `Popover`/`Collapsible` (Task 2) for citation display, matching the interaction pattern in `_shell.queue.$ticketId.tsx`'s inlined AI panel section — keep OLD's existing props (`ticketId`, `onInsertDraft`, whatever the current signature is) unchanged.
 
-- [ ] **Step 3: Re-skin `message-bubble.tsx`, `message-composer.tsx`, `customer-context.tsx`, `status-dropdown.tsx`, `assign-control.tsx`, `priority-rationale.tsx`, `response-promise.tsx`, `incident-banner.tsx`**
+- [x] **Step 3: Re-skin `message-bubble.tsx`, `message-composer.tsx`, `customer-context.tsx`, `status-dropdown.tsx`, `assign-control.tsx`, `priority-rationale.tsx`, `response-promise.tsx`, `incident-banner.tsx`**
 
 One at a time: open the corresponding section of `_shell.queue.$ticketId.tsx` for visual reference, restyle each OLD file's JSX/classes, run `npm run build` after each to catch prop-type breaks early, keep every existing prop and callback signature.
 
-- [ ] **Step 4: Re-skin the agent-facing branch of `ticket-detail-page.tsx`**
+- [x] **Step 4: Re-skin the agent-facing branch of `ticket-detail-page.tsx`**
 
 Wire the re-skinned subcomponents from Steps 2–3 back into the page, using `status-dropdown.tsx` (Task 2's `Select`) for status changes and `Popover`/`Collapsible` for the AI assist panel layout.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd frontend && npm run dev`, log in as an AGENT test account, open `/queue`, filter tickets, open a ticket, exercise: AI-assist draft request, citation popover, status change, priority display, SLA chip. Confirm every real API call still round-trips (network tab).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/features/tickets
@@ -334,19 +334,19 @@ git commit -m "style(frontend): reskin agent queue and ticket workspace"
 - Consumes: `Evidence`, `IncidentStatusPill` from `components/app/incident-parts.tsx` (Task 3); `ConfirmDialog` (Task 3) for any incident-resolution confirmation flow.
 - Produces: same page components; nav label already changed to "Outages" in Task 4 (this task just re-skins the page content, not the nav).
 
-- [ ] **Step 1: Re-skin `incident-board-page.tsx`**
+- [x] **Step 1: Re-skin `incident-board-page.tsx`**
 
 Use `Tabs` (Task 2) for the PROPOSED/LIVE/RESOLVED filter, keeping OLD's existing tab-state management (react-router-dom `useSearchParams`, not TanStack's `validateSearch`).
 
-- [ ] **Step 2: Re-skin `incident-card.tsx`**, keeping `arrival-sparkline.tsx` embedded unchanged, restyling only the surrounding card chrome with `Card`/`Pill`.
+- [x] **Step 2: Re-skin `incident-card.tsx`**, keeping `arrival-sparkline.tsx` embedded unchanged, restyling only the surrounding card chrome with `Card`/`Pill`.
 
-- [ ] **Step 3: Re-skin `incident-detail-page.tsx`**, using `Evidence`/`IncidentStatusPill` from `incident-parts.tsx` and `ConfirmDialog` for any action confirmations.
+- [x] **Step 3: Re-skin `incident-detail-page.tsx`**, using `Evidence`/`IncidentStatusPill` from `incident-parts.tsx` and `ConfirmDialog` for any action confirmations.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd frontend && npm run dev`, log in as AGENT/TEAM_LEAD, view `/incidents`, switch tabs, open a detail page.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/features/incidents
@@ -366,17 +366,17 @@ git commit -m "style(frontend): reskin incidents list and detail pages"
 **Interfaces:**
 - Consumes: OLD's existing `features/knowledge/api.ts` fetchers, `UnsavedGuard` (Task 3), `Field` (Task 3).
 
-- [ ] **Step 1: Re-skin `knowledge-base-page.tsx`** using `Card`/`Table` for the document list.
+- [x] **Step 1: Re-skin `knowledge-base-page.tsx`** using `Card`/`Table` for the document list.
 
-- [ ] **Step 2: Re-skin `document-drawer.tsx`** using `Sheet` or `Drawer` (Task 2) — check which one matches Lovable's interaction (side-panel vs bottom-sheet on mobile) and use that.
+- [x] **Step 2: Re-skin `document-drawer.tsx`** using `Sheet` or `Drawer` (Task 2) — check which one matches Lovable's interaction (side-panel vs bottom-sheet on mobile) and use that.
 
-- [ ] **Step 3: Re-skin `knowledge-document-form-page.tsx`**, wrapping in `UnsavedGuard`, using `Field`/`Textarea` (Task 2) for the form body.
+- [x] **Step 3: Re-skin `knowledge-document-form-page.tsx`**, wrapping in `UnsavedGuard`, using `Field`/`Textarea` (Task 2) for the form body.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd frontend && npm run dev`, log in as AGENT (view) and ADMIN (create new document), confirm both flows.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/features/knowledge
@@ -396,17 +396,17 @@ git commit -m "style(frontend): reskin knowledge base pages"
 **Interfaces:**
 - Consumes: OLD's existing `features/settings/api.ts` fetchers, `Tabs` (Task 2) for the sla/calendar/ai tab groups (keep as `useSearchParams`-driven state, matching the pattern used elsewhere in this plan rather than TanStack's `validateSearch`).
 
-- [ ] **Step 1: Rename routes in `App.tsx`**, update `RoleHome`/nav references if any point at the old admin paths.
+- [x] **Step 1: Rename routes in `App.tsx`**, update `RoleHome`/nav references if any point at the old admin paths.
 
-- [ ] **Step 2: Re-skin `settings-page.tsx`** tab-by-tab (sla/calendar/ai), using `Tabs`, `Select`, `Switch`, `Calendar` (Task 2) as appropriate per tab content.
+- [x] **Step 2: Re-skin `settings-page.tsx`** tab-by-tab (sla/calendar/ai), using `Tabs`, `Select`, `Switch`, `Calendar` (Task 2) as appropriate per tab content.
 
-- [ ] **Step 3: Re-skin `eval-dashboard-page.tsx`** using `Chart` (Task 2, recharts-based) for any metrics visualizations, `Card` for summary tiles.
+- [x] **Step 3: Re-skin `eval-dashboard-page.tsx`** using `Chart` (Task 2, recharts-based) for any metrics visualizations, `Card` for summary tiles.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd frontend && npm run dev`, log in as ADMIN, visit `/settings` (all three tabs) and `/evaluation`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/features/settings frontend/src/features/eval
@@ -424,23 +424,23 @@ git commit -m "style(frontend): reskin settings and evaluation pages, rename adm
 
 **Interfaces:** none new — this task only removes dead code and does a final consistency pass.
 
-- [ ] **Step 1: Confirm superseded files are unused**
+- [x] **Step 1: Confirm superseded files are unused**
 
 Run: `grep -rln "empty-state\|error-banner\|field-error\|components/ui/segmented\|components/ui/toast\|layout/page-header" frontend/src` — every hit must be inside the files being deleted themselves (self-reference) or nonexistent. If any real caller remains, re-skin that caller now instead of deferring further.
 
-- [ ] **Step 2: Delete the confirmed-dead files**
+- [x] **Step 2: Delete the confirmed-dead files**
 
-- [ ] **Step 3: Re-skin `NotFoundPage`** in `App.tsx` using `EmptyState` from `components/app/states.tsx`.
+- [x] **Step 3: Re-skin `NotFoundPage`** in `App.tsx` using `EmptyState` from `components/app/states.tsx`.
 
-- [ ] **Step 4: Pass over `board-page.tsx`**
+- [x] **Step 4: Pass over `board-page.tsx`**
 
 Swap any remaining OLD primitive imports (`components/ui/badge`, `card`, etc.) to confirm it still compiles against the Task 2 replacements — no layout change.
 
-- [ ] **Step 5: Full verify**
+- [x] **Step 5: Full verify**
 
 Run: `cd frontend && npm run build && npm run lint` (or `oxlint` per `frontend/.oxlintrc.json`) — zero errors. Then run `npm run dev` and click through every route in the nav as each of the four roles once, end to end.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A frontend
