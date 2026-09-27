@@ -30,7 +30,7 @@ export function CitationPopover({ citation }: { citation: CitationView }) {
         <Popover.Trigger asChild>
           <button
             type="button"
-            className="inline-flex min-h-6 items-center gap-1 rounded-sm bg-success-bg px-1.5 py-0.5 text-xs font-medium text-success hover:bg-success/15"
+            className="inline-flex min-h-6 items-center gap-1 rounded-sm bg-success-soft px-1.5 py-0.5 text-xs font-medium text-success hover:bg-success/15"
           >
             ✓ {citation.documentTitle}
           </button>
@@ -40,28 +40,28 @@ export function CitationPopover({ citation }: { citation: CitationView }) {
             side="top"
             align="start"
             sideOffset={6}
-            className="z-50 w-72 rounded-lg border border-border bg-surface p-3 shadow-popover animate-fade-in"
+            className="z-50 w-72 rounded-lg border border-border bg-card p-3 shadow-popover animate-fade-in"
           >
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-text">
-                <FileText className="size-3.5 text-text-subtle" aria-hidden />
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <FileText className="size-3.5 text-muted-foreground" aria-hidden />
                 {citation.documentTitle}
               </span>
               <Badge variant={SOURCE_VARIANT[citation.source]}>{SOURCE_LABEL[citation.source]}</Badge>
             </div>
-            <blockquote className="rounded-md border-l-2 border-success bg-success-bg/40 px-2.5 py-2 text-xs leading-relaxed text-text">
+            <blockquote className="rounded-md border-l-2 border-success bg-success-soft/40 px-2.5 py-2 text-xs leading-relaxed text-foreground">
               {citation.snippet}
             </blockquote>
             <Popover.Close asChild>
               <button
                 type="button"
                 onClick={() => setDrawer(true)}
-                className="mt-2 inline-flex min-h-7 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-primary hover:bg-primary-bg"
+                className="mt-2 inline-flex min-h-7 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-primary hover:bg-secondary"
               >
                 <PanelRightOpen className="size-3.5" aria-hidden /> Open document
               </button>
             </Popover.Close>
-            <Popover.Arrow className="fill-surface" />
+            <Popover.Arrow className="fill-card" />
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

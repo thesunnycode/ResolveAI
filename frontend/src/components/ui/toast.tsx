@@ -54,12 +54,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             duration={item.duration ?? (item.action ? 6000 : 4000)}
             onOpenChange={(open) => !open && remove(item.id)}
             className={cn(
-              'flex items-start gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 shadow-popover',
+              'flex items-start gap-2.5 rounded-xl border border-border bg-popover px-4 py-3 shadow-popover',
               'data-[state=open]:animate-slide-up data-[state=closed]:animate-fade-in',
             )}
           >
             {ICONS[item.kind]}
-            <ToastPrimitive.Description className="flex-1 text-sm text-text">
+            <ToastPrimitive.Description className="flex-1 text-sm text-foreground">
               {item.message}
             </ToastPrimitive.Description>
             {item.action && (
@@ -73,7 +73,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             )}
             <ToastPrimitive.Close
               aria-label="Dismiss"
-              className="-m-1 flex size-6 shrink-0 items-center justify-center rounded-md text-text-subtle hover:text-text"
+              className="-m-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" aria-hidden />
             </ToastPrimitive.Close>

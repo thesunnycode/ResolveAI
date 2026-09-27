@@ -3,8 +3,8 @@ import * as React from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
+import { Button } from '@/components/ui/button'
 import { MetricStrip, Segmented } from '@/components/ui/segmented'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -215,7 +215,7 @@ export function AgentQueuePage() {
 
   const list = (
     <div className="glass overflow-hidden rounded-xl">
-      <div className="hidden items-center gap-3 border-b border-border px-5 py-2 text-xs font-medium uppercase tracking-[0.08em] text-text-subtle sm:flex">
+      <div className="hidden items-center gap-3 border-b border-border px-5 py-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground sm:flex">
         <span className="flex-1 pl-6">Ticket</span>
         <span className="w-36 text-right">Priority · SLA</span>
         <span className="w-28" />
@@ -224,7 +224,7 @@ export function AgentQueuePage() {
         <button
           type="button"
           onClick={showNew}
-          className="flex w-full items-center justify-center gap-1.5 border-b border-border bg-primary-bg/50 py-2 text-sm font-medium text-primary hover:bg-primary-bg"
+          className="flex w-full items-center justify-center gap-1.5 border-b border-border bg-secondary/50 py-2 text-sm font-medium text-primary hover:bg-secondary"
         >
           {newCount} new {newCount === 1 ? 'ticket' : 'tickets'} · Show
         </button>
@@ -234,10 +234,7 @@ export function AgentQueuePage() {
       </div>
       {isError && (
         <div className="p-4">
-          <ErrorBanner
-            message={error instanceof ApiError ? error.problem.detail : "Couldn't load the queue."}
-            onRetry={() => refetch()}
-          />
+          <ErrorState error={error} onRetry={() => refetch()} />
         </div>
       )}
       <div className={cn(isError && tickets.length > 0 && 'pointer-events-none opacity-60')}>
@@ -247,7 +244,7 @@ export function AgentQueuePage() {
           <EmptyState
             icon={Inbox}
             title={focus !== 'none' ? 'Nothing matches this view' : scope === 'unassigned' ? 'Nothing unassigned' : 'Your queue is clear'}
-            description={
+            body={
               focus !== 'none'
                 ? 'No ticket on this page fits the view — good news for this one.'
                 : scope === 'mine'
@@ -259,18 +256,24 @@ export function AgentQueuePage() {
                       : 'New tickets land here within seconds of arriving, already triaged. Nothing has arrived yet.'
             }
             action={
-              focus !== 'none' || scope !== 'all'
-                ? { label: 'View all tickets', onClick: () => applyView('all', 'none') }
-                : canSimulate
-                  ? {
-                      label: 'Simulate a payment outage',
-                      onClick: () =>
-                        storm
-                          .mutateAsync()
-                          .then((r) => push('success', r.detail))
-                          .catch((err) => push('info', err instanceof ApiError ? err.problem.detail : 'Could not start the simulation.')),
-                    }
-                  : undefined
+              focus !== 'none' || scope !== 'all' ? (
+                <Button variant="secondary" size="sm" onClick={() => applyView('all', 'none')}>
+                  View all tickets
+                </Button>
+              ) : canSimulate ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    storm
+                      .mutateAsync()
+                      .then((r) => push('success', r.detail))
+                      .catch((err) => push('info', err instanceof ApiError ? err.problem.detail : 'Could not start the simulation.'))
+                  }
+                >
+                  Simulate a payment outage
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -355,7 +358,7 @@ export function AgentQueuePage() {
 
         <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-text-subtle" aria-hidden />
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <input
               ref={searchRef}
               value={search}
@@ -363,7 +366,7 @@ export function AgentQueuePage() {
               placeholder="Search tickets or TKT-1234…"
               aria-label="Search tickets"
               aria-keyshortcuts="/"
-              className="h-10 w-full rounded-lg border border-border-control bg-surface pl-9 pr-3 text-base text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+              className="h-10 w-full rounded-lg border border-border-control bg-card pl-9 pr-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -377,13 +380,13 @@ export function AgentQueuePage() {
                 { value: 'unassigned', label: 'Unassigned' },
               ]}
             />
-            <label className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border-control bg-surface px-2 text-sm text-text-muted">
+            <label className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border-control bg-card px-2 text-sm text-muted-foreground">
               <ArrowDownUp className="size-3.5" aria-hidden />
               <span className="sr-only">Sort</span>
               <select
                 value={sort}
                 onChange={(e) => setParam('sort', e.target.value === 'urgency' ? null : e.target.value)}
-                className="bg-transparent text-text outline-none"
+                className="bg-transparent text-foreground outline-none"
               >
                 <option value="urgency">Most urgent</option>
                 <option value="newest">Newest</option>
@@ -394,7 +397,7 @@ export function AgentQueuePage() {
         </div>
 
         <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 [scrollbar-width:none]" role="group" aria-label="Saved views">
-          <span className="mr-1 flex shrink-0 items-center gap-1 text-xs text-text-subtle">
+          <span className="mr-1 flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
             <Sparkles className="size-3" aria-hidden /> Views
           </span>
           {PRESETS.map((p) => {
@@ -407,7 +410,7 @@ export function AgentQueuePage() {
                 onClick={() => (active ? applyView('all', 'none') : applyView(p.scope, p.focus))}
                 className={cn(
                   'min-h-7 shrink-0 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium transition-colors',
-                  active ? 'border-text/30 bg-surface-2 text-text' : 'border-border text-text-muted hover:border-border-strong hover:text-text',
+                  active ? 'border-text/30 bg-muted text-foreground' : 'border-border text-muted-foreground hover:border-border hover:text-foreground',
                 )}
               >
                 {p.label}

@@ -40,29 +40,29 @@ export function StatusDropdown({
       >
         <Select.Trigger
           aria-label="Status"
-          className="glass inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-text hover:border-border-strong focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70"
+          className="glass inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-foreground hover:border-border focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70"
         >
           <Select.Value>{pendingTo ? `${LABELS[pendingTo]}…` : LABELS[current]}</Select.Value>
           <Select.Icon>
-            <ChevronDown className="size-3.5 text-text-subtle" />
+            <ChevronDown className="size-3.5 text-muted-foreground" />
           </Select.Icon>
         </Select.Trigger>
         <Select.Portal>
-          <Select.Content className="z-50 overflow-hidden rounded-md border border-border bg-surface shadow-popover">
+          <Select.Content className="z-50 overflow-hidden rounded-md border border-border bg-card shadow-popover">
             <Select.Viewport className="p-1">
               <Select.Item
                 value={pendingTo ?? current}
                 disabled
-                className="flex items-center gap-2 rounded px-2.5 py-1.5 text-sm text-text-subtle"
+                className="flex items-center gap-2 rounded px-2.5 py-1.5 text-sm text-muted-foreground"
               >
                 <Select.ItemText>{LABELS[current]}</Select.ItemText>
-                <span className="ml-auto text-xs text-text-subtle">current</span>
+                <span className="ml-auto text-xs text-muted-foreground">current</span>
               </Select.Item>
               {allowed.map((s) => (
                 <Select.Item
                   key={s}
                   value={s}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-sm text-text outline-none data-[highlighted]:bg-surface-2"
+                  className="flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-muted"
                 >
                   <Select.ItemIndicator>
                     <Check className="size-3" />

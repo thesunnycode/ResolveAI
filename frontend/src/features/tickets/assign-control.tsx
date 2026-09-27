@@ -45,7 +45,7 @@ export function AssignControl({
   if (!canAssignOthers) {
     if (assignee || !canSelfAssign) {
       return (
-        <span className="flex items-center gap-1 text-text-muted">
+        <span className="flex items-center gap-1 text-muted-foreground">
           <UserRound className="size-3.5" aria-hidden /> {mine ? 'You' : (assignee?.fullName ?? 'Unassigned')}
         </span>
       )
@@ -55,7 +55,7 @@ export function AssignControl({
         type="button"
         onClick={() => void run()}
         disabled={assign.isPending}
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-dashed border-warning/60 px-2.5 text-sm font-medium text-warning hover:bg-warning-bg disabled:opacity-60"
+        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-dashed border-warning/60 px-2.5 text-sm font-medium text-warning hover:bg-warning-soft disabled:opacity-60"
       >
         <UserRound className="size-3.5" aria-hidden /> Unassigned · Assign to me
       </button>
@@ -70,30 +70,30 @@ export function AssignControl({
         disabled={assign.isPending}
         aria-label={`Assignee: ${assignee?.fullName ?? 'unassigned'}. Change assignee`}
         className={cn(
-          'glass inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium hover:border-border-strong focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-60',
-          assignee ? 'text-text' : 'text-warning',
+          'glass inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium hover:border-border focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-60',
+          assignee ? 'text-foreground' : 'text-warning',
         )}
       >
         <UserRound className="size-3.5" aria-hidden />
         {assignee ? (mine ? 'You' : assignee.fullName) : 'Unassigned'}
-        <ChevronDown className="size-3.5 text-text-subtle" aria-hidden />
+        <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="start"
           sideOffset={4}
-          className="z-50 max-h-80 min-w-60 overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-popover"
+          className="z-50 max-h-80 min-w-60 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-popover"
         >
           {!mine && canSelfAssign && (
             <DropdownMenu.Item
               onSelect={() => void run()}
-              className="rounded px-2.5 py-2 text-sm font-medium text-text outline-none data-[highlighted]:bg-surface-2"
+              className="rounded px-2.5 py-2 text-sm font-medium text-foreground outline-none data-[highlighted]:bg-muted"
             >
               Assign to me
             </DropdownMenu.Item>
           )}
-          <DropdownMenu.Label className="px-2.5 pb-1 pt-2 text-xs text-text-subtle">Assign to…</DropdownMenu.Label>
-          {agents.isLoading && <p className="px-2.5 py-2 text-sm text-text-subtle">Loading agents…</p>}
+          <DropdownMenu.Label className="px-2.5 pb-1 pt-2 text-xs text-muted-foreground">Assign to…</DropdownMenu.Label>
+          {agents.isLoading && <p className="px-2.5 py-2 text-sm text-muted-foreground">Loading agents…</p>}
           {assignable.map((a) => {
             const full = a.maxConcurrent != null && (a.openCount ?? 0) >= a.maxConcurrent
             return (
@@ -101,13 +101,13 @@ export function AssignControl({
                 key={a.id}
                 disabled={a.id === assignee?.id}
                 onSelect={() => void run(a.id, a.fullName)}
-                className="flex items-center gap-2 rounded px-2.5 py-2 text-sm text-text outline-none data-[disabled]:opacity-60 data-[highlighted]:bg-surface-2"
+                className="flex items-center gap-2 rounded px-2.5 py-2 text-sm text-foreground outline-none data-[disabled]:opacity-60 data-[highlighted]:bg-muted"
               >
                 <span className="flex-1">
                   {a.fullName}
-                  {a.teamName && <span className="ml-1.5 text-xs text-text-subtle">{a.teamName}</span>}
+                  {a.teamName && <span className="ml-1.5 text-xs text-muted-foreground">{a.teamName}</span>}
                 </span>
-                <span className={cn('text-xs tabular-nums', full ? 'text-warning' : 'text-text-subtle')}>
+                <span className={cn('text-xs tabular-nums', full ? 'text-warning' : 'text-muted-foreground')}>
                   {a.openCount}/{a.maxConcurrent ?? '–'} open{a.available === false ? ' · away' : ''}
                 </span>
                 {a.id === assignee?.id && <Check className="size-3.5 text-primary" aria-label="current" />}
