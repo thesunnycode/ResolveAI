@@ -39,6 +39,22 @@ function humanize(key: string) {
   return key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').toLowerCase()
 }
 
+// A suite's `metrics` map mixes raw counts (total, correct, costMicros, minMacroF1...)
+// with 0-1 scores (accuracy, macroF1). The headline number must be a score, not
+// whichever key happens to come first in the object.
+const NON_SCORE_METRIC_KEYS = new Set(['total', 'correct', 'costMicros'])
+const PREFERRED_METRIC_KEYS = ['accuracy', 'macroF1']
+
+function primaryMetric(metrics: Record<string, number>): [string, number] {
+  for (const key of PREFERRED_METRIC_KEYS) {
+    if (typeof metrics[key] === 'number') return [key, metrics[key]]
+  }
+  const fallback = Object.entries(metrics).find(
+    ([key, value]) => typeof value === 'number' && !NON_SCORE_METRIC_KEYS.has(key) && !key.startsWith('min'),
+  )
+  return fallback ?? ['score', 0]
+}
+
 function dollars(micros: number) {
   const usd = micros / 1_000_000
   return usd < 0.01 && usd > 0 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
@@ -130,7 +146,7 @@ export function EvalDashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             {[...bySuite.entries()].map(([suite, suiteRuns]) => {
               const latest = suiteRuns[0]
-              const [metricName, metricValue] = Object.entries(latest.metrics)[0] ?? ['score', 0]
+              const [metricName, metricValue] = primaryMetric(latest.metrics)
               return (
                 <div key={suite} className="glass rounded-xl p-5">
                   <div className="flex items-start justify-between">
@@ -168,13 +184,13 @@ export function EvalDashboardPage() {
                             className="relative flex h-16 flex-1 items-end gap-1 border-b border-l border-border-strong"
                             role="img"
                             aria-label={`Last ${shown.length} runs: ${shown
-                              .map((r) => `${((Object.values(r.metrics)[0] ?? 0) * 100).toFixed(0)}% ${r.passed ? 'pass' : 'fail'}`)
+                              .map((r) => `${(primaryMetric(r.metrics)[1] * 100).toFixed(0)}% ${r.passed ? 'pass' : 'fail'}`)
                               .join(', ')}`}
                           >
                             <div className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border" aria-hidden />
                             <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-border" aria-hidden />
                             {shown.map((r) => {
-                              const value = Object.values(r.metrics)[0] ?? 0
+                              const value = primaryMetric(r.metrics)[1]
                               return (
                                 <div
                                   key={r.id}
