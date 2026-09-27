@@ -24,13 +24,13 @@ export function IncidentBanner({
   if (dismissed) return null
 
   return (
-    <div role="note" className="flex items-center gap-2.5 border-b border-warning/25 bg-warning-bg px-5 py-1.5 text-sm text-warning">
+    <div role="note" className="flex items-center gap-2.5 border-b border-warning/25 bg-warning-soft px-5 py-1.5 text-sm text-warning">
       <AlertTriangle className="size-4 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1">
         This ticket is part of <strong className="font-semibold">{reference}</strong>
         {title && (
           <>
-            : <span className="text-text">{title}</span>
+            : <span className="text-foreground">{title}</span>
           </>
         )}
         {linkedCount != null && ` — ${linkedCount} tickets linked`}
@@ -54,7 +54,7 @@ export function IncidentBanner({
 /** Customer-facing variant — the only system-generated text a customer sees. Doc 06 §4.4. */
 export function CustomerIncidentBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning">
+    <div className="flex items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">
       <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
       {message}
     </div>

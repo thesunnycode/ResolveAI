@@ -35,7 +35,7 @@ export function ResponsePromise({
   if (status === 'RESOLVED' || status === 'CLOSED') return null
 
   let icon = <Clock className="size-4" aria-hidden />
-  let tone = 'border-primary/25 bg-primary-bg/50'
+  let tone = 'border-primary/25 bg-secondary/50'
   let title: string
   let body: string
 
@@ -45,11 +45,11 @@ export function ResponsePromise({
     body = 'We read it and send it to the team that owns it, usually within a minute. This page updates by itself.'
   } else if (target.state === 'MET') {
     icon = <CheckCircle2 className="size-4" aria-hidden />
-    tone = 'border-success/25 bg-success-bg/60'
+    tone = 'border-success/25 bg-success-soft/60'
     title = 'An agent has replied'
     body = 'Reply below any time — the whole conversation stays on this ticket.'
   } else if (target.state === 'BREACHED') {
-    tone = 'border-warning/30 bg-warning-bg/60'
+    tone = 'border-warning/30 bg-warning-soft/60'
     title = "We're behind on this one"
     body = `We aimed to reply within ${formatDuration(target.targetBusinessMinutes)} and haven't yet. It has been flagged to a team lead.`
   } else {
@@ -59,10 +59,10 @@ export function ResponsePromise({
 
   return (
     <div role="status" className={cn('mt-5 flex gap-3 rounded-xl border px-4 py-3', tone)}>
-      <span className="mt-0.5 shrink-0 text-text-muted">{icon}</span>
+      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
       <div>
-        <p className="text-base font-medium text-text">{title}</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-text-muted">{body}</p>
+        <p className="text-base font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
       </div>
     </div>
   )

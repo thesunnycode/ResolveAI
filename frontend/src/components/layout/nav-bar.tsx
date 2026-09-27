@@ -61,7 +61,7 @@ const ADMIN_NAV: NavItem[] = [
 ]
 
 const CUSTOMER_NAV: NavItem[] = [
-  { to: '/my-tickets', label: 'My tickets', icon: Ticket },
+  { to: '/tickets', label: 'My tickets', icon: Ticket },
   { to: '/tickets/new', label: 'New ticket', icon: Plus },
 ]
 

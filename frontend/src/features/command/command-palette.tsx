@@ -37,7 +37,7 @@ const PAGES: { label: string; to: string; icon: LucideIcon; roles: Role[] }[] = 
   { label: 'Board', to: '/board', icon: KanbanSquare, roles: ['TEAM_LEAD', 'ADMIN'] },
   { label: 'Settings', to: '/admin/settings', icon: Settings2, roles: ['ADMIN'] },
   { label: 'Evaluation', to: '/admin/evaluation', icon: FlaskConical, roles: ['ADMIN'] },
-  { label: 'My tickets', to: '/my-tickets', icon: Ticket, roles: ['CUSTOMER'] },
+  { label: 'My tickets', to: '/tickets', icon: Ticket, roles: ['CUSTOMER'] },
   { label: 'New ticket', to: '/tickets/new', icon: Plus, roles: ['CUSTOMER'] },
 ]
 

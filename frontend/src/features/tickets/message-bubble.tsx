@@ -27,7 +27,7 @@ export function MessageBubble({ message, pending }: { message: MessageView; /** 
       <span
         className={cn(
           'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-          isCustomer ? 'bg-surface-2 text-text-muted' : 'bg-primary-bg text-primary ring-1 ring-primary/25',
+          isCustomer ? 'bg-muted text-muted-foreground' : 'bg-secondary text-primary ring-1 ring-primary/25',
         )}
         aria-hidden
       >
@@ -36,27 +36,27 @@ export function MessageBubble({ message, pending }: { message: MessageView; /** 
       <div
         className={cn(
           'min-w-0 flex-1 rounded-xl px-4 py-3',
-          isInternal ? 'border border-dashed border-warning/40 bg-warning-bg' : 'glass',
+          isInternal ? 'border border-dashed border-warning/40 bg-warning-soft' : 'glass',
         )}
       >
         <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <span className="font-medium text-text">{message.authorName}</span>
-          <span className="capitalize text-text-subtle">{isCustomer ? 'customer' : message.authorRole.replace('_', ' ').toLowerCase()}</span>
+          <span className="font-medium text-foreground">{message.authorName}</span>
+          <span className="capitalize text-muted-foreground">{isCustomer ? 'customer' : message.authorRole.replace('_', ' ').toLowerCase()}</span>
           {isInternal && (
             <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-xs font-medium text-warning">
               <Lock className="size-2.5" aria-hidden /> Internal note
             </span>
           )}
           {message.isFirstResponse && (
-            <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-xs font-medium text-primary">First response</span>
+            <span className="rounded-md bg-secondary px-1.5 py-0.5 text-xs font-medium text-primary">First response</span>
           )}
           {pending ? (
-            <span className="ml-auto whitespace-nowrap text-text-subtle">Sending…</span>
+            <span className="ml-auto whitespace-nowrap text-muted-foreground">Sending…</span>
           ) : (
-            <RelativeTime iso={message.createdAt} className="ml-auto whitespace-nowrap text-text-subtle" />
+            <RelativeTime iso={message.createdAt} className="ml-auto whitespace-nowrap text-muted-foreground" />
           )}
         </div>
-        <p className="whitespace-pre-wrap text-base leading-relaxed text-text">{message.body}</p>
+        <p className="whitespace-pre-wrap text-base leading-relaxed text-foreground">{message.body}</p>
       </div>
     </div>
   )

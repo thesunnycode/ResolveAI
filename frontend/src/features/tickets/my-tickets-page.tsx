@@ -4,8 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
 import { RelativeTime } from '@/components/ui/relative-time'
 import { MetricStrip } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -30,9 +29,9 @@ const BUCKET: Record<TicketStatus, Bucket> = {
 }
 
 const PILL: Record<Bucket, string> = {
-  open: 'bg-primary-bg text-primary',
-  waiting: 'bg-warning-bg text-warning',
-  resolved: 'bg-surface-2 text-text-muted',
+  open: 'bg-secondary text-primary',
+  waiting: 'bg-warning-soft text-warning',
+  resolved: 'bg-muted text-muted-foreground',
 }
 
 function duration(minutes: number) {
@@ -84,7 +83,7 @@ export function MyTicketsPage() {
   useDocumentTitle('My tickets')
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { data, isLoading, isError, refetch } = useTicketQueue({})
+  const { data, isLoading, isError, error, refetch } = useTicketQueue({})
   const [filter, setFilter] = React.useState<Bucket | null>(null)
   const all = data?.data ?? []
   const count = (b: Bucket) => all.filter((t) => BUCKET[t.status] === b).length
@@ -137,7 +136,7 @@ export function MyTicketsPage() {
         </div>
       )}
 
-      {isError && <ErrorBanner onRetry={() => refetch()} />}
+      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
 
       <div className="glass overflow-hidden rounded-xl">
         {isLoading ? (
@@ -153,15 +152,23 @@ export function MyTicketsPage() {
           <EmptyState
             icon={Inbox}
             title="No tickets yet"
-            description="When you raise something with us it shows up here, with every reply in one place."
-            action={{ label: 'Create your first ticket', onClick: () => navigate('/tickets/new') }}
+            body="When you raise something with us it shows up here, with every reply in one place."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => navigate('/tickets/new')}>
+                Create your first ticket
+              </Button>
+            }
           />
         ) : tickets.length === 0 ? (
           <EmptyState
             icon={Inbox}
             title="Nothing here"
-            description="No tickets in this group right now."
-            action={{ label: 'Show all tickets', onClick: () => setFilter(null) }}
+            body="No tickets in this group right now."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setFilter(null)}>
+                Show all tickets
+              </Button>
+            }
           />
         ) : (
           <ul className="divide-y divide-border">
@@ -172,21 +179,21 @@ export function MyTicketsPage() {
                 <li key={t.id}>
                   <Link
                     to={`/tickets/${t.id}`}
-                    className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-2/50"
+                    className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2.5">
-                        <span className="truncate text-base font-medium text-text">{t.subject}</span>
+                        <span className="truncate text-base font-medium text-foreground">{t.subject}</span>
                         <span
                           className={cn(
                             'w-fit shrink-0 rounded-md px-2 py-0.5 text-xs font-medium',
-                            replied ? 'bg-success-bg text-success' : PILL[bucket],
+                            replied ? 'bg-success-soft text-success' : PILL[bucket],
                           )}
                         >
                           {statusLabel(t)}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-text-subtle">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         <span className="tabular-nums">{t.reference}</span> &middot; {lastActivity(t)}
                       </p>
                       {t.incidentRef && (
@@ -195,7 +202,7 @@ export function MyTicketsPage() {
                         </div>
                       )}
                     </div>
-                    <ChevronRight className="size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
                   </Link>
                 </li>
               )

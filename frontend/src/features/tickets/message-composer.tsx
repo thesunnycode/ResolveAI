@@ -119,7 +119,7 @@ export function MessageComposer({
   const tabClass = (active: boolean, tone: 'primary' | 'warning') =>
     cn(
       '-mb-px min-h-10 border-b-2 px-4 text-sm font-medium',
-      active ? (tone === 'primary' ? 'border-primary text-text' : 'border-warning text-text') : 'border-transparent text-text-muted hover:text-text',
+      active ? (tone === 'primary' ? 'border-primary text-foreground' : 'border-warning text-foreground') : 'border-transparent text-muted-foreground hover:text-foreground',
     )
 
   return (
@@ -150,13 +150,13 @@ export function MessageComposer({
         rows={3}
         placeholder={tab === 'PUBLIC' ? 'Write a reply…' : 'Note for the team…'}
         className={cn(
-          'block max-h-[40svh] min-h-20 w-full resize-y border-0 bg-transparent p-3.5 text-base text-text placeholder:text-text-subtle focus:outline-none',
-          tab === 'INTERNAL' && 'bg-warning-bg',
+          'block max-h-[40svh] min-h-20 w-full resize-y border-0 bg-transparent p-3.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none',
+          tab === 'INTERNAL' && 'bg-warning-soft',
         )}
       />
       {failed && <p className="px-3.5 text-xs text-danger" role="alert">Couldn&apos;t send — your text is safe. Try again.</p>}
       <div className="flex items-center justify-between gap-3 border-t border-border px-3.5 py-2">
-        <p className="min-w-0 truncate text-xs text-text-subtle" aria-live="polite">
+        <p className="min-w-0 truncate text-xs text-muted-foreground" aria-live="polite">
           {sending ? 'Sending…' : saved ? 'Draft saved' : ''}
           <span className="hidden sm:inline">
             {sending || saved ? ' · ' : ''}

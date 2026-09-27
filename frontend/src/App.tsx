@@ -1,7 +1,8 @@
 import { BoardPage } from '@/features/board/board-page'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { Compass } from 'lucide-react'
-import { EmptyState } from '@/components/ui/empty-state'
+import { EmptyState } from '@/components/app/states'
+import { Button } from '@/components/ui/button'
 import { AppShell } from '@/components/layout/app-shell'
 import { LoginPage } from '@/features/auth/login-page'
 import { RegisterPage } from '@/features/auth/register-page'
@@ -26,8 +27,12 @@ function NotFoundPage() {
         <EmptyState
           icon={Compass}
           title="Page not found"
-          description="That address doesn't match anything in ResolveAI."
-          action={{ label: 'Back to my home page', onClick: () => navigate('/') }}
+          body="That address doesn't match anything in ResolveAI."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+              Back to my home page
+            </Button>
+          }
         />
       </div>
     </div>
@@ -37,7 +42,7 @@ function NotFoundPage() {
 function RoleHome() {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'CUSTOMER' ? '/my-tickets' : '/queue'} replace />
+  return <Navigate to={user.role === 'CUSTOMER' ? '/tickets' : '/queue'} replace />
 }
 
 export default function App() {
@@ -49,7 +54,7 @@ export default function App() {
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route path="/" element={<RoleHome />} />
 
-        <Route path="/my-tickets" element={<ProtectedRoute roles={['CUSTOMER']}><MyTicketsPage /></ProtectedRoute>} />
+        <Route path="/tickets" element={<ProtectedRoute roles={['CUSTOMER']}><MyTicketsPage /></ProtectedRoute>} />
         <Route path="/tickets/new" element={<ProtectedRoute roles={['CUSTOMER']}><NewTicketPage /></ProtectedRoute>} />
         <Route path="/tickets/:id" element={<TicketDetailPage />} />
 

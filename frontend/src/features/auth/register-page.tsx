@@ -58,7 +58,7 @@ export function RegisterPage() {
 
   React.useEffect(() => {
     // Registration always creates a CUSTOMER (the backend's RegisterRequest
-    // has no role field, deliberately), so this could hardcode /my-tickets -
+    // has no role field, deliberately), so this could hardcode /tickets -
     // but routing through "/" keeps this page from ever having to know that.
     if (user) navigate('/', { replace: true })
   }, [user, navigate])

@@ -2,8 +2,8 @@ import { ArrowLeft, Check, Copy, SearchX } from 'lucide-react'
 import * as React from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { useAuth } from '@/features/auth/auth-context'
@@ -75,7 +75,7 @@ function CopyReference({ reference, className }: { reference: string; className?
       onClick={copy}
       title="Copy reference (c)"
       className={cn(
-        'group inline-flex min-h-6 w-fit items-center gap-1 rounded px-1 -mx-1 text-sm font-medium tabular-nums text-text-subtle hover:bg-surface-2 hover:text-text',
+        'group inline-flex min-h-6 w-fit items-center gap-1 rounded px-1 -mx-1 text-sm font-medium tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground',
         className,
       )}
     >
@@ -136,7 +136,7 @@ export function TicketDetailPage() {
   useHotkey('e', () => ticket && changeStatus('RESOLVED'), {
     enabled: isStaff && !!ticket && !pendingTo && allowedTransitionsFrom(ticket.status).includes('RESOLVED'),
   })
-  useHotkey('Escape', () => navigate(isCustomerUser ? '/my-tickets' : '/queue'), { enabled: !!ticket })
+  useHotkey('Escape', () => navigate(isCustomerUser ? '/tickets' : '/queue'), { enabled: !!ticket })
 
   if (isLoading) {
     return (
@@ -157,8 +157,12 @@ export function TicketDetailPage() {
           <EmptyState
             icon={SearchX}
             title="Ticket not found"
-            description="It may have been removed, or it belongs to a queue you don't have access to."
-            action={{ label: 'Back to my home page', onClick: () => navigate('/') }}
+            body="It may have been removed, or it belongs to a queue you don't have access to."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+                Back to my home page
+              </Button>
+            }
           />
         </div>
       </div>
@@ -167,7 +171,7 @@ export function TicketDetailPage() {
   if (isError || !ticket) {
     return (
       <div className="mx-auto max-w-5xl px-5 py-6">
-        <ErrorBanner message="Couldn't load this ticket." onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     )
   }
@@ -238,15 +242,15 @@ export function TicketDetailPage() {
     const closed = ['RESOLVED', 'CLOSED'].includes(t.status)
     return (
       <div className="mx-auto flex min-h-[calc(100svh-7rem)] max-w-3xl flex-col px-5 pt-8 sm:px-8 md:min-h-svh lg:pt-10 animate-slide-up">
-        <Link to="/my-tickets" className="mb-4 inline-flex w-fit items-center gap-1 text-sm text-text-muted hover:text-text">
+        <Link to="/tickets" className="mb-4 inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-3.5" aria-hidden /> My tickets
         </Link>
-        <h1 tabIndex={-1} className="text-2xl font-semibold leading-tight tracking-[-0.025em] text-text">
+        <h1 tabIndex={-1} className="text-2xl font-semibold leading-tight tracking-[-0.025em] text-foreground">
           {t.subject}
         </h1>
-        <p className="mt-2 flex items-center gap-2 text-sm text-text-muted">
+        <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
           <CopyReference reference={t.reference} />
-          <span className="rounded-md bg-primary-bg px-2 py-0.5 text-xs font-medium text-primary">{CUSTOMER_STATUS_LABEL[t.status]}</span>
+          <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-primary">{CUSTOMER_STATUS_LABEL[t.status]}</span>
         </p>
         <ResponsePromise target={t.responseTarget} status={t.status} justCreated={justCreated} />
         {/* TicketCustomerResponse carries no incident field yet - a customer-safe incident
@@ -255,7 +259,7 @@ export function TicketDetailPage() {
         <div className="mt-7 flex-1 space-y-4 pb-6">{thread(t.messages.filter((m) => m.visibility === 'PUBLIC'))}</div>
         {!closed && (
           // Audit R7: the reply box stays in reach at the end of a long thread.
-          <div className="sticky bottom-16 z-10 -mx-2 bg-bg/90 px-2 pb-4 pt-2 backdrop-blur md:bottom-0">
+          <div className="sticky bottom-16 z-10 -mx-2 bg-background/90 px-2 pb-4 pt-2 backdrop-blur md:bottom-0">
             <MessageComposer key={t.id} ticketId={t.id} allowInternal={false} onSend={handleSend} />
           </div>
         )}
@@ -265,15 +269,15 @@ export function TicketDetailPage() {
 
   return (
     <div className="flex h-[calc(100svh-7.5rem-1px)] flex-col md:h-svh">
-      <div className="border-b border-border bg-glass px-4 py-3 backdrop-blur-xl sm:px-6">
+      <div className="border-b border-border bg-popover/80 px-4 py-3 backdrop-blur-xl sm:px-6">
         {/* Audit U4: the link is as wide as its text, not the whole header. */}
-        <Link to="/queue" className="inline-flex min-h-6 w-fit items-center gap-1 text-sm text-text-muted hover:text-text">
+        <Link to="/queue" className="inline-flex min-h-6 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-3.5" aria-hidden /> Queue
         </Link>
         {/* Audit R1: reference above the title on phones, beside it from sm up. */}
         <div className="mt-1 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
           <CopyReference reference={t.reference} className="shrink-0" />
-          <h1 tabIndex={-1} className="min-w-0 text-lg font-semibold leading-snug tracking-[-0.02em] text-text sm:text-xl">
+          <h1 tabIndex={-1} className="min-w-0 text-lg font-semibold leading-snug tracking-[-0.02em] text-foreground sm:text-xl">
             {t.subject}
           </h1>
         </div>
@@ -282,7 +286,7 @@ export function TicketDetailPage() {
             <PriorityLabel priority={t.priority} showName />
             {t.priority !== 'UNTRIAGED' && <PriorityRationale ticketId={t.id} />}
           </span>
-          {t.category && <span className="text-text-muted">{humanize(t.category)}</span>}
+          {t.category && <span className="text-muted-foreground">{humanize(t.category)}</span>}
           <AssignControl
             ticketId={t.id}
             reference={t.reference}
@@ -310,7 +314,7 @@ export function TicketDetailPage() {
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-6 max-md:pt-16 sm:px-6">{thread(t.messages)}</div>
           {/* Audit R3: the composer is pinned to the bottom of the thread, never below the fold. */}
-          <div className="sticky bottom-0 z-10 border-t border-border bg-bg/90 px-4 py-3 backdrop-blur sm:px-6">
+          <div className="sticky bottom-0 z-10 border-t border-border bg-background/90 px-4 py-3 backdrop-blur sm:px-6">
             <div className="mx-auto w-full max-w-3xl">
               <MessageComposer key={t.id} ticketId={t.id} allowInternal prefill={prefill} focusSignal={focusSignal} onSend={handleSend} />
             </div>

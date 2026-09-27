@@ -60,12 +60,12 @@ export function Segmented<T extends string>({
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
               'flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              active ? 'bg-surface-2 text-text shadow-card' : 'text-text-muted hover:text-text',
+              active ? 'bg-muted text-foreground shadow-card' : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {o.label}
             {o.count != null && (
-              <span className={cn('tabular-nums text-xs', active ? 'text-text-muted' : 'text-text-subtle')}>
+              <span className={cn('tabular-nums text-xs', active ? 'text-muted-foreground' : 'text-muted-foreground')}>
                 {o.count}
               </span>
             )}
@@ -93,16 +93,16 @@ export function StatTile({
 }) {
   return (
     <div className="glass rounded-xl px-4 py-3.5" aria-busy={loading || undefined}>
-      <p className="flex items-center gap-1.5 text-xs text-text-muted">
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {!loading && tone !== 'neutral' && <ToneDot tone={tone} />}
         {label}
       </p>
       {loading ? (
         <Skeleton className="mt-2 h-6 w-12" />
       ) : (
-        <p className="mt-1 text-xl font-semibold tabular-nums tracking-[-0.02em] text-text">{value}</p>
+        <p className="mt-1 text-xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">{value}</p>
       )}
-      {hint && !loading && <p className="mt-0.5 text-xs text-text-subtle">{hint}</p>}
+      {hint && !loading && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -116,7 +116,7 @@ function ToneDot({ tone }: { tone: 'warning' | 'danger' | 'success' | 'neutral' 
         tone === 'warning' && 'bg-warning',
         tone === 'danger' && 'bg-danger',
         tone === 'success' && 'bg-success',
-        tone === 'neutral' && 'bg-border-strong',
+        tone === 'neutral' && 'bg-border',
       )}
     />
   )
@@ -150,18 +150,18 @@ export function MetricStrip({ metrics, loading, label }: { metrics: Metric[]; lo
         const content = (
           <>
             {!loading && m.tone && m.tone !== 'neutral' && <ToneDot tone={m.tone} />}
-            <span className="font-semibold tabular-nums text-text">
+            <span className="font-semibold tabular-nums text-foreground">
               {loading ? <Skeleton className="inline-block h-3.5 w-5 align-middle" /> : m.value}
             </span>
-            <span className="text-text-muted">{m.label}</span>
+            <span className="text-muted-foreground">{m.label}</span>
           </>
         )
         const cls = cn(
           'flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-sm',
-          m.selected && 'bg-surface-2 shadow-card',
+          m.selected && 'bg-muted shadow-card',
         )
         return m.onSelect && !loading ? (
-          <button key={m.key} type="button" onClick={m.onSelect} aria-pressed={m.selected} title={m.title} className={cn(cls, 'hover:bg-surface-2/70')}>
+          <button key={m.key} type="button" onClick={m.onSelect} aria-pressed={m.selected} title={m.title} className={cn(cls, 'hover:bg-muted/70')}>
             {content}
           </button>
         ) : (
