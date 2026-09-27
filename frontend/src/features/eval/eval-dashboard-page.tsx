@@ -3,7 +3,7 @@ import { CheckCircle2, Coins, FlaskConical, Play, XCircle } from 'lucide-react'
 import { Page, PageHeader } from '@/components/layout/page-header'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
+import { EmptyState } from '@/components/app/states'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { ApiError, api } from '@/lib/api-client'
@@ -107,7 +107,7 @@ export function EvalDashboardPage() {
       />
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-medium text-text-muted">Suites</h2>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Suites</h2>
         {runs.isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Skeleton className="h-40 rounded-xl" />
@@ -118,7 +118,7 @@ export function EvalDashboardPage() {
             <EmptyState
               icon={FlaskConical}
               title={running ? 'Evaluation running…' : 'No evaluation runs yet'}
-              description={
+              body={
                 running
                   ? 'Classifying the 60 labelled test tickets. The result appears here in a few minutes.'
                   : 'Run the 60-ticket classification suite against the active triage prompt. It takes a few minutes and costs about ten cents of this workspace’s AI budget.'
@@ -135,8 +135,8 @@ export function EvalDashboardPage() {
                 <div key={suite} className="glass rounded-xl p-5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-medium text-text">{suite}</p>
-                      <p className="mt-0.5 text-xs text-text-subtle">{latest.modelId}</p>
+                      <p className="text-sm font-medium text-foreground">{suite}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{latest.modelId}</p>
                     </div>
                     {latest.passed ? (
                       <span className="inline-flex items-center gap-1 rounded-md bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
@@ -148,10 +148,10 @@ export function EvalDashboardPage() {
                       </span>
                     )}
                   </div>
-                  <p className="mt-4 text-2xl font-semibold tabular-nums tracking-[-0.03em] text-text">
+                  <p className="mt-4 text-2xl font-semibold tabular-nums tracking-[-0.03em] text-foreground">
                     {(metricValue * 100).toFixed(1)}%
                   </p>
-                  <p className="text-xs capitalize text-text-subtle">{humanize(metricName)}</p>
+                  <p className="text-xs capitalize text-muted-foreground">{humanize(metricName)}</p>
                   {/* Audit N6: a y-axis, gridlines and dated ends, so the trend can be read. */}
                   {(() => {
                     const shown = suiteRuns.slice(0, 12).reverse()
@@ -159,7 +159,7 @@ export function EvalDashboardPage() {
                     return (
                       <figure className="mt-4">
                         <div className="flex gap-2">
-                          <div className="flex h-16 flex-col justify-between text-right text-xs tabular-nums text-text-subtle" aria-hidden>
+                          <div className="flex h-16 flex-col justify-between text-right text-xs tabular-nums text-muted-foreground" aria-hidden>
                             <span>100%</span>
                             <span>50%</span>
                             <span>0%</span>
@@ -186,7 +186,7 @@ export function EvalDashboardPage() {
                             })}
                           </div>
                         </div>
-                        <figcaption className="mt-1 flex justify-between pl-10 text-xs text-text-subtle">
+                        <figcaption className="mt-1 flex justify-between pl-10 text-xs text-muted-foreground">
                           <span>{day(shown[0].startedAt)}</span>
                           <span className="flex items-center gap-2">
                             <span className="inline-flex items-center gap-1">
@@ -209,8 +209,8 @@ export function EvalDashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium text-text-muted">
-          Token spend {u && <span className="font-normal text-text-subtle">· {u.period.from} to {u.period.to}</span>}
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+          Token spend {u && <span className="font-normal text-muted-foreground">· {u.period.from} to {u.period.to}</span>}
         </h2>
         {usage.isLoading ? (
           <Skeleton className="h-28 rounded-xl" />
@@ -219,28 +219,28 @@ export function EvalDashboardPage() {
             <EmptyState
               icon={Coins}
               title="No AI calls this month yet"
-              description="Every triage and every draft records its tokens and cost. They add up here, against the workspace’s monthly budget."
+              body="Every triage and every draft records its tokens and cost. They add up here, against the workspace’s monthly budget."
             />
           </div>
         ) : (
           <>
             <div className="mb-3 grid gap-3 sm:grid-cols-3">
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-xs text-text-muted">Spent this month</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-text">{dollars(u.totals.costMicros)}</p>
+                <p className="text-xs text-muted-foreground">Spent this month</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{dollars(u.totals.costMicros)}</p>
                 {u.budget && (
-                  <p className={cn('text-xs', u.budget.status === 'OK' ? 'text-text-subtle' : 'text-warning')}>
+                  <p className={cn('text-xs', u.budget.status === 'OK' ? 'text-muted-foreground' : 'text-warning')}>
                     of {dollars(u.budget.monthlyMicros)} budget · {u.budget.remainingPct}% left
                   </p>
                 )}
               </div>
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-xs text-text-muted">Model calls</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-text">{u.totals.calls.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Model calls</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{u.totals.calls.toLocaleString()}</p>
               </div>
               <div className="glass rounded-xl px-4 py-3.5">
-                <p className="text-xs text-text-muted">Tokens in / out</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-text">
+                <p className="text-xs text-muted-foreground">Tokens in / out</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">
                   {u.totals.tokensIn.toLocaleString()} / {u.totals.tokensOut.toLocaleString()}
                 </p>
               </div>
@@ -248,7 +248,7 @@ export function EvalDashboardPage() {
             <div className="glass overflow-x-auto rounded-xl">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
+                  <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
                     <th className="px-4 py-2.5 font-medium">Feature</th>
                     <th className="px-4 py-2.5 font-medium">Prompt · model</th>
                     <th className="px-4 py-2.5 text-right font-medium">Calls</th>
@@ -260,14 +260,14 @@ export function EvalDashboardPage() {
                 <tbody>
                   {u.breakdown.map((r) => (
                     <tr key={`${r.feature}-${r.promptVersion}-${r.model}`} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2.5 text-text">{r.feature}</td>
-                      <td className="px-4 py-2.5 text-text-muted">
+                      <td className="px-4 py-2.5 text-foreground">{r.feature}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
                         {r.promptVersion} · {r.model}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{r.calls}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{dollars(r.costMicros)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{(r.avgLatencyMs / 1000).toFixed(1)}s</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-text-muted">
+                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                         {r.suppressionRate == null ? '—' : `${Math.round(r.suppressionRate * 100)}%`}
                       </td>
                     </tr>

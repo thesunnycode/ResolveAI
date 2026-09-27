@@ -5,7 +5,7 @@ import { Page, PageHeader } from '@/components/layout/page-header'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorState } from '@/components/app/states'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/field-error'
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton'
@@ -16,6 +16,13 @@ import { cn } from '@/lib/utils'
 import { useAiPolicy, useCalendar, useSlaPolicies, useUpdateAiPolicy, useUpdateCalendar, useUpdateSlaPolicy } from './api'
 
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+
+const PRIORITY_DOT: Record<string, string> = {
+  p1: 'var(--danger)',
+  p2: 'var(--warning)',
+  p3: 'var(--primary)',
+  p4: 'var(--muted-foreground)',
+}
 
 const DAY_LABELS = [
   { iso: 1, label: 'Mon' },
@@ -28,22 +35,22 @@ const DAY_LABELS = [
 ]
 
 function SlaPolicyTab() {
-  const { data, isLoading, isError, refetch } = useSlaPolicies()
+  const { data, isLoading, isError, error, refetch } = useSlaPolicies()
   return (
     <div className="p-5">
-      <p className="mb-5 max-w-2xl text-sm leading-relaxed text-text-muted">
+      <p className="mb-5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
         First-response and resolution targets, in business minutes, for your plan&apos;s tickets. Saving
         supersedes the current target — tickets already promised the old one keep it.
       </p>
       {isLoading ? (
         <SkeletonRow count={4} />
       ) : isError ? (
-        <ErrorBanner onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-surface-2/30">
+        <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Priority</th>
                 <th className="px-4 py-3 font-medium">First response (min)</th>
                 <th className="px-4 py-3 font-medium">Resolution (min)</th>
@@ -83,9 +90,9 @@ function SlaPolicyTableRow({ row }: { row: AdminSlaPolicyRow }) {
 
   return (
     <tr className="border-b border-border last:border-0">
-      <td className="px-4 py-3 font-medium text-text">
+      <td className="px-4 py-3 font-medium text-foreground">
         <span className="flex items-center gap-2">
-          <span className="size-2 rounded-full" style={{ background: `var(--color-${row.priority.toLowerCase()})` }} />
+          <span className="size-2 rounded-full" style={{ background: PRIORITY_DOT[row.priority.toLowerCase()] }} />
           {row.priority}
         </span>
       </td>
@@ -111,7 +118,7 @@ function SlaPolicyTableRow({ row }: { row: AdminSlaPolicyRow }) {
       </td>
       <td className="px-4 py-3">
         {row.configured ? (
-          <span className="text-text-subtle">{row.versionLabel}</span>
+          <span className="text-muted-foreground">{row.versionLabel}</span>
         ) : (
           <Badge variant="warning">Not configured</Badge>
         )}
@@ -126,7 +133,7 @@ function SlaPolicyTableRow({ row }: { row: AdminSlaPolicyRow }) {
 }
 
 function CalendarTab() {
-  const { data, isLoading, isError, refetch } = useCalendar()
+  const { data, isLoading, isError, error, refetch } = useCalendar()
   if (isLoading) {
     return (
       <div className="max-w-md space-y-4 p-5">
@@ -138,7 +145,7 @@ function CalendarTab() {
   if (isError || !data) {
     return (
       <div className="p-5">
-        <ErrorBanner onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     )
   }
@@ -178,7 +185,7 @@ function CalendarForm({ calendar }: { calendar: AdminCalendar }) {
         <Input id="cal-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
       </div>
       <div>
-        <p id="cal-days" className="mb-1.5 text-sm font-medium text-text">Working days</p>
+        <p id="cal-days" className="mb-1.5 text-sm font-medium text-foreground">Working days</p>
         <div className="flex gap-1.5" role="group" aria-labelledby="cal-days">
           {DAY_LABELS.map((d) => (
             <button
@@ -196,8 +203,8 @@ function CalendarForm({ calendar }: { calendar: AdminCalendar }) {
               className={cn(
                 'flex h-9 w-11 items-center justify-center rounded-md border text-xs font-medium transition-colors',
                 days.has(d.iso)
-                  ? 'border-text/40 bg-surface-2 text-text'
-                  : 'border-border-control border-dashed text-text-subtle line-through decoration-text-subtle/50',
+                  ? 'border-foreground/40 bg-muted text-foreground'
+                  : 'border-input border-dashed text-muted-foreground line-through decoration-text-subtle/50',
               )}
             >
               {d.label}
@@ -223,7 +230,7 @@ function CalendarForm({ calendar }: { calendar: AdminCalendar }) {
 }
 
 function AiPolicyTab() {
-  const { data, isLoading, isError, refetch } = useAiPolicy()
+  const { data, isLoading, isError, error, refetch } = useAiPolicy()
   if (isLoading) {
     return (
       <div className="max-w-md space-y-4 p-5">
@@ -235,7 +242,7 @@ function AiPolicyTab() {
   if (isError || !data) {
     return (
       <div className="p-5">
-        <ErrorBanner onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     )
   }
@@ -273,7 +280,7 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
     <div className="max-w-md space-y-5 p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <label htmlFor="ai-external" className="text-base font-medium text-text">Allow external models</label>
+          <label htmlFor="ai-external" className="text-base font-medium text-foreground">Allow external models</label>
           {!externalAllowed && (
             <p className="mt-0.5 text-xs text-warning">
               Tickets will be processed by the local model only. Triage accuracy may be lower.
@@ -286,17 +293,17 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
           onCheckedChange={setExternalAllowed}
           className={cn(
             'relative h-5 w-9 shrink-0 rounded-full',
-            externalAllowed ? 'bg-primary' : 'bg-surface-2 border border-border',
+            externalAllowed ? 'bg-primary' : 'bg-muted border border-border',
           )}
         >
-          <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-[18px]" />
+          <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-popover shadow transition-transform data-[state=checked]:translate-x-[18px]" />
         </Switch.Root>
       </div>
 
       <div className="flex items-center justify-between gap-4">
         <div>
-          <label htmlFor="ai-pii" className="text-base font-medium text-text">Redact PII before sending to external models</label>
-          <p className="mt-0.5 text-xs text-text-subtle">Turning this off does not undo redaction already applied.</p>
+          <label htmlFor="ai-pii" className="text-base font-medium text-foreground">Redact PII before sending to external models</label>
+          <p className="mt-0.5 text-xs text-muted-foreground">Turning this off does not undo redaction already applied.</p>
         </div>
         <Switch.Root
           id="ai-pii"
@@ -304,10 +311,10 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
           onCheckedChange={setPiiRedaction}
           className={cn(
             'relative h-5 w-9 shrink-0 rounded-full',
-            piiRedaction ? 'bg-primary' : 'bg-surface-2 border border-border',
+            piiRedaction ? 'bg-primary' : 'bg-muted border border-border',
           )}
         >
-          <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-[18px]" />
+          <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-popover shadow transition-transform data-[state=checked]:translate-x-[18px]" />
         </Switch.Root>
       </div>
 
@@ -321,11 +328,11 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
-          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
         >
           <div className={cn('h-full rounded-full', pct >= 90 ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-1 text-xs text-text-subtle">
+        <p className="mt-1 text-xs text-muted-foreground">
           {usd(spent)} spent of {usd(budgetTotal)} this month
         </p>
       </div>
@@ -364,7 +371,7 @@ export function SettingsPage() {
             <Tabs.Trigger
               key={t.v}
               value={t.v}
-              className="-mb-px border-b-2 border-transparent px-3 py-3 text-sm font-medium text-text-muted transition-colors hover:text-text data-[state=active]:border-text data-[state=active]:text-text"
+              className="-mb-px border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground"
             >
               {t.label}
             </Tabs.Trigger>

@@ -65,8 +65,8 @@ export default function App() {
         <Route path="/knowledge" element={<ProtectedRoute roles={['AGENT', 'TEAM_LEAD', 'ADMIN']}><KnowledgeBasePage /></ProtectedRoute>} />
         <Route path="/knowledge/new" element={<ProtectedRoute roles={['ADMIN']}><KnowledgeDocumentFormPage /></ProtectedRoute>} />
 
-        <Route path="/admin/settings" element={<ProtectedRoute roles={['ADMIN']}><SettingsPage /></ProtectedRoute>} />
-        <Route path="/admin/evaluation" element={<ProtectedRoute roles={['ADMIN']}><EvalDashboardPage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute roles={['ADMIN']}><SettingsPage /></ProtectedRoute>} />
+        <Route path="/evaluation" element={<ProtectedRoute roles={['ADMIN']}><EvalDashboardPage /></ProtectedRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
 

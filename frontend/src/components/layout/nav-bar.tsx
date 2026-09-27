@@ -56,8 +56,8 @@ const AGENT_NAV: NavItem[] = [
 const LEAD_NAV: NavItem[] = [{ to: '/board', label: 'Board', icon: KanbanSquare }]
 
 const ADMIN_NAV: NavItem[] = [
-  { to: '/admin/settings', label: 'Settings', icon: Settings2 },
-  { to: '/admin/evaluation', label: 'Evaluation', icon: FlaskConical },
+  { to: '/settings', label: 'Settings', icon: Settings2 },
+  { to: '/evaluation', label: 'Evaluation', icon: FlaskConical },
 ]
 
 const CUSTOMER_NAV: NavItem[] = [
