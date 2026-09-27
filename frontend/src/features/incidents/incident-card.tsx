@@ -25,7 +25,7 @@ export function IncidentCard({
   return (
     <div
       className={cn(
-        'glass rounded-xl p-5 transition-all hover:border-border-strong hover:shadow-elevated',
+        'glass rounded-xl p-5 transition-all hover:border-border hover:shadow-elevated',
         incident.status === 'PROPOSED' && 'border-warning/30',
       )}
     >
@@ -46,25 +46,25 @@ export function IncidentCard({
               <CheckCircle2 className="size-3" aria-hidden /> Resolved
             </Badge>
           )}
-          <span className="text-xs text-text-subtle">{incident.reference}</span>
+          <span className="text-xs text-muted-foreground">{incident.reference}</span>
         </div>
-        <span className="text-xs text-text-subtle">
+        <span className="text-xs text-muted-foreground">
           detected {formatSeconds(d.timeToDetectSeconds)} after the first report
         </span>
       </div>
 
       <Link to={`/incidents/${incident.id}`} className="block">
-        <h3 className="text-lg font-semibold tracking-tight text-text hover:text-primary">{incident.title}</h3>
+        <h3 className="text-lg font-semibold tracking-tight text-foreground hover:text-primary">{incident.title}</h3>
       </Link>
 
-      <p className="mt-1.5 text-sm text-text-muted">
+      <p className="mt-1.5 text-sm text-muted-foreground">
         {incident.linkedTicketCount} tickets &middot; arrival rate {d.arrivalRateMultiple.toFixed(1)}&times; baseline
         &middot; window {Math.round((new Date(d.detectedAt).getTime() - new Date(d.firstTicketAt).getTime()) / 60000)} min
       </p>
 
       {/* The gate line, on the card, not behind a click — doc 12/06: the evidence
           that a statistical check, not a model, decided this. */}
-      <p className="mt-3 rounded-lg bg-surface-2/60 px-3 py-2 font-mono text-xs text-text-subtle">
+      <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs text-muted-foreground">
         gate: size {sizeOk ? '✓' : '✗'} &ge;{d.gateThresholds.minClusterSize} AND rate {rateOk ? '✓' : '✗'} &gt;
         {d.gateThresholds.minRateMultiple}&times; — {sizeOk && rateOk ? 'both passed' : 'not satisfied'}
       </p>
@@ -72,11 +72,11 @@ export function IncidentCard({
       {waiting && (
         // Audit U18: name who can act, instead of "a team lead" - the agent's next step is
         // to ping one of them.
-        <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-text-subtle">
+        <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
           {leadNames.length > 0 ? (
             <>
               Needs a team lead to confirm:{' '}
-              <span className="font-medium text-text">
+              <span className="font-medium text-foreground">
                 {leadNames.length > 2 ? `${leadNames.slice(0, 2).join(', ')} +${leadNames.length - 2}` : leadNames.join(' or ')}
               </span>
               . Ping them if your customers are affected.

@@ -35,10 +35,10 @@ export function ArrivalSparkline({ tickets, detection }: { tickets: LinkedTicket
           />
         ))}
         <div className="absolute inset-y-0 w-px bg-text" style={{ left: `${Math.min(100, Math.max(0, detectX))}%` }} aria-hidden>
-          <span className="absolute -top-4 -translate-x-1/2 whitespace-nowrap text-xs text-text-muted">gate fired</span>
+          <span className="absolute -top-4 -translate-x-1/2 whitespace-nowrap text-xs text-muted-foreground">gate fired</span>
         </div>
       </div>
-      <figcaption className="mt-1 flex justify-between text-xs text-text-subtle">
+      <figcaption className="mt-1 flex justify-between text-xs text-muted-foreground">
         <span>first report</span>
         <span>
           {times.length} tickets over {minutes} min

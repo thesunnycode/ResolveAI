@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/app/confirm-dialog'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorState } from '@/components/app/states'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
@@ -20,7 +20,7 @@ import { ArrivalSparkline } from './arrival-sparkline'
 export function IncidentDetailPage() {
   const { id } = useParams()
   const { push } = useToast()
-  const { data: incident, isLoading, isError, refetch } = useIncident(id!)
+  const { data: incident, isLoading, isError, error, refetch } = useIncident(id!)
   const publishUpdate = usePublishUpdate()
   const detachTicket = useDetachTicket()
   const resolveIncident = useResolveIncident()
@@ -51,7 +51,7 @@ export function IncidentDetailPage() {
   if (isError || !incident) {
     return (
       <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 lg:py-10 animate-slide-up">
-        <ErrorBanner onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     )
   }
@@ -83,7 +83,7 @@ export function IncidentDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 lg:py-10 animate-slide-up">
-      <Link to="/incidents" className="mb-4 flex items-center gap-1 text-sm text-text-muted hover:text-text">
+      <Link to="/incidents" className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-3.5" aria-hidden /> Incidents
       </Link>
 
@@ -92,18 +92,18 @@ export function IncidentDetailPage() {
           <Badge variant={incident.status === 'RESOLVED' ? 'success' : incident.status === 'PROPOSED' ? 'warning' : 'primary'}>
             {incident.status}
           </Badge>
-          <span className="text-sm text-text-subtle">{incident.reference}</span>
+          <span className="text-sm text-muted-foreground">{incident.reference}</span>
         </div>
         <div className="mt-1.5 flex items-start justify-between gap-4">
-          <h1 tabIndex={-1} className="text-xl font-semibold tracking-[-0.02em] text-text">{incident.title}</h1>
+          <h1 tabIndex={-1} className="text-xl font-semibold tracking-[-0.02em] text-foreground">{incident.title}</h1>
           {canManage && (incident.status === 'CONFIRMED' || incident.status === 'MITIGATED') && (
             <Button variant="secondary" size="sm" onClick={() => setConfirmResolve(true)}>
               Resolve incident
             </Button>
           )}
         </div>
-        {incident.summary && <p className="mt-1 text-base text-text-muted">{incident.summary}</p>}
-        <p className="mt-2 font-mono text-xs text-text-subtle">
+        {incident.summary && <p className="mt-1 text-base text-muted-foreground">{incident.summary}</p>}
+        <p className="mt-2 font-mono text-xs text-muted-foreground">
           {incident.detection.clusterSizeAtDetection} tickets &middot; {incident.detection.arrivalRateMultiple.toFixed(1)}&times;
           baseline &middot; {formatSeconds(incident.detection.timeToDetectSeconds)} to detect &middot;{' '}
           {incident.titleGeneratedBy ? `title by ${incident.titleGeneratedBy}` : 'templated title'}
@@ -114,22 +114,22 @@ export function IncidentDetailPage() {
       </div>
 
       <section className="glass mb-6 overflow-hidden rounded-xl">
-        <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-text">
+        <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
           Linked tickets ({incident.linkedTickets.length})
         </h2>
         <div className="divide-y divide-border">
           {incident.linkedTickets.map((t) => (
             <div key={t.ticketId} className="flex items-center justify-between px-4 py-2.5">
-              <Link to={`/tickets/${t.ticketId}`} className="text-sm text-text hover:text-primary">
+              <Link to={`/tickets/${t.ticketId}`} className="text-sm text-foreground hover:text-primary">
                 {t.reference} — {t.subject}
               </Link>
               <div className="flex items-center gap-2">
                 {t.linkConfidence != null && (
-                  <span className="text-xs text-text-subtle">{t.linkConfidence.toFixed(2)}</span>
+                  <span className="text-xs text-muted-foreground">{t.linkConfidence.toFixed(2)}</span>
                 )}
                 {canManage && incident.status !== 'RESOLVED' && <button
                   onClick={() => setDetachTarget(t.ticketId)}
-                  className="text-text-subtle hover:text-danger"
+                  className="text-muted-foreground hover:text-danger"
                   aria-label="Detach"
                 >
                   <Link2Off className="size-3.5" aria-hidden />
@@ -141,21 +141,21 @@ export function IncidentDetailPage() {
       </section>
 
       <section className="glass mb-6 overflow-hidden rounded-xl">
-        <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-text">Updates</h2>
+        <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">Updates</h2>
         <div className="divide-y divide-border">
           {incident.updates.length === 0 && (
-            <p className="px-4 py-4 text-sm text-text-subtle">No updates published yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">No updates published yet.</p>
           )}
           {incident.updates.map((u) => (
             <div key={u.id} className="px-4 py-3">
-              <div className="mb-1 flex items-center gap-2 text-xs text-text-subtle">
+              <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant={u.visibility === 'PUBLIC' ? 'primary' : 'neutral'}>{u.visibility}</Badge>
                 <span>{u.authorName}</span>
                 <span>&middot;</span>
                 <span>{formatDateTime(u.publishedAt)}</span>
               </div>
-              <p className="text-sm text-text">{u.body}</p>
-              <p className="mt-1 text-xs text-text-subtle">
+              <p className="text-sm text-foreground">{u.body}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {u.delivery.sent} sent &middot; {u.delivery.pending} pending &middot; {u.delivery.failed} failed
               </p>
             </div>
@@ -171,16 +171,16 @@ export function IncidentDetailPage() {
               onChange={(e) => setUpdateBody(e.target.value)}
             />
             <div className="mt-2.5 flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-text-muted">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Switch.Root
                   checked={isPublic}
                   onCheckedChange={setIsPublic}
                   className={cn(
                     'relative h-5 w-9 rounded-full transition-colors',
-                    isPublic ? 'bg-primary' : 'bg-surface-2 border border-border',
+                    isPublic ? 'bg-primary' : 'bg-muted border border-border',
                   )}
                 >
-                  <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-[18px]" />
+                  <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-card shadow transition-transform data-[state=checked]:translate-x-[18px]" />
                 </Switch.Root>
                 Visible to customers
               </label>

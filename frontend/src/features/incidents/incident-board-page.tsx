@@ -3,8 +3,7 @@ import * as React from 'react'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/app/confirm-dialog'
 import { Segmented } from '@/components/ui/segmented'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { ApiError, api } from '@/lib/api-client'
@@ -26,7 +25,7 @@ export function IncidentBoardPage() {
   const inDemo = useIsDemoWorkspace(user?.tenantSlug)
   const { push } = useToast()
   const statusParam = tab === 'LIVE' ? 'CONFIRMED,MITIGATED' : tab
-  const { data, isLoading, isError, refetch } = useIncidents(statusParam)
+  const { data, isLoading, isError, error, refetch } = useIncidents(statusParam)
   const confirmMutation = useConfirmIncident()
   const rejectMutation = useRejectIncident()
 
@@ -62,7 +61,7 @@ export function IncidentBoardPage() {
         }
       />
 
-      {isError && <ErrorBanner onRetry={() => refetch()} />}
+      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
 
       {isLoading ? (
         <SkeletonCard count={2} />
@@ -71,7 +70,7 @@ export function IncidentBoardPage() {
         <EmptyState
           icon={ShieldCheck}
           title={tab === 'PROPOSED' ? 'Nothing to review' : tab === 'LIVE' ? 'No live incidents' : 'No resolved incidents yet'}
-          description={
+          body={
             inDemo && tab === 'PROPOSED'
               ? canManage
                 ? 'Correlated ticket bursts appear here automatically — an empty board is the healthy state. Use “Simulate a payment outage” above to watch one form in about a minute.'
