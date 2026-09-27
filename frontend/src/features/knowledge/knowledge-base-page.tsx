@@ -6,8 +6,7 @@ import { Segmented } from '@/components/ui/segmented'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/app/confirm-dialog'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { useAuth } from '@/features/auth/auth-context'
@@ -31,7 +30,7 @@ export function KnowledgeBasePage() {
   const [source, setSource] = React.useState<SourceFilter>('all')
   const [query, setQuery] = React.useState('')
   const [preview, setPreview] = React.useState<number | null>(null)
-  const { data, isLoading, isError, refetch } = useKnowledgeDocuments(source === 'all' ? undefined : source)
+  const { data, isLoading, isError, error, refetch } = useKnowledgeDocuments(source === 'all' ? undefined : source)
   const deleteDoc = useDeleteKnowledgeDocument()
   const [deleteTarget, setDeleteTarget] = React.useState<number | null>(null)
   const all = data?.data ?? []
@@ -57,13 +56,13 @@ export function KnowledgeBasePage() {
 
       <div className="mb-3 flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-subtle" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title…"
             aria-label="Search documents"
-            className="h-10 w-full rounded-lg border border-border-control bg-surface pl-9 pr-3 text-base text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           />
         </div>
         <Segmented
@@ -82,7 +81,7 @@ export function KnowledgeBasePage() {
       <div className="glass overflow-hidden rounded-xl">
         {isError && (
           <div className="p-4">
-            <ErrorBanner onRetry={() => refetch()} />
+            <ErrorState error={error} onRetry={() => refetch()} />
           </div>
         )}
         {isLoading ? (
@@ -91,24 +90,34 @@ export function KnowledgeBasePage() {
           <EmptyState
             icon={Search}
             title="No documents match"
-            description="Try a different word, or show every source."
-            action={{ label: 'Clear filters', onClick: () => { setQuery(''); setSource('all') } }}
+            body="Try a different word, or show every source."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => { setQuery(''); setSource('all') }}>
+                Clear filters
+              </Button>
+            }
           />
         ) : docs.length === 0 ? (
           <EmptyState
             icon={BookOpen}
             title="No documents yet"
-            description={
+            body={
               user?.role === 'ADMIN'
                 ? 'Runbooks and articles you add here ground every AI draft — with none, every draft is withheld. Start with your most-asked question.'
                 : 'Runbooks and articles here ground every AI draft. Your workspace admin adds them; until they do, drafts are withheld.'
             }
-            action={user?.role === 'ADMIN' ? { label: 'Add your first article', onClick: () => navigate('/knowledge/new') } : undefined}
+            action={
+              user?.role === 'ADMIN' ? (
+                <Button variant="secondary" size="sm" onClick={() => navigate('/knowledge/new')}>
+                  Add your first article
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-subtle">
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
                 <th className="px-5 py-3 font-medium">Title</th>
                 <th className="px-4 py-2.5 font-medium">Source</th>
                 <th className="px-4 py-2.5 font-medium">Chunks</th>
@@ -118,8 +127,8 @@ export function KnowledgeBasePage() {
             </thead>
             <tbody>
               {docs.map((d) => (
-                <tr key={d.id} className="border-b border-border last:border-0 transition-colors hover:bg-surface-2/50">
-                  <td className="px-5 py-3.5 font-medium text-text">
+                <tr key={d.id} className="border-b border-border last:border-0 transition-colors hover:bg-muted/50">
+                  <td className="px-5 py-3.5 font-medium text-foreground">
                     <button type="button" onClick={() => setPreview(d.id)} className="text-left hover:text-primary hover:underline">
                       {d.title}
                     </button>
@@ -127,8 +136,8 @@ export function KnowledgeBasePage() {
                   <td className="px-4 py-2.5">
                     <Badge variant={SOURCE_VARIANT[d.source]}>{SOURCE_LABEL[d.source]}</Badge>
                   </td>
-                  <td className="px-4 py-2.5 text-text-muted">{d.chunkCount}</td>
-                  <td className="px-4 py-2.5 text-text-muted">
+                  <td className="px-4 py-2.5 text-muted-foreground">{d.chunkCount}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
                     {d.indexed ? (
                       <span className="inline-flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-success" />
@@ -142,7 +151,7 @@ export function KnowledgeBasePage() {
                     {user?.role === 'ADMIN' && (
                       <button
                         onClick={() => setDeleteTarget(d.id)}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-danger-bg hover:text-danger"
+                        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-danger-soft hover:text-danger"
                         aria-label={`Delete ${d.title}`}
                       >
                         <Trash2 className="size-3.5" aria-hidden />

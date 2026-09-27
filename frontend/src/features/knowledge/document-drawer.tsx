@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { ExternalLink, FileText, X } from 'lucide-react'
 import * as React from 'react'
 import { Badge } from '@/components/ui/badge'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorState } from '@/components/app/states'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatRelativeTime } from '@/lib/utils'
 import { useKnowledgeDocument } from './api'
@@ -25,7 +25,7 @@ export function DocumentDrawer({
   highlight?: { start: number; end: number; snippet?: string }
   onClose: () => void
 }) {
-  const { data: doc, isLoading, isError, refetch } = useKnowledgeDocument(documentId)
+  const { data: doc, isLoading, isError, error, refetch } = useKnowledgeDocument(documentId)
   const markRef = React.useRef<HTMLElement>(null)
 
   const range = React.useMemo(() => {
@@ -47,14 +47,14 @@ export function DocumentDrawer({
     <Dialog.Root open={documentId != null} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30 animate-fade-in" />
-        <Dialog.Content className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-border bg-surface shadow-popover focus:outline-none">
+        <Dialog.Content className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-border bg-popover shadow-popover focus:outline-none">
           <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-            <FileText className="mt-1 size-4 shrink-0 text-text-subtle" aria-hidden />
+            <FileText className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
             <div className="min-w-0 flex-1">
-              <Dialog.Title className="text-lg font-semibold leading-snug text-text">
+              <Dialog.Title className="text-lg font-semibold leading-snug text-foreground">
                 {doc?.title ?? 'Source document'}
               </Dialog.Title>
-              <Dialog.Description className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-subtle">
+              <Dialog.Description className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 {doc ? (
                   <>
                     <Badge variant={SOURCE_VARIANT[doc.source]}>{SOURCE_LABEL[doc.source]}</Badge>
@@ -71,14 +71,14 @@ export function DocumentDrawer({
                 href={doc.uri}
                 target="_blank"
                 rel="noreferrer"
-                className="flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-surface-2 hover:text-text"
+                className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label="Open the original in a new tab"
               >
                 <ExternalLink className="size-4" aria-hidden />
               </a>
             )}
             <Dialog.Close
-              className="flex size-8 items-center justify-center rounded-md text-text-subtle hover:bg-surface-2 hover:text-text"
+              className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Close"
             >
               <X className="size-4" aria-hidden />
@@ -86,7 +86,7 @@ export function DocumentDrawer({
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {isError ? (
-              <ErrorBanner message="Couldn't load this document." onRetry={() => refetch()} />
+              <ErrorState error={error} onRetry={() => refetch()} />
             ) : isLoading || !doc ? (
               <div className="space-y-2" aria-busy="true">
                 <Skeleton className="h-4 w-full" />
@@ -94,11 +94,11 @@ export function DocumentDrawer({
                 <Skeleton className="h-4 w-4/6" />
               </div>
             ) : (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                 {range ? (
                   <>
                     {doc.body.slice(0, range[0])}
-                    <mark ref={markRef} className="rounded-sm bg-success-bg px-0.5 text-text ring-1 ring-success/40">
+                    <mark ref={markRef} className="rounded-sm bg-success-soft px-0.5 text-foreground ring-1 ring-success/40">
                       {doc.body.slice(range[0], range[1])}
                     </mark>
                     {doc.body.slice(range[1])}

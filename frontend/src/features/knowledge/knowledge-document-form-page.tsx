@@ -3,6 +3,7 @@ import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { ChevronDown } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { UnsavedGuard } from '@/components/app/unsaved-guard'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/field-error'
 import { Input, Textarea } from '@/components/ui/input'
@@ -33,7 +34,8 @@ export function KnowledgeDocumentFormPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-8 sm:px-8 lg:py-10 animate-slide-up">
-      <h1 className="mb-5 text-xl font-semibold text-text">Add knowledge document</h1>
+      <UnsavedGuard when={!!(title || body || uri)} />
+      <h1 className="mb-5 text-xl font-semibold text-foreground">Add knowledge document</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label required>Title</Label>
@@ -42,17 +44,17 @@ export function KnowledgeDocumentFormPage() {
         <div>
           <Label required>Source</Label>
           <Select.Root value={source} onValueChange={setSource}>
-            <Select.Trigger className="glass flex h-10 w-48 items-center justify-between rounded-md px-3 text-base text-text">
+            <Select.Trigger className="glass flex h-10 w-48 items-center justify-between rounded-md px-3 text-base text-foreground">
               <Select.Value />
               <Select.Icon>
-                <ChevronDown className="size-3.5 text-text-subtle" />
+                <ChevronDown className="size-3.5 text-muted-foreground" />
               </Select.Icon>
             </Select.Trigger>
             <Select.Portal>
-              <Select.Content className="rounded-md border border-border bg-surface shadow-popover">
+              <Select.Content className="rounded-md border border-border bg-popover shadow-popover">
                 <Select.Viewport className="p-1">
                   {['RUNBOOK', 'ARTICLE'].map((s) => (
-                    <Select.Item key={s} value={s} className="cursor-pointer rounded px-3 py-1.5 text-base outline-none data-[highlighted]:bg-surface-2">
+                    <Select.Item key={s} value={s} className="cursor-pointer rounded px-3 py-1.5 text-base outline-none data-[highlighted]:bg-muted">
                       <Select.ItemText>{s}</Select.ItemText>
                     </Select.Item>
                   ))}
