@@ -5,8 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { Eyebrow, Page, PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/app/confirm-dialog'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState, ErrorState } from '@/components/app/states'
 import { MetricStrip, Segmented } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
@@ -148,20 +147,20 @@ function BoardCard({
         e.dataTransfer.effectAllowed = 'move'
       }}
       className={cn(
-        'group relative flex gap-2.5 rounded-lg border border-border bg-surface p-3 transition-colors',
-        'hover:border-border-strong has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-primary',
+        'group relative flex gap-2.5 rounded-lg border border-border bg-card p-3 transition-colors',
+        'hover:border-input has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-primary',
         canMove && 'cursor-grab active:cursor-grabbing',
       )}
     >
       {canMove && (
-        <GripVertical className="absolute left-0.5 top-1/2 size-3.5 -translate-y-1/2 text-text-subtle opacity-0 group-hover:opacity-100" aria-hidden />
+        <GripVertical className="absolute left-0.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground opacity-0 group-hover:opacity-100" aria-hidden />
       )}
       <PriorityGlyph priority={t.priority} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs tabular-nums text-text-subtle">{t.reference}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{t.reference}</span>
           {untriaged ? (
-            <span className="inline-flex items-center gap-1 text-xs text-text-subtle">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" aria-hidden /> triaging
             </span>
           ) : (
@@ -171,16 +170,16 @@ function BoardCard({
         <Link
           to={`/tickets/${t.id}`}
           draggable={false}
-          className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-text outline-none after:absolute after:inset-0 after:content-['']"
+          className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground outline-none after:absolute after:inset-0 after:content-['']"
         >
           {t.subject}
         </Link>
 
         {/* Calmer metadata (audit V3): plain text, one coloured chip - the incident. */}
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
           {t.category && (
             <span className="inline-flex items-center gap-1" title="Category set by AI triage">
-              <Sparkles className="size-3 text-text-subtle" aria-hidden />
+              <Sparkles className="size-3 text-muted-foreground" aria-hidden />
               {humanize(t.category)}
             </span>
           )}
@@ -190,7 +189,7 @@ function BoardCard({
             t.team && <span>· {t.team.name}</span>
           )}
           {t.incidentRef && (
-            <span className="relative inline-flex items-center gap-1 rounded-md bg-warning-bg px-1.5 py-0.5 font-medium text-warning">
+            <span className="relative inline-flex items-center gap-1 rounded-md bg-warning-soft px-1.5 py-0.5 font-medium text-warning">
               <Link2 className="size-3" aria-hidden />
               {t.incidentRef}
             </span>
@@ -199,8 +198,8 @@ function BoardCard({
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-border pt-2">
           {t.assignee ? (
-            <span className="flex min-w-0 items-center gap-1.5 text-xs text-text-muted">
-              <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-semibold text-text">
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
                 {initials(t.assignee.fullName)}
               </span>
               <span className="truncate">{t.assignee.fullName}</span>
@@ -215,18 +214,18 @@ function BoardCard({
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger
                   aria-label={`Move ${t.reference}`}
-                  className="relative z-10 -mr-1 flex size-7 items-center justify-center rounded-md text-text-subtle hover:bg-surface-2 hover:text-text"
+                  className="relative z-10 -mr-1 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <MoreHorizontal className="size-4" aria-hidden />
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Portal>
-                  <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-44 rounded-lg border border-border bg-surface p-1 shadow-popover">
-                    <DropdownMenu.Label className="px-2.5 py-1.5 text-xs text-text-subtle">Move to</DropdownMenu.Label>
+                  <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-44 rounded-lg border border-border bg-card p-1 shadow-popover">
+                    <DropdownMenu.Label className="px-2.5 py-1.5 text-xs text-muted-foreground">Move to</DropdownMenu.Label>
                     {moveTargets.map((s) => (
                       <DropdownMenu.Item
                         key={s}
                         onSelect={() => onMove(t, s)}
-                        className="cursor-pointer rounded-md px-2.5 py-1.5 text-sm text-text outline-none data-[highlighted]:bg-surface-2"
+                        className="cursor-pointer rounded-md px-2.5 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-muted"
                       >
                         {STATUS_LABEL[s]}
                       </DropdownMenu.Item>
@@ -278,35 +277,35 @@ function BoardColumn({
       className={cn(
         'glass flex min-w-0 flex-col rounded-xl transition-colors',
         col.tone === 'ai' && 'border-primary/30',
-        over && 'border-primary bg-primary-bg/40',
+        over && 'border-primary bg-secondary/40',
       )}
     >
       {/* One scroll region - the page (audit U12). Headers stay in view instead. */}
-      <header className="sticky top-0 z-[1] rounded-t-xl border-b border-border bg-surface px-3.5 py-3">
+      <header className="sticky top-0 z-[1] rounded-t-xl border-b border-border bg-card px-3.5 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-1.5 text-base font-semibold text-text">
+          <h2 className="flex items-center gap-1.5 text-base font-semibold text-foreground">
             {col.tone === 'ai' && <Sparkles className="size-3.5 text-primary" aria-hidden />}
             {col.title}
           </h2>
-          <span className="rounded-md bg-surface-2 px-1.5 py-px text-xs font-medium tabular-nums text-text-muted">
+          <span className="rounded-md bg-muted px-1.5 py-px text-xs font-medium tabular-nums text-muted-foreground">
             {col.tickets.length}
           </span>
         </div>
-        <p className="mt-0.5 text-xs text-text-subtle">{col.caption}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{col.caption}</p>
         {(breached > 0 || atRisk > 0) && (
           <div className="mt-2 flex gap-1.5">
             {breached > 0 && (
-              <span className="rounded-md bg-danger-bg px-1.5 py-0.5 text-xs font-medium text-danger">{breached} breached</span>
+              <span className="rounded-md bg-danger-soft px-1.5 py-0.5 text-xs font-medium text-danger">{breached} breached</span>
             )}
             {atRisk > 0 && (
-              <span className="rounded-md bg-warning-bg px-1.5 py-0.5 text-xs font-medium text-warning">{atRisk} at risk</span>
+              <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">{atRisk} at risk</span>
             )}
           </div>
         )}
       </header>
       <div className="flex-1 space-y-2 p-2.5">
         {col.tickets.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs leading-relaxed text-text-subtle">
+          <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
             {over ? 'Drop to move here' : col.emptyText}
           </p>
         ) : (
@@ -339,7 +338,7 @@ export function BoardPage() {
   const [search, setSearch] = React.useState('')
   const [mobileColumn, setMobileColumn] = React.useState<string | null>(null)
   const [reasonFor, setReasonFor] = React.useState<{ t: TicketSummary; to: TicketStatus } | null>(null)
-  const { data, isLoading, isError, refetch, isFetching } = useBoardTickets()
+  const { data, isLoading, isError, error, refetch, isFetching } = useBoardTickets()
   const changer = useStatusChanger()
   const canMove = user?.role === 'TEAM_LEAD' || user?.role === 'ADMIN'
 
@@ -475,27 +474,27 @@ export function BoardPage() {
           />
         </div>
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-text-subtle" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by subject or reference…"
             aria-label="Filter tickets"
-            className="h-10 w-full rounded-lg border border-border-control bg-surface pl-9 pr-3 text-base text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           />
         </div>
-        <label className="flex min-h-10 shrink-0 cursor-pointer items-center gap-2 text-sm text-text-muted">
+        <label className="flex min-h-10 shrink-0 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox"
             checked={showDone}
             onChange={(e) => setParam('done', e.target.checked ? '1' : null)}
-            className="size-4 accent-[var(--color-primary)]"
+            className="size-4 accent-[var(--primary)]"
           />
           Show resolved
         </label>
       </div>
 
-      {isError && <ErrorBanner onRetry={() => refetch()} />}
+      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
 
       {isLoading ? (
         <div className="grid gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))]" role="status" aria-busy="true" aria-label="Loading board">
@@ -508,7 +507,7 @@ export function BoardPage() {
           <EmptyState
             icon={KanbanSquare}
             title="No tickets yet"
-            description="As tickets arrive, AI triage classifies and routes each one — this board shows where they all went."
+            body="As tickets arrive, AI triage classifies and routes each one — this board shows where they all went."
           />
         </div>
       ) : (
@@ -520,7 +519,7 @@ export function BoardPage() {
               <select
                 value={activeMobile?.key}
                 onChange={(e) => setMobileColumn(e.target.value)}
-                className="h-10 w-full rounded-lg border border-border-control bg-surface px-3 text-base text-text"
+                className="h-10 w-full rounded-lg border border-input bg-card px-3 text-base text-foreground"
               >
                 {columns.map((c) => (
                   <option key={c.key} value={c.key}>
