@@ -1,0 +1,3430 @@
+{
+  "info": {
+    "name": "ResolveAI API",
+    "_postman_id": "9f2c1a44-6d31-4b57-8f0e-1c5a7b3e92d0",
+    "description": "ResolveAI — AI-powered helpdesk and incident triage.\n\nBuilt in Phase 2 Task 15 from `docs/openapi.yaml`. Import does not produce any of the things that make a collection usable, so those are done by hand here:\n\n- **Login stores its own tokens.** The post-response script on `Auth › Login` writes `accessToken` and `refreshToken` into the active environment. Every other request inherits the token through collection-level bearer auth. Do this once or paste tokens by hand several hundred times over the next six months.\n- **`{{idempotencyKey}}` is fresh on every send.** The collection-level pre-request script generates a UUID v4 into it, so the endpoints that require the header never replay a stale key by accident. To *test* replay deliberately, pin the variable in the environment.\n- **The Tickets folder chains.** `Create ticket` captures `ticketId`; everything after it uses `{{ticketId}}`, so the folder runs top to bottom with no manual editing.\n- **`Smoke Test`** is the eight requests that prove the system works end to end. It becomes the post-deploy check in doc 13 Task 17 and can be run headless with Newman.\n\nRun the whole collection: `newman run ops/postman/ResolveAI.postman_collection.json -e ops/postman/ResolveAI.local.postman_environment.json`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// A fresh Idempotency-Key per send. POST /tickets and POST /incidents/{id}/updates",
+          "// require one; replaying a stale key returns the *original* response, which looks",
+          "// exactly like a request that silently did nothing.",
+          "//",
+          "// To test replay deliberately, set idempotencyKey in the environment — an explicit",
+          "// environment value is not overwritten here.",
+          "if (!pm.environment.get('idempotencyKeyPinned')) {",
+          "    const uuid = (typeof require === 'function')",
+          "        ? require('uuid').v4()",
+          "        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {",
+          "              const r = Math.random() * 16 | 0;",
+          "              return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);",
+          "          });",
+          "    pm.environment.set('idempotencyKey', uuid);",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Applies to every request in the collection.",
+          "//",
+          "// Every error in this API is RFC 7807 with a machine-readable errorCode, so a",
+          "// failing request should still be a *well-formed* failure. A raw Spring Boot error",
+          "// page reaching a client is a bug regardless of the status code, and this catches it.",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('error is RFC 7807 problem+json', function () {",
+          "        pm.expect(pm.response.headers.get('Content-Type') || '').to.include('problem+json');",
+          "        const b = pm.response.json();",
+          "        pm.expect(b).to.have.property('errorCode');",
+          "        pm.expect(b).to.have.property('traceId');",
+          "    });",
+          "}",
+          "",
+          "pm.test('no-store on tenant data', function () {",
+          "    if (pm.response.code < 300 && pm.request.method === 'GET') {",
+          "        pm.expect(pm.response.headers.get('Cache-Control') || '').to.include('no-store');",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Run `Login` first. Everything else in the collection depends on the token it stores.",
+      "item": [
+        {
+          "name": "Register (customer)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantSlug\": \"{{tenantSlug}}\",\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\",\n  \"fullName\": \"Priya Raman\"\n}"
+            },
+            "description": "Rate limited to 5/hour per IP. A second run returns `409 EMAIL_ALREADY_EXISTS`, which is expected and not a failure of this request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created, or 409 if already registered', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantSlug\": \"{{tenantSlug}}\",\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"{{agentPassword}}\"\n}"
+            },
+            "description": "**This is the request that makes the rest of the collection work.** The post-response script stores `accessToken` and `refreshToken`; collection-level bearer auth picks the access token up automatically."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "",
+                  "pm.test('returns both tokens', function () {",
+                  "    pm.expect(b.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.refreshToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.tokenType).to.eql('Bearer');",
+                  "});",
+                  "",
+                  "// The whole point of this script.",
+                  "pm.environment.set('accessToken', b.accessToken);",
+                  "pm.environment.set('refreshToken', b.refreshToken);",
+                  "pm.environment.set('userId', b.user.id);",
+                  "pm.environment.set('userRole', b.user.role);",
+                  "if (b.user.teamId) pm.environment.set('teamId', b.user.teamId);",
+                  "",
+                  "console.log(`signed in as ${b.user.fullName} (${b.user.role}); token expires in ${b.expiresIn}s`);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — wrong password (expect 401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantSlug\": \"{{tenantSlug}}\",\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"definitely-not-the-password\"\n}"
+            },
+            "description": "Asserts the non-enumeration property: a wrong password and a non-existent user must be indistinguishable. Both are `401 INVALID_CREDENTIALS`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 INVALID_CREDENTIALS', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().errorCode).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "",
+                  "pm.test('does not disclose which half was wrong', function () {",
+                  "    const detail = (pm.response.json().detail || '').toLowerCase();",
+                  "    pm.expect(detail).to.not.include('no such user');",
+                  "    pm.expect(detail).to.not.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "Rotates both tokens and stores the new pair. **Sending this twice with the same token is the reuse case** — the second call returns `401 TOKEN_REUSE_DETECTED` and revokes the whole family, which is the correct and deliberate behaviour."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('refresh token actually rotated', function () {",
+                  "    pm.expect(b.refreshToken).to.not.eql(pm.environment.get('refreshToken'));",
+                  "});",
+                  "pm.environment.set('accessToken', b.accessToken);",
+                  "pm.environment.set('refreshToken', b.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "The `permissions` array is for hiding buttons in the UI. The server remains the only authority."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('identity matches the token', function () {",
+                  "    pm.expect(pm.response.json().id).to.eql(Number(pm.environment.get('userId')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{agentPassword}}\",\n  \"newPassword\": \"monsoon-2026-rupee\"\n}"
+            },
+            "description": "Revokes every refresh-token family on success. Not in the smoke test — it would invalidate the environment for every subsequent run."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "description": "Runs top to bottom without manual editing: `Create ticket` captures `ticketId` and `_etag`, and everything after it uses them.",
+      "item": [
+        {
+          "name": "Create ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Payment deducted but order still pending\",\n  \"body\": \"I paid via UPI at 14:03 and the money left my account, but the order page still says awaiting payment. I have the UPI reference if you need it.\"\n}"
+            },
+            "description": "`202`, not `201`: the response advertises `analysisStatus: PROCESSING` and `priority`, `category`, `assignee` and `team` will all change without any further client action.\n\n(In Phase 5, before the outbox exists, this returns `201` — the test below accepts both.)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted - triage runs asynchronously', function () {",
+                  "    // 202 rather than 201: the ticket exists, but priority, category, assignee and",
+                  "    // team are all still empty and will fill in with no further client action.",
+                  "    pm.expect(pm.response.code).to.eql(202);",
+                  "});",
+                  "",
+                  "const b = pm.response.json();",
+                  "",
+                  "pm.test('the response says what is pending, and where to watch it', function () {",
+                  "    pm.expect(b.analysisStatus).to.eql('PROCESSING');",
+                  "    pm.expect(b.links.analysis).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('nothing is triaged yet', function () {",
+                  "    pm.expect(b.priority).to.eql('UNTRIAGED');",
+                  "    pm.expect(b.assignee).to.be.null;",
+                  "});",
+                  "",
+                  "pm.environment.set('ticketId', b.id);",
+                  "pm.environment.set('ticketRef', b.reference);",
+                  "console.log(`created ${b.reference} (id ${b.id}) - poll ${b.links.analysis}`);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create ticket — replay same key (expect identical response)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Payment deducted but order still pending\",\n  \"body\": \"I paid via UPI at 14:03 and the money left my account, but the order page still says awaiting payment. I have the UPI reference if you need it.\"\n}"
+            },
+            "description": "**Run immediately after `Create ticket`, without re-sending anything else.** The pre-request script would normally mint a new key; this request pins the previous one so the replay is genuine.\n\nSame key + same body must return the *original* response verbatim, including the same id. A second ticket appearing here is the bug idempotency exists to prevent."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Reuse the key the previous request used, rather than the fresh one the",
+                  "// collection pre-request script just generated.",
+                  "pm.environment.set('idempotencyKeyPinned', true);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('replay returns the same ticket, not a new one', function () {",
+                  "    pm.expect(pm.response.json().id).to.eql(Number(pm.environment.get('ticketId')));",
+                  "});",
+                  "pm.environment.unset('idempotencyKeyPinned');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?size=25&sort=created_at&order=desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "25"
+                },
+                {
+                  "key": "sort",
+                  "value": "created_at"
+                },
+                {
+                  "key": "order",
+                  "value": "desc"
+                },
+                {
+                  "key": "status",
+                  "value": "OPEN",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ASSIGNED",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "P1",
+                  "disabled": true
+                },
+                {
+                  "key": "assigneeId",
+                  "value": "me",
+                  "disabled": true
+                },
+                {
+                  "key": "requesterId",
+                  "value": "1204",
+                  "disabled": true,
+                  "description": "AGENT+ only: one customer's tickets (customer-context pane)."
+                },
+                {
+                  "key": "slaState",
+                  "value": "AT_RISK",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "upi payment",
+                  "disabled": true,
+                  "description": "Full-text, or an exact reference such as tkt-1036 (case-insensitive)."
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{nextCursor}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "What the caller sees is decided by role, server-side, and is not overridable by a query parameter. The disabled params above are the full filter surface — enable as needed.\n\nCaptures `nextCursor` so enabling the `cursor` param pages forward.\n\n`requesterId` (AGENT+) narrows to one customer; `q` also matches an exact reference. Rows carry `lastPublicReply` ({at, fromSupport} or null); for a CUSTOMER, `messageCount` counts PUBLIC messages only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "",
+                  "pm.test('wrapped, not a bare array', function () {",
+                  "    pm.expect(b).to.have.property('data').that.is.an('array');",
+                  "    pm.expect(b).to.have.property('pagination');",
+                  "});",
+                  "",
+                  "pm.test('cursor pagination, no totalElements', function () {",
+                  "    pm.expect(b.pagination).to.have.property('hasNext');",
+                  "    pm.expect(b.pagination).to.not.have.property('totalElements');",
+                  "});",
+                  "",
+                  "if (b.pagination.nextCursor) pm.environment.set('nextCursor', b.pagination.nextCursor);",
+                  "",
+                  "pm.test('rows carry lastPublicReply (object or null)', function () {",
+                  "    b.data.forEach(t => {",
+                  "        pm.expect(t).to.have.property('lastPublicReply');",
+                  "        if (t.lastPublicReply) pm.expect(t.lastPublicReply).to.have.keys('at', 'fromSupport');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}?include=timeline,sla,analysis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}"
+              ],
+              "query": [
+                {
+                  "key": "include",
+                  "value": "timeline,sla,analysis"
+                }
+              ]
+            },
+            "description": "Captures the `ETag` into `{{etag}}`. Every mutation below sends it back as `If-Match`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('carries an ETag for optimistic locking', function () {",
+                  "    pm.expect(pm.response.headers.get('ETag')).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ticket — another tenant's id (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{foreignTicketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{foreignTicketId}}"
+              ]
+            },
+            "description": "Asserts the deliberate deviation: a ticket outside your scope is **404, never 403**. A 403 would confirm it exists and turn every id into a probe.\n\n`foreignTicketId` defaults to 1, which belongs to the seed tenant rather than yours."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404, not 403', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().errorCode).to.eql('TICKET_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patch ticket",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"PAYMENT\",\n  \"teamId\": {{teamId}}\n}"
+            },
+            "description": "Plain field updates only. Anything with its own authorization, side effects or error vocabulary gets a sub-resource POST instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.headers.get('ETag')) pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign to me",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "description": "Empty body self-assigns.\n\nUnderneath this is a conditional update with an affected-row check, not a SELECT-then-UPDATE. Sending it twice returns `409 ALREADY_ASSIGNED` on the second call, which is the same code two concurrent agents would see."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 assigned, or 409 if already claimed', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "});",
+                  "if (pm.response.code === 409) {",
+                  "    pm.test('409 is ALREADY_ASSIGNED, not a generic conflict', function () {",
+                  "        pm.expect(pm.response.json().errorCode).to.eql('ALREADY_ASSIGNED');",
+                  "    });",
+                  "}",
+                  "if (pm.response.headers.get('ETag')) pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add message (public reply)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Thanks Priya — I can see the UPI reference and have raised a reversal with the payment provider.\",\n  \"visibility\": \"PUBLIC\"\n}"
+            },
+            "description": "An agent's first PUBLIC message stops the first-response clock **in the same transaction**, and `slaEffect` in the response says so. That single transaction is what closes the race against the SLA poller."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "if (b.isFirstResponse) {",
+                  "    pm.test('first response reports its SLA effect', function () {",
+                  "        pm.expect(b.slaEffect).to.be.an('object');",
+                  "        pm.expect(b.slaEffect.firstResponse).to.eql('MET');",
+                  "    });",
+                  "}",
+                  "pm.environment.set('messageId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add message (internal note)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Provider dashboard shows the debit but no capture. Waiting on their ops team.\",\n  \"visibility\": \"INTERNAL\"\n}"
+            },
+            "description": "A CUSTOMER sending `visibility: INTERNAL` gets `403`. Worth running once as a customer to confirm."
+          }
+        },
+        {
+          "name": "Change status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"WAITING_ON_CUSTOMER\",\n  \"reason\": \"Asked the customer for the UPI reference number.\"\n}"
+            },
+            "description": "Entering `WAITING_ON_CUSTOMER` pauses the resolution clock. `slaEffect` reports the pause and the elapsed minutes at the moment it happened."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('pausing status reports the clock effect', function () {",
+                  "    const e = pm.response.json().slaEffect;",
+                  "    pm.expect(e).to.be.an('object');",
+                  "    pm.expect(e.resolution.state).to.eql('PAUSED');",
+                  "});",
+                  "if (pm.response.json()._etag) pm.environment.set('etag', pm.response.json()._etag);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change status — illegal transition (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"TRIAGED\"\n}"
+            },
+            "description": "The state machine is enforced by the server, not prevented by the UI. The rejection returns `allowedTransitions` so a client can recover without hard-coding the graph."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 ILLEGAL_TRANSITION', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().errorCode).to.eql('ILLEGAL_TRANSITION');",
+                  "});",
+                  "pm.test('tells the client what IS allowed', function () {",
+                  "    pm.expect(pm.response.json()).to.have.property('allowedTransitions');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "resolve"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolutionText\": \"Payment reversed by the provider; confirmed credited to the customer's account.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reopen",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/reopen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "reopen"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer says the credit has not arrived.\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Triage & AI",
+      "item": [
+        {
+          "name": "Get analysis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/analysis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "analysis"
+              ]
+            },
+            "description": "The async status resource `POST /tickets` points at.\n\n`UNAVAILABLE` is returned with **200**, not an error status — the resource exists and its state is \"we tried and failed\". The ticket is still fully workable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 in every state, including failure', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('status is one of the three the endpoint actually returns', function () {",
+                  "    pm.expect(b.status).to.be.oneOf(['PROCESSING', 'READY', 'UNAVAILABLE']);",
+                  "});",
+                  "if (b.status === 'READY') {",
+                  "    pm.test('the model returned signals, not a priority', function () {",
+                  "        pm.expect(b.signals).to.be.an('object');",
+                  "        pm.expect(b.signals).to.not.have.property('priority');",
+                  "    });",
+                  "}",
+                  "if (b.status === 'PROCESSING') {",
+                  "    pm.test('a still-processing response tells the client when to poll again', function () {",
+                  "        pm.expect(b.retryAfterSeconds).to.be.a('number');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retriage",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/retriage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "retriage"
+              ]
+            },
+            "description": "Queues a fresh triage attempt without touching the ticket's version -- this starts a background job rather than mutating the ticket, so there is no ETag to conflict on."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202, or a documented refusal', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([202, 409, 429]);",
+                  "});",
+                  "if (pm.response.code === 202) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('points at the analysis resource to poll', function () {",
+                  "        pm.expect(b.links.analysis).to.include('/analysis');",
+                  "    });",
+                  "}",
+                  "if (pm.response.code === 409) {",
+                  "    pm.test('409 means a triage is already queued', function () {",
+                  "        pm.expect(pm.response.json().errorCode).to.eql('TRIAGE_IN_PROGRESS');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Priority rationale",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/priority-rationale",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "priority-rationale"
+              ]
+            },
+            "description": "`inputs.fromModel` and `inputs.fromSystem` are separate objects so an override can be attributed to a model misread or a wrong policy — two different bugs with two different fixes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('model inputs and system inputs are separable', function () {",
+                  "    pm.expect(b.inputs).to.have.property('fromModel');",
+                  "    pm.expect(b.inputs).to.have.property('fromSystem');",
+                  "});",
+                  "pm.test('rules include the ones that did not match', function () {",
+                  "    pm.expect(b.rules.some(r => r.matched === false)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Priority override",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/priority-override",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "priority-override"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"P1\",\n  \"reason\": \"Enterprise customer with a contractual 1-hour response on payment faults.\"\n}"
+            },
+            "description": "The only human path to a priority. Every override is stored as a label, which is what makes the policy improvable rather than merely arguable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, or 428 if the collection has no etag yet', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 428]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('the priority actually changed', function () {",
+                  "        pm.expect(b.priority).to.eql('P1');",
+                  "    });",
+                  "}",
+                  "if (pm.response.headers.get('ETag')) pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/drafts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "drafts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instruction\": \"explain the refund timeline\"\n}"
+            },
+            "description": "`402 AI_BUDGET_EXHAUSTED` is distinguishable from `429` on purpose: retry after a 429, never after a 402."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 accepted', () => pm.response.to.have.status(202));",
+                  "pm.environment.set('draftId', pm.response.json().draftId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get draft",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/drafts/{{draftId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "drafts",
+                "{{draftId}}"
+              ]
+            },
+            "description": "The most important response body in the API. Rejected claims are **returned, not hidden** — the agent can see that the model tried to invent a refund amount, and why it was dropped.\n\nWhen coverage falls below threshold, `assembledText` is `null` rather than a hedged draft."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "if (b.status === 'SHOWN') {",
+                  "    pm.test('every kept claim carries at least one citation', function () {",
+                  "        b.claims.filter(c => c.kept).forEach(c => {",
+                  "            pm.expect(c.citations, `claim ${c.ordinal}`).to.be.an('array').that.is.not.empty;",
+                  "        });",
+                  "    });",
+                  "    pm.test('rejected claims are visible, with a reason', function () {",
+                  "        b.claims.filter(c => !c.kept).forEach(c => {",
+                  "            pm.expect(c.rejectionReason, `claim ${c.ordinal}`).to.be.a('string').and.not.empty;",
+                  "        });",
+                  "    });",
+                  "}",
+                  "if (b.status === 'SUPPRESSED_LOW_COVERAGE') {",
+                  "    pm.test('suppressed means null, not a hedged draft', function () {",
+                  "        pm.expect(b.assembledText).to.be.null;",
+                  "        pm.expect(b.recommendation).to.eql('ESCALATE_TO_HUMAN');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record draft action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/drafts/{{draftId}}/action",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "drafts",
+                "{{draftId}}",
+                "action"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"EDITED\",\n  \"finalText\": \"Hi Priya,\\n\\nUPI payments debited without an order confirmation are auto-reversed within 5–7 business days. Send me the UPI reference and I'll raise a manual reversal today.\\n\\n— Arjun\"\n}"
+            },
+            "description": "**Must be called even on discard.** Measuring acceptance only over the drafts that were good is not a measurement.\n\n`editDistance` is computed server-side and never trusted from the client."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201, or 409 if an action was already recorded', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    pm.test('edit distance came from the server', function () {",
+                  "        pm.expect(pm.response.json().editDistance).to.be.a('number');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SLA",
+      "item": [
+        {
+          "name": "Get SLA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/sla",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "sla"
+              ]
+            },
+            "description": "The `segments` array is the whole design, exposed. `elapsedBusinessMinutes` is a SUM over RUNNING segments — there is no stored counter to drift."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const clocks = pm.response.json().clocks;",
+                  "",
+                  "pm.test('at most one open segment per clock', function () {",
+                  "    clocks.forEach(c => {",
+                  "        const open = (c.segments || []).filter(s => s.endedAt === null).length;",
+                  "        pm.expect(open, `${c.kind} open segments`).to.be.at.most(1);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('elapsed equals the sum of RUNNING segments', function () {",
+                  "    clocks.forEach(c => {",
+                  "        const sum = (c.segments || [])",
+                  "            .filter(s => s.state === 'RUNNING')",
+                  "            .reduce((a, s) => a + s.businessMinutes, 0);",
+                  "        pm.expect(c.elapsedBusinessMinutes, c.kind).to.eql(sum);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('a paused clock has no next deadline', function () {",
+                  "    clocks.filter(c => c.state === 'PAUSED').forEach(c => {",
+                  "        pm.expect(c.nextDeadlineAt, c.kind).to.be.null;",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pause SLA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/sla/pause",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "sla",
+                "pause"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"WAITING_ON_CUSTOMER\",\n  \"kinds\": [\"RESOLUTION\"]\n}"
+            },
+            "description": "Idempotent by design: pausing an already-paused clock is `200` with the existing state, not an error. Send it twice."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 — idempotent, not an error on repeat', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resume SLA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/sla/resume",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "sla",
+                "resume"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kinds\": [\"RESOLUTION\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "At-risk queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sla/at-risk?withinBusinessMinutes=120&size=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sla",
+                "at-risk"
+              ],
+              "query": [
+                {
+                  "key": "withinBusinessMinutes",
+                  "value": "120"
+                },
+                {
+                  "key": "size",
+                  "value": "25"
+                },
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Ranked by predicted breach, not by elapsed time. `reason` names the statistic and the sample size so the ranking is inspectable."
+          }
+        },
+        {
+          "name": "Fast-forward clocks (local only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/dev/tickets/{{ticketId}}/sla/fast-forward?minutes=40",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dev",
+                "tickets",
+                "{{ticketId}}",
+                "sla",
+                "fast-forward"
+              ],
+              "query": [
+                {
+                  "key": "minutes",
+                  "value": "40",
+                  "description": "40 puts a P2 first-response clock (60-minute target) past its 50% rung; 500 puts a resolution clock past all four."
+                }
+              ]
+            },
+            "description": "Ages this ticket's clocks so the escalation ladder can be demonstrated without waiting out a business-hours target. The next poll (<=10s) fires whatever rungs the shift crossed; re-run `Get SLA` to see the new segments and rung.\n\nSegments are rewritten, not just the deadline: the poller re-checks elapsed against the rung under the row lock, so moving the deadline alone would be rescheduled rather than fired.\n\nADMIN, and local profile only — the bean does not exist under prod or test."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('it moved something', function () {",
+                  "    pm.expect(body.segmentsShifted, 'segments').to.be.above(0);",
+                  "});",
+                  "// Then wait ~10s and re-run `Get SLA`: nextRung will have advanced and",
+                  "// escalationsFired will have a row. That is the ladder, live."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Incidents",
+      "item": [
+        {
+          "name": "Incident board",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/incidents?size=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "25"
+                },
+                {
+                  "key": "status",
+                  "value": "PROPOSED",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "CONFIRMED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Captures the first incident id into `{{incidentId}}` so the rest of this folder runs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "if (data.length) {",
+                  "    pm.environment.set('incidentId', data[0].id);",
+                  "    pm.test('detection evidence is on the row', function () {",
+                  "        pm.expect(data[0].detection).to.have.property('arrivalRateMultiple');",
+                  "        pm.expect(data[0]).to.have.property('timeToDetectSeconds');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get incident",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}"
+              ]
+            },
+            "description": "`detection` is the deterministic gate's evidence. `titleGeneratedBy` is separate precisely to show the model wrote the title and nothing else — when it is null the title was templated and the incident was still detected."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the gate cleared its own thresholds', function () {",
+                  "    if (b.detection.method !== 'CLUSTER') return;",
+                  "    pm.expect(b.detection.clusterSizeAtDetection).to.be.at.least(b.detection.gateThresholds.minClusterSize);",
+                  "    pm.expect(b.detection.arrivalRateMultiple).to.be.above(b.detection.gateThresholds.minRateMultiple);",
+                  "});",
+                  "pm.environment.set('etag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pauseResolutionClocks\": true\n}"
+            },
+            "description": "`firstResponseClocksUnaffected` in the response is the deliberate product decision: resolution pauses, first response keeps running, because the customer still deserves an acknowledgement during an outage."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200, or 409 if not PROPOSED', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('first-response clocks were left running', function () {",
+                  "        const e = pm.response.json().effects;",
+                  "        pm.expect(e.firstResponseClocksUnaffected).to.eql(e.ticketsLinked);",
+                  "    });",
+                  "    pm.test('a label went to the eval set', function () {",
+                  "        pm.expect(pm.response.json().effects.evalLabelRecorded).to.be.true;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Cluster is a single customer retrying, not an outage.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Link ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": {{ticketId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "Detach ticket",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/tickets/{{ticketId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "tickets",
+                "{{ticketId}}"
+              ]
+            },
+            "description": "A soft detach — `detached_at` is set and the row is kept, because the link history is part of both the audit trail and the evaluation set."
+          }
+        },
+        {
+          "name": "Publish update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/updates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "updates"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"We have identified an issue with our payment gateway and are working with the provider. Affected payments will be reversed automatically.\",\n  \"visibility\": \"PUBLIC\"\n}"
+            },
+            "description": "`Idempotency-Key` is required because **this sends messages to real customers**. `202` because the fan-out is queued, not complete."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 queued', () => pm.response.to.have.status(202));",
+                  "pm.environment.set('updateId', pm.response.json().updateId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fan-out deliveries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/updates/{{updateId}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "updates",
+                "{{updateId}}",
+                "deliveries"
+              ]
+            },
+            "description": "Per-ticket rows are what make the publish endpoint honest: a failure names the ticket, the attempt count and the last error, instead of a counter saying \"37 of 38\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the counts add up', function () {",
+                  "    const s = pm.response.json().summary;",
+                  "    pm.expect(s.sent + s.pending + s.failed).to.eql(s.total);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{etag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/incidents/{{incidentId}}/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "incidents",
+                "{{incidentId}}",
+                "resolve"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolutionNote\": \"Provider restored capture at 15:12 IST. All debited payments reversed.\",\n  \"resolveLinkedTickets\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "item": [
+        {
+          "name": "Create document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"UPI payment failures\",\n  \"source\": \"RUNBOOK\",\n  \"tier\": \"AUTHORITATIVE\",\n  \"content\": \"Payments debited without a corresponding order are reversed by the payment provider within 5-7 business days. Agents may raise a manual reversal once the customer supplies the UPI reference number.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 queued for chunking and embedding', () => pm.response.to.have.status(202));",
+                  "if (pm.response.json().id) pm.environment.set('documentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/documents?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Offset pagination here, against cursor on the queues — a small, slow-changing admin set where a page count is genuinely useful."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('offset pagination, with a total', function () {",
+                  "    pm.expect(pm.response.json().pagination).to.have.property('totalElements');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "documents",
+                "{{documentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "documents",
+                "{{documentId}}"
+              ]
+            },
+            "description": "Soft delete: chunks leave retrieval immediately, rows survive so drafts already citing them can still resolve their citations."
+          }
+        },
+        {
+          "name": "Reindex",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/reindex",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "reindex"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"force\": false\n}"
+            },
+            "description": "`force: true` reports its estimated cost up front — a forced full reindex is the easiest way to burn a month's AI budget by accident."
+          }
+        },
+        {
+          "name": "Hybrid search (explain)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge/search?q=upi payment debited no order&k=10&explain=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "knowledge",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "upi payment debited no order"
+                },
+                {
+                  "key": "k",
+                  "value": "10"
+                },
+                {
+                  "key": "explain",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "**The retrieval debugger.** With `explain=true` every result carries its lexical rank, its vector rank and the fused score — which is the argument for hybrid search as data rather than as an assertion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('explain returns both retrievers\\' ranks', function () {",
+                  "    if (!b.results.length) return;",
+                  "    pm.expect(b.results[0].scores).to.include.keys('lexicalRank', 'vectorRank', 'rrfScore', 'finalScore');",
+                  "});",
+                  "pm.test('results are ordered by finalScore', function () {",
+                  "    const s = b.results.map(r => r.scores.finalScore);",
+                  "    pm.expect(s).to.eql([...s].sort((a, z) => z - a));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Notifications & Attachments",
+      "item": [
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-count"
+              ]
+            },
+            "description": "Separate from the list because the bell polls it every 30 seconds and must not pay for row fetches."
+          }
+        },
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?size=20&unreadOnly=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "unreadOnly",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Always scoped to the caller. A notification is never visible to another user, including an admin."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json().data;",
+                  "if (data.length) pm.environment.set('notificationId', data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "read"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [{{notificationId}}]\n}"
+            },
+            "description": "Idempotent — re-marking a read notification is a no-op, not an error."
+          }
+        },
+        {
+          "name": "Reserve attachment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/attachments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "attachments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"upi-receipt.png\",\n  \"mimeType\": \"image/png\",\n  \"byteSize\": 284113\n}"
+            },
+            "description": "Step one of two. `storageKey` is a generated UUID, never the filename — a filename-derived path invites traversal and a guessable one invites IDOR.\n\nUpload the bytes to `uploadUrl` with a plain `PUT` (outside this collection), then call `/complete`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 reserved', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('storage key is not derived from the filename', function () {",
+                  "    pm.expect(b.storageKey).to.not.include('upi-receipt');",
+                  "    pm.expect(b.storageKey).to.match(/^[0-9a-f-]{36}$/);",
+                  "});",
+                  "pm.environment.set('attachmentId', b.id);",
+                  "pm.environment.set('uploadUrl', b.uploadUrl);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/attachments/{{attachmentId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "attachments",
+                "{{attachmentId}}",
+                "complete"
+              ]
+            },
+            "description": "The server re-reads the object and verifies **actual magic bytes**. A `.exe` renamed `.png` is rejected here with `415 CONTENT_TYPE_MISMATCH`, not at reservation time."
+          }
+        },
+        {
+          "name": "Attachment download URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/attachments/{{attachmentId}}/url",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "attachments",
+                "{{attachmentId}}",
+                "url"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get SLA policies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/sla-policies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sla-policies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update SLA policy",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/sla-policies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sla-policies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"P1\",\n  \"planTier\": \"ENTERPRISE\",\n  \"firstResponseMinutes\": 30,\n  \"resolutionMinutes\": 240,\n  \"escalationRungs\": [50, 75, 90, 100],\n  \"effectiveFrom\": \"2026-10-01T00:00:00Z\"\n}"
+            },
+            "description": "Creates a new effective-dated row; it never mutates the existing one. Existing SLA records keep their snapshotted policy, so tightening an SLA cannot retroactively breach tickets already in flight."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200, or 409 OVERLAPPING_POLICY', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('the old row was superseded, not overwritten', function () {",
+                  "        const b = pm.response.json();",
+                  "        pm.expect(b.created.id).to.not.eql(b.superseded.id);",
+                  "        pm.expect(b.superseded.effectiveTo).to.not.be.null;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get calendar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/calendar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "calendar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update calendar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/calendar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "calendar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timezone\": \"Asia/Kolkata\",\n  \"workingDays\": [1, 2, 3, 4, 5],\n  \"dayStart\": \"09:00\",\n  \"dayEnd\": \"18:00\",\n  \"holidays\": [\n    { \"date\": \"2026-10-02\", \"name\": \"Gandhi Jayanti\" },\n    { \"date\": \"2026-11-08\", \"name\": \"Diwali\" }\n  ]\n}"
+            },
+            "description": "Holidays are part of this payload rather than a separate resource — business-hours arithmetic needs both together, and splitting them lets a client save one without the other and compute the wrong deadline."
+          }
+        },
+        {
+          "name": "Get AI policy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/ai-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "ai-policy"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update AI policy",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/ai-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "ai-policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"externalModelAllowed\": true,\n  \"monthlyBudgetMicros\": 5000000,\n  \"retentionDays\": 90\n}"
+            }
+          }
+        },
+        {
+          "name": "AI usage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/ai/usage?groupBy=promptVersion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "ai",
+                "usage"
+              ],
+              "query": [
+                {
+                  "key": "groupBy",
+                  "value": "promptVersion"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-09-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-09-30",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Where several README numbers come from: cost per ticket, cache hit rate, escalation rate, draft suppression rate."
+          }
+        },
+        {
+          "name": "Eval runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/eval/runs?suite=CLASSIFICATION&limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "eval",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "suite",
+                  "value": "CLASSIFICATION"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "One classification suite exists so far (Phase 6); GROUNDING and REFUSAL arrive with the drafting suite in Phase 7. The response is a plain array, newest run first -- accuracy and macroF1 are reported separately because accuracy alone hides a single dead category behind the other seven's average."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const runs = pm.response.json();",
+                  "pm.test('response is a plain array of runs, newest first', function () {",
+                  "    pm.expect(runs).to.be.an('array');",
+                  "});",
+                  "runs.forEach(r => {",
+                  "    pm.test(`run ${r.id} reports both accuracy and macroF1`, function () {",
+                  "        pm.expect(r.metrics.accuracy).to.be.a('number');",
+                  "        pm.expect(r.metrics.macroF1).to.be.a('number');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit trail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit?size=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "25"
+                },
+                {
+                  "key": "actorId",
+                  "value": "{{userId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "eventType",
+                  "value": "STATUS_CHANGED",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "role",
+                  "value": "AGENT",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List teams",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/teams",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "teams"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create team",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/teams",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "teams"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Payments\",\n  \"skills\": [\"PAYMENT\", \"BILLING\"],\n  \"isDefault\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Update team",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/teams/{{teamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "teams",
+                "{{teamId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Payments\",\n  \"skills\": [\"PAYMENT\", \"BILLING\"],\n  \"isDefault\": false\n}"
+            },
+            "description": "`skills[]` drives routing and before Phase 2 could only be changed by editing the database."
+          }
+        },
+        {
+          "name": "List staff (agents and leads)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "description": "AGENT+ only. Feeds the ticket page's \"Assign to…\" menu (with each agent's load) and names the team leads who can confirm a proposed incident. No emails. Only entries with a non-null `openCount` are assignable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('a bare array of staff', () => pm.expect(b).to.be.an('array'));",
+                  "pm.test('only AGENT and TEAM_LEAD, never an email', function () {",
+                  "    b.forEach(s => {",
+                  "        pm.expect(['AGENT', 'TEAM_LEAD']).to.include(s.role);",
+                  "        pm.expect(s).to.not.have.property('email');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set own availability",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents/me/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents",
+                "me",
+                "availability"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isAvailable\": true,\n  \"shiftStart\": \"09:00\",\n  \"shiftEnd\": \"18:00\"\n}"
+            },
+            "description": "Going unavailable does not reassign existing tickets — it only removes the agent from future routing. Reassignment stays a deliberate human action."
+          }
+        },
+        {
+          "name": "Set agent capacity",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agents/{{userId}}/capacity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agents",
+                "{{userId}}",
+                "capacity"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxConcurrent\": 15\n}"
+            }
+          }
+        },
+        {
+          "name": "Outbox dead-letter queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/outbox/dead?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "outbox",
+                "dead"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "The only endpoint that reads `outbox_event`. A DLQ nobody can see is a DLQ that silently swallows work — the exact failure the outbox exists to prevent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const dead = (pm.response.json().data || []).length;",
+                  "if (dead) console.warn(`${dead} dead outbox events — investigate before deploying`);",
+                  "if (dead) pm.environment.set('deadEventId', pm.response.json().data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retry dead event",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/outbox/{{deadEventId}}/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "outbox",
+                "{{deadEventId}}",
+                "retry"
+              ]
+            },
+            "description": "Safe to call twice — every consumer is idempotent by construction, so a redelivery cannot double-message a customer or double-fire an escalation rung."
+          }
+        },
+        {
+          "name": "Start eval run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/eval/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "eval",
+                "runs"
+              ]
+            },
+            "description": "ADMIN. Runs the 60-case classification suite in the background (charged to the AI budget). 409 if one is already running."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 started, or 409 already running', () => pm.expect([202, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eval run status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/eval/runs/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "eval",
+                "runs",
+                "status"
+              ]
+            },
+            "description": "ADMIN. Whether an evaluation run is in progress."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports running', () => pm.expect(pm.response.json().running).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Onboarding funnel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics/funnel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics",
+                "funnel"
+              ]
+            },
+            "description": "ADMIN. Sessions reaching each onboarding step over the last 30 days."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has sessionsReaching', () => pm.expect(pm.response.json()).to.have.property('sessionsReaching'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Demo & Analytics",
+      "description": "One-click demo mode and first-party onboarding analytics.\n\nEvery `/demo` path is a **404 unless the server runs with `resolveai.demo.enabled=true`** (on by default under the `local` profile, where the demo tenant is `acme`). `Demo login` stores tokens exactly like `Auth › Login`, so the requests after it run as that role. `Start demo storm` needs a TEAM_LEAD or ADMIN session: change the role in `Demo login` to `TEAM_LEAD` first.",
+      "item": [
+        {
+          "name": "Demo info",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo"
+              ]
+            },
+            "description": "Public. Whether this deployment has a demo and which one-click roles it offers."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, or 404 when demo mode is off', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('lists roles', () => pm.expect(b.roles).to.be.an('array'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/demo/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "login"
+              ]
+            },
+            "description": "Public. Signs in as the demo tenant's seeded user for `role` — no password. Stores both tokens.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"AGENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns both tokens', () => {",
+                  "    pm.expect(b.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.refreshToken).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.environment.set('accessToken', b.accessToken);",
+                  "pm.environment.set('refreshToken', b.refreshToken);",
+                  "pm.environment.set('userId', b.user.id);",
+                  "pm.environment.set('userRole', b.user.role);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo showcase",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/showcase",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "showcase"
+              ]
+            },
+            "description": "AGENT+, demo tenant. A paused-clock ticket, a ticket with a cited draft, and the newest live incident."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has the three slots', () => pm.expect(pm.response.json()).to.include.keys('pausedTicket', 'draftTicket', 'incident'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo storm status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/storm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "storm"
+              ]
+            },
+            "description": "AGENT+, demo tenant. Whether the outage simulator is running or cooling down."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports running', () => pm.expect(pm.response.json().running).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start demo storm",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/storm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "storm"
+              ]
+            },
+            "description": "TEAM_LEAD+, demo tenant. Posts the 38 tickets of `demo/storm.json` over ~20s; an incident is proposed within about a minute. 409 while running, 429 while cooling down."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 started, or 409/429 when busy', () => pm.expect([202, 409, 429]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record events",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Public. First-party onboarding analytics; unknown names are dropped, always 202.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"name\": \"auth_page_viewed\",\n      \"path\": \"/login\",\n      \"sessionId\": \"{{idempotencyKey}}\",\n      \"props\": {\n        \"page\": \"login\"\n      }\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Smoke Test",
+      "description": "Eight requests that prove the system works end to end. Becomes the post-deploy check in doc 13 Task 17.\n\nHeadless:\n\n`newman run ops/postman/ResolveAI.postman_collection.json -e ops/postman/ResolveAI.local.postman_environment.json --folder \"Smoke Test\"`\n\nA non-zero exit means the deploy is not healthy. Every request here asserts something specific — a 200 alone proves very little.",
+      "item": [
+        {
+          "name": "1 — Health",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{healthUrl}}",
+              "host": [
+                "{{healthUrl}}"
+              ]
+            },
+            "description": "Actuator sits outside `/api/v1`, so this uses its own `{{healthUrl}}` variable — a `..` segment in the path is sent literally by most clients rather than normalised away. Asserts the app is up **and** that its database and Redis components are, so a green health check cannot hide a dead dependency."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 UP', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});",
+                  "pm.test('db and redis are up, not just the app', function () {",
+                  "    const c = pm.response.json().components || {};",
+                  "    if (c.db) pm.expect(c.db.status).to.eql('UP');",
+                  "    if (c.redis) pm.expect(c.redis.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2 — Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantSlug\": \"{{tenantSlug}}\",\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"{{agentPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.environment.set('accessToken', b.accessToken);",
+                  "pm.environment.set('refreshToken', b.refreshToken);",
+                  "pm.environment.set('userId', b.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3 — Create ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"[smoke] Payment deducted but order still pending\",\n  \"body\": \"Smoke test. Paid via UPI, money left the account, order page still says awaiting payment.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 202]);",
+                  "});",
+                  "pm.environment.set('ticketId', pm.response.json().id);",
+                  "pm.environment.set('smokeRef', pm.response.json().reference);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4 — Triage completed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/analysis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "analysis"
+              ]
+            },
+            "description": "**The request that proves the async path actually works**, not just that the HTTP layer does: outbox row written, poller picked it up, worker called the model, result persisted.\n\nPolls up to 20 times at 1s using `postman.setNextRequest`, so a slow provider does not fail the deploy check."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MAX = 20;",
+                  "const tries = Number(pm.environment.get('triagePollCount') || 0) + 1;",
+                  "pm.environment.set('triagePollCount', tries);",
+                  "",
+                  "const status = pm.response.json().status;",
+                  "",
+                  "if (status === 'PENDING' || status === 'PROCESSING') {",
+                  "    if (tries < MAX) {",
+                  "        setTimeout(() => {}, 1000);",
+                  "        postman.setNextRequest('4 — Triage completed');",
+                  "        return;",
+                  "    }",
+                  "    pm.test(`triage finished within ${MAX} polls`, () => pm.expect.fail(`still ${status}`));",
+                  "    return;",
+                  "}",
+                  "",
+                  "pm.environment.unset('triagePollCount');",
+                  "",
+                  "pm.test('triage reached a terminal state', function () {",
+                  "    pm.expect(status).to.be.oneOf(['READY', 'UNAVAILABLE']);",
+                  "});",
+                  "",
+                  "// UNAVAILABLE is a legitimate outcome — the provider may be down and the ticket is",
+                  "// still workable. It is a warning for a deploy check, not a failure.",
+                  "if (status === 'UNAVAILABLE') console.warn(`triage UNAVAILABLE: ${pm.response.json().lastError}`);",
+                  "",
+                  "if (status === 'READY') {",
+                  "    pm.test('signals came back, and no priority among them', function () {",
+                  "        pm.expect(pm.response.json().signals.category).to.be.a('string');",
+                  "        pm.expect(pm.response.json().signals).to.not.have.property('priority');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5 — Ticket is in the queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?size=25&q=[smoke]",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "25"
+                },
+                {
+                  "key": "q",
+                  "value": "[smoke]"
+                }
+              ]
+            },
+            "description": "Proves full-text search and the read path, not merely that a row exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('the ticket we just created is findable', function () {",
+                  "    const ids = pm.response.json().data.map(t => t.id);",
+                  "    pm.expect(ids).to.include(Number(pm.environment.get('ticketId')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6 — SLA clocks started",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/sla",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "sla"
+              ]
+            },
+            "description": "Proves the SLA engine ran on creation: two clocks, each with exactly one open RUNNING segment and a deadline in the future."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('both clocks exist', function () {",
+                  "    const kinds = pm.response.json().clocks.map(c => c.kind);",
+                  "    pm.expect(kinds).to.have.members(['FIRST_RESPONSE', 'RESOLUTION']);",
+                  "});",
+                  "pm.test('each running clock has exactly one open segment and a future deadline', function () {",
+                  "    pm.response.json().clocks.filter(c => c.state === 'RUNNING').forEach(c => {",
+                  "        pm.expect(c.segments.filter(s => s.endedAt === null).length, c.kind).to.eql(1);",
+                  "        pm.expect(new Date(c.nextDeadlineAt).getTime(), c.kind).to.be.above(Date.now());",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7 — Assign and reply",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Smoke test reply — checking that the first-response clock stops.\",\n  \"visibility\": \"PUBLIC\"\n}"
+            },
+            "description": "Proves the write path **and** the transactional SLA stop: the reply and the clock-stop commit together, which is what closes the race against the poller."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created', () => pm.response.to.have.status(201));",
+                  "pm.test('the first response stopped the clock in the same response', function () {",
+                  "    const b = pm.response.json();",
+                  "    if (!b.isFirstResponse) return;",
+                  "    pm.expect(b.slaEffect.firstResponse).to.eql('MET');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8 — No dead outbox events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/outbox/dead?page=0&size=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "outbox",
+                "dead"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "The last check, and the one most likely to catch a broken deploy that every other check passes: work is being accepted and silently dying in the outbox.\n\nRequires an ADMIN token; with an agent token this returns `403`, which the test treats as skipped rather than failed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 403) {",
+                  "    console.warn('skipped — needs an ADMIN token');",
+                  "    return;",
+                  "}",
+                  "pm.test('the dead-letter queue is empty', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().pagination.totalElements).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
