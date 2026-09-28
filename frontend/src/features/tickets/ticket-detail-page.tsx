@@ -321,9 +321,14 @@ export function TicketDetailPage() {
         open={reasonFor !== null}
         onOpenChange={(open) => !open && setReasonFor(null)}
         title={reasonFor === 'RESOLVED' ? 'Resolve this ticket' : `Move to ${reasonFor ? STATUS_LABEL[reasonFor] : ''}`}
+        consequences={
+          reasonFor === 'RESOLVED'
+            ? ['At least 100 characters, so this can also become a searchable knowledge-base article — "fixed it" teaches nothing, explain what actually fixed it.']
+            : undefined
+        }
         requireReason
         reasonLabel={reasonFor === 'RESOLVED' ? 'Resolution' : 'Reason'}
-        reasonMinLength={reasonFor === 'RESOLVED' ? 20 : 10}
+        reasonMinLength={reasonFor === 'RESOLVED' ? 100 : 10}
         confirmLabel={reasonFor === 'RESOLVED' ? 'Resolve' : 'Confirm'}
         onConfirm={(reason) => {
           if (reasonFor) changeStatus(reasonFor, reason)
