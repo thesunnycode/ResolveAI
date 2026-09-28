@@ -8,9 +8,14 @@ Java 21 · Spring Boot · Spring AI · PostgreSQL + pgvector · Redis · Docker
 > signals; versioned deterministic policy functions compute every priority, route,
 > escalation and SLA breach.
 
-[![CI](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml/badge.svg)](https://github.com/sunnykrsingh/resolveai/actions/workflows/ci.yml)
+[![CI](https://github.com/thesunnycode/ResolveAI/actions/workflows/ci.yml/badge.svg)](https://github.com/thesunnycode/ResolveAI/actions/workflows/ci.yml)
 
-🚧 **Under active development — Phase 4 of 10 complete.** [Build status below.](#build-status)
+✅ **All 10 phases complete.** [Build status below.](#build-status)
+
+**Backend API (live):** [resolveai-demo-e733fdb9c4dd.herokuapp.com](https://resolveai-demo-e733fdb9c4dd.herokuapp.com)
+— demo mode on, all four roles seeded (`GET /api/v1/demo`).
+*(Frontend deployment and the custom domain `resolveai.thesunnycode.me` are in progress —
+this section will link to the actual clickable demo once both are live.)*
 
 ---
 
@@ -1182,9 +1187,33 @@ model misread the ticket or the policy is wrong.
 > which is also the only way one already-closed ticket can be skipped without failing
 > every other one in the same batch.
 
-Phases 4–10 are planned at task level: **241 tasks, ~135 working days.**
-See [docs/planning/](docs/planning/) — start with
-[00-README](docs/planning/00-README.md).
+**Phase 9 — Testing, Evaluation & Hardening · ✅ complete**
+
+| Task | |
+|---|---|
+| Full suite, fresh run | ✅ **616 tests, 0 failures, 0 errors, 1 skipped** (`mvn verify`, ~19 min, including Testcontainers) |
+| The one skip | ✅ deliberate: `TriageConcurrencyTest`'s `@Disabled` negative control — demonstrates what breaks *without* `SKIP LOCKED`, kept as documentation, never run in CI by design |
+| Concurrency, idempotency, cross-tenant | ✅ `ConcurrentAssignmentTest`, `EtagConcurrencyTest`, `IdempotencyTest`, `CrossTenantAccessTest`, `TriageConcurrencyTest` all green |
+| Eval gates are real, not decorative | ✅ `ClassificationEvalTest` includes a test asserting a degraded classifier **fails the build** — the gate has been proven to actually fail, not just assumed |
+
+**Phase 10 — Deployment, Observability & Documentation · 🚧 in progress**
+
+| Task | |
+|---|---|
+| Multi-stage Dockerfile | ✅ Maven build stage → JRE-slim runtime, non-root user |
+| Managed Postgres + pgvector | ✅ Neon (free tier); `CREATE EXTENSION vector` confirmed live, **v0.8.6** |
+| Managed Redis | ✅ Upstash (free tier), TLS |
+| Deployed backend | ✅ Heroku, container stack — `/actuator/health` returns `UP` against the real managed DB and cache |
+| Demo tenant seeded in production | ✅ `GET /api/v1/demo` → all four roles live |
+| CI → deploy pipeline | ✅ GitHub repo public, Heroku GitHub auto-deploy connected on `main` |
+| A real memory bug, found by deploying | ✅ `-XX:MaxRAMPercentage=75` let the JVM grow to **1146MB against a 512MB dyno quota (224%)** — the container's memory-limit detection returned a far larger figure than the real quota. Fixed with explicit absolute caps (`-Xmx256m`, capped metaspace/code cache/direct memory/thread stacks) sized for a 512MB dyno |
+| Frontend deployment | 🚧 not yet — the backend is reachable, but there is no clickable UI demo until the frontend is deployed and `CORS_ALLOWED_ORIGINS` updated to match |
+| Custom domain | 🚧 `resolveai.thesunnycode.me` added on Heroku, DNS CNAME pending propagation |
+| Grafana dashboard, k6 load test, demo GIFs | ❌ not done — no numbers are claimed here that were not actually measured |
+
+Phases 1–9 are complete. Phase 10 has a live, working backend; the remaining items are
+tracked above rather than assumed. See [docs/planning/](docs/planning/) for the full
+241-task breakdown — start with [00-README](docs/planning/00-README.md).
 
 ---
 
