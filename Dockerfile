@@ -31,4 +31,12 @@ EXPOSE 8080
 # (observed: 1146MB RSS against a 512MB cap). Budgeted so heap + metaspace +
 # code cache + direct buffers + ~50 thread stacks stays under 512MB with room
 # to spare, since this is a demo dyno, not a production one.
-ENTRYPOINT ["java", "-Xms128m", "-Xmx256m", "-XX:MaxMetaspaceSize=160m", "-XX:ReservedCodeCacheSize=48m", "-XX:MaxDirectMemorySize=32m", "-Xss512k", "-jar", "app.jar"]
+#
+# MaxMetaspaceSize raised 160m -> 192m after a real Metaspace OOM in
+# production (Hibernate query-plan caching plus per-@PreAuthorize AOP proxies
+# generate more class metadata under sustained traffic than 160m held). The
+# 32m came from ReservedCodeCacheSize and MaxDirectMemorySize, not from the
+# heap: this app does little off-heap buffer work, so those two were the
+# safer pools to shrink, rather than risking a heap OOM instead of a
+# Metaspace one. Total budget is unchanged.
+ENTRYPOINT ["java", "-Xms128m", "-Xmx256m", "-XX:MaxMetaspaceSize=192m", "-XX:ReservedCodeCacheSize=32m", "-XX:MaxDirectMemorySize=16m", "-Xss512k", "-jar", "app.jar"]
