@@ -19,6 +19,7 @@ import { IncidentBoardPage } from '@/features/incidents/incident-board-page'
 import { IncidentDetailPage } from '@/features/incidents/incident-detail-page'
 import { KnowledgeBasePage } from '@/features/knowledge/knowledge-base-page'
 import { KnowledgeDocumentFormPage } from '@/features/knowledge/knowledge-document-form-page'
+import { BulkImportPage } from '@/features/knowledge/bulk-import-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { EvalDashboardPage } from '@/features/eval/eval-dashboard-page'
 
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/incidents/:id" element={<ProtectedRoute roles={['AGENT', 'TEAM_LEAD', 'ADMIN']}><IncidentDetailPage /></ProtectedRoute>} />
         <Route path="/knowledge" element={<ProtectedRoute roles={['AGENT', 'TEAM_LEAD', 'ADMIN']}><KnowledgeBasePage /></ProtectedRoute>} />
         <Route path="/knowledge/new" element={<ProtectedRoute roles={['ADMIN']}><KnowledgeDocumentFormPage /></ProtectedRoute>} />
+        <Route path="/knowledge/bulk-import" element={<ProtectedRoute roles={['ADMIN']}><BulkImportPage /></ProtectedRoute>} />
 
         <Route path="/settings" element={<ProtectedRoute roles={['ADMIN']}><SettingsPage /></ProtectedRoute>} />
         <Route path="/evaluation" element={<ProtectedRoute roles={['ADMIN']}><EvalDashboardPage /></ProtectedRoute>} />

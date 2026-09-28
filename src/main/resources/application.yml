@@ -100,6 +100,13 @@ spring:
     # application/problem+json can escape this API.
     throw-exception-if-no-handler-found: true
 
+  servlet:
+    multipart:
+      # Default is 1MB, too small for a couple of PDFs. Knowledge base bulk
+      # import (KnowledgeBulkImportService) is the only multipart endpoint.
+      max-file-size: 20MB
+      max-request-size: 40MB
+
   web:
     resources:
       # No static resources are served. Leaving the default mapping on means the resource

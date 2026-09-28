@@ -19,6 +19,35 @@ export function useCreateKnowledgeDocument() {
   })
 }
 
+export interface BulkImportSkip {
+  source: string
+  title: string
+  reason: string
+}
+
+export interface BulkImportResult {
+  imported: number
+  skipped: BulkImportSkip[]
+}
+
+/**
+ * CSV rows and/or whole PDFs in one upload. `Content-Type` is set to `undefined` so the
+ * browser attaches its own `multipart/form-data; boundary=...` — the shared `api` instance
+ * defaults to `application/json` (`lib/api-client.ts`), which silently breaks a file upload.
+ */
+export function useBulkImportKnowledgeDocuments() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (formData: FormData) =>
+      (
+        await api.post<BulkImportResult>('/knowledge/documents/bulk', formData, {
+          headers: { 'Content-Type': undefined },
+        })
+      ).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-documents'] }),
+  })
+}
+
 export function useDeleteKnowledgeDocument() {
   const qc = useQueryClient()
   return useMutation({

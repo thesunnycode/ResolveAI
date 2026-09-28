@@ -3,7 +3,10 @@ package com.resolveai.knowledge.web;
 import com.resolveai.common.pagination.PageRequests;
 import com.resolveai.common.security.IsAdmin;
 import com.resolveai.common.security.IsAgentOrAbove;
+import com.resolveai.knowledge.domain.DocumentSource;
+import com.resolveai.knowledge.service.KnowledgeBulkImportService;
 import com.resolveai.knowledge.service.KnowledgeDocumentService;
+import com.resolveai.knowledge.web.dto.BulkImportResponse;
 import com.resolveai.knowledge.web.dto.CreateDocumentRequest;
 import com.resolveai.knowledge.web.dto.DocumentDetailResponse;
 import com.resolveai.knowledge.web.dto.DocumentSummaryResponse;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * The document management endpoints from doc 05 §3.6. {@code GET /knowledge/search} is
@@ -45,9 +49,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class KnowledgeDocumentController {
 
     private final KnowledgeDocumentService documents;
+    private final KnowledgeBulkImportService bulkImport;
 
-    public KnowledgeDocumentController(KnowledgeDocumentService documents) {
+    public KnowledgeDocumentController(KnowledgeDocumentService documents,
+                                       KnowledgeBulkImportService bulkImport) {
         this.documents = documents;
+        this.bulkImport = bulkImport;
     }
 
     @PostMapping
@@ -56,6 +63,17 @@ public class KnowledgeDocumentController {
     public DocumentSummaryResponse create(@Valid @RequestBody CreateDocumentRequest request) {
         return documents.create(request.source(), request.title(), request.body(),
                 request.uri());
+    }
+
+    /**
+     * CSV rows and/or whole PDFs, migrated in one batch. {@code source} only applies to
+     * PDFs — a CSV row always names its own source per column.
+     */
+    @PostMapping("/bulk")
+    @IsAdmin
+    public BulkImportResponse bulkImport(@RequestParam("files") MultipartFile[] files,
+                                         @RequestParam(defaultValue = "ARTICLE") DocumentSource source) {
+        return bulkImport.importBatch(files, source);
     }
 
     @GetMapping

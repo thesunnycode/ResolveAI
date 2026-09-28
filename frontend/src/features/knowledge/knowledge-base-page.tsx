@@ -1,4 +1,4 @@
-import { BookOpen, Plus, Search, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Page, PageHeader } from '@/components/layout/page-header'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
@@ -45,11 +45,18 @@ export function KnowledgeBasePage() {
         description="Runbooks, help articles and resolved tickets. Every AI draft is grounded in — and cites — these documents."
         actions={
           user?.role === 'ADMIN' && (
-            <Button asChild>
-              <Link to="/knowledge/new">
-                <Plus className="size-4" aria-hidden /> Add document
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" asChild>
+                <Link to="/knowledge/bulk-import">
+                  <Upload className="size-4" aria-hidden /> Bulk import
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link to="/knowledge/new">
+                  <Plus className="size-4" aria-hidden /> Add document
+                </Link>
+              </Button>
+            </div>
           )
         }
       />

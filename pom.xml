@@ -37,6 +37,8 @@
 		<okhttp.version>5.3.2</okhttp.version>
 		<logstash-encoder.version>9.0</logstash-encoder.version>
 		<jjwt.version>0.13.0</jjwt.version>
+		<commons-csv.version>1.12.0</commons-csv.version>
+		<pdfbox.version>3.0.3</pdfbox.version>
 	</properties>
 
 	<dependencyManagement>
@@ -130,6 +132,18 @@
 			<groupId>io.minio</groupId>
 			<artifactId>minio</artifactId>
 			<version>${minio.version}</version>
+		</dependency>
+
+		<!-- Knowledge base bulk import: CSV rows and PDF text extraction. -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>${commons-csv.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
 		</dependency>
 
 		<!-- Spring AI's OpenAI client needs okhttp3.RequestBody at runtime and gets
