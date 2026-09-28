@@ -2,6 +2,7 @@ import { ArrowLeft, Check, Copy, SearchX } from 'lucide-react'
 import * as React from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
+import { ConfirmDialog } from '@/components/app/confirm-dialog'
 import { EmptyState, ErrorState } from '@/components/app/states'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,7 +28,7 @@ import { PriorityRationale } from './priority-rationale'
 import { ResponsePromise } from './response-promise'
 import { SlaStrip } from './sla-chip'
 import { StatusDropdown } from './status-dropdown'
-import { REASON_REQUIRED } from './status-labels'
+import { REASON_REQUIRED, STATUS_LABEL } from './status-labels'
 import { allowedTransitionsFrom } from './ticket-state-machine'
 import { useStatusChanger } from './use-status-change'
 
@@ -107,6 +108,8 @@ export function TicketDetailPage() {
   const assign = useAssignTicket()
   const status = useStatusChanger()
   const [pendingTo, setPendingTo] = React.useState<TicketStatus | null>(null)
+  /** A status selection (from the dropdown or the `e` hotkey) waiting on its required text. */
+  const [reasonFor, setReasonFor] = React.useState<TicketStatus | null>(null)
   const [prefill, setPrefill] = React.useState<string | undefined>()
   // The draft the prefilled reply came from, sent as fromDraftId so the server records
   // how much the agent edited it (agent_draft_action) — the draft-quality signal.
@@ -133,7 +136,7 @@ export function TicketDetailPage() {
   // Keyboard (audit F6): r reply, a assign, e resolve, Esc back.
   useHotkey('r', () => setFocusSignal((n) => n + 1), { enabled: !!ticket })
   useHotkey('a', () => void assignToMe(), { enabled: canSelfAssign && !!ticket && !ticket.assignee })
-  useHotkey('e', () => ticket && changeStatus('RESOLVED'), {
+  useHotkey('e', () => ticket && requestStatus('RESOLVED'), {
     enabled: isStaff && !!ticket && !pendingTo && allowedTransitionsFrom(ticket.status).includes('RESOLVED'),
   })
   useHotkey('Escape', () => navigate(isCustomerUser ? '/tickets' : '/queue'), { enabled: !!ticket })
@@ -200,6 +203,16 @@ export function TicketDetailPage() {
       reason,
       onSettled: () => setPendingTo(null),
     })
+  }
+
+  /** Selecting a status that needs text (a reason, or - for RESOLVED - the resolution
+   * itself) opens the shared dialog below instead of committing immediately. */
+  function requestStatus(to: TicketStatus) {
+    if (REASON_REQUIRED.includes(to)) {
+      setReasonFor(to)
+    } else {
+      changeStatus(to)
+    }
   }
 
   async function handleSend(body: string, visibility: 'PUBLIC' | 'INTERNAL') {
@@ -299,10 +312,24 @@ export function TicketDetailPage() {
             current={t.status}
             allowed={allowedTransitionsFrom(t.status)}
             pendingTo={pendingTo}
-            onChange={(s, reason) => changeStatus(s, reason)}
+            onSelect={requestStatus}
           />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={reasonFor !== null}
+        onOpenChange={(open) => !open && setReasonFor(null)}
+        title={reasonFor === 'RESOLVED' ? 'Resolve this ticket' : `Move to ${reasonFor ? STATUS_LABEL[reasonFor] : ''}`}
+        requireReason
+        reasonLabel={reasonFor === 'RESOLVED' ? 'Resolution' : 'Reason'}
+        reasonMinLength={reasonFor === 'RESOLVED' ? 20 : 10}
+        confirmLabel={reasonFor === 'RESOLVED' ? 'Resolve' : 'Confirm'}
+        onConfirm={(reason) => {
+          if (reasonFor) changeStatus(reasonFor, reason)
+          setReasonFor(null)
+        }}
+      />
 
       <SlaStrip clocks={t.sla?.clocks} />
 

@@ -171,6 +171,32 @@ export function useChangeStatus() {
   })
 }
 
+/**
+ * The dedicated resolve endpoint - distinct from {@link useChangeStatus} because resolving
+ * is not a bare status flip: it saves `resolution` as the closing customer-facing message
+ * and is what triggers the knowledge-base indexing check on the resolved thread.
+ */
+export function useResolveTicket() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      ticketId,
+      resolution,
+      etag,
+    }: {
+      ticketId: number
+      resolution: string
+      etag: string
+    }) =>
+      api.post(
+        `/tickets/${ticketId}/resolve`,
+        { resolution },
+        { headers: { 'If-Match': etag } },
+      ),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['ticket', String(vars.ticketId)] }),
+  })
+}
+
 export function useCreateTicket() {
   return useMutation({
     mutationFn: async ({

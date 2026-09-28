@@ -11,8 +11,13 @@ export const STATUS_LABEL: Record<TicketStatus, string> = {
   CLOSED: 'Closed',
 }
 
-/** Moving here pauses a clock, so the server requires a reason. */
-export const REASON_REQUIRED: TicketStatus[] = ['WAITING_ON_CUSTOMER', 'PENDING_THIRD_PARTY']
+/**
+ * Moving here needs text from the person doing it: WAITING_ON_CUSTOMER/PENDING_THIRD_PARTY
+ * pause a clock and the server requires a reason; RESOLVED needs the actual resolution -
+ * it becomes the closing message the customer reads, and is what the knowledge-base indexer
+ * checks the length of.
+ */
+export const REASON_REQUIRED: TicketStatus[] = ['WAITING_ON_CUSTOMER', 'PENDING_THIRD_PARTY', 'RESOLVED']
 
 /**
  * Moves that notify the customer and cannot be walked back through the state machine

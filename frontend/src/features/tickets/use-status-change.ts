@@ -3,7 +3,7 @@ import * as React from 'react'
 import { useToast } from '@/components/ui/toast'
 import { ApiError, api } from '@/lib/api-client'
 import type { TicketStatus } from '@/lib/types'
-import { useChangeStatus } from './api'
+import { useChangeStatus, useResolveTicket } from './api'
 import { DEFERRED, REASON_REQUIRED, STATUS_LABEL } from './status-labels'
 import { allowedTransitionsFrom } from './ticket-state-machine'
 
@@ -30,6 +30,7 @@ export interface StatusChangeRequest {
  */
 export function useStatusChanger() {
   const change = useChangeStatus()
+  const resolveTicket = useResolveTicket()
   const qc = useQueryClient()
   const { push } = useToast()
   const timers = React.useRef(new Map<number, number>())
@@ -43,13 +44,22 @@ export function useStatusChanger() {
   const commit = React.useCallback(
     async (ticketId: number, to: TicketStatus, reason?: string) => {
       const res = await api.get(`/tickets/${ticketId}`)
-      await change.mutateAsync({ ticketId, status: to, reason, etag: res.headers.etag })
+      const etag = res.headers.etag
+      // RESOLVED is not a bare status flip: it has to go through the dedicated endpoint,
+      // which saves `reason` as the closing customer-facing message and is what makes the
+      // resolved thread eligible for knowledge-base indexing - the generic status endpoint
+      // does neither.
+      if (to === 'RESOLVED') {
+        await resolveTicket.mutateAsync({ ticketId, resolution: reason ?? '', etag })
+      } else {
+        await change.mutateAsync({ ticketId, status: to, reason, etag })
+      }
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['board-tickets'] }),
         qc.invalidateQueries({ queryKey: ['tickets'] }),
       ])
     },
-    [change, qc],
+    [change, resolveTicket, qc],
   )
 
   const request = React.useCallback(
