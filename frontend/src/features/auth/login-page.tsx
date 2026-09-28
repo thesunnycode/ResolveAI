@@ -9,7 +9,7 @@ import { DemoAccess } from '@/features/demo/demo-access'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
 import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
-import { LAST_WORKSPACE_KEY, useAuth } from './auth-context'
+import { LAST_WORKSPACE_KEY, homeFor, useAuth } from './auth-context'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 
 export function LoginPage() {
@@ -41,10 +41,10 @@ export function LoginPage() {
   }, [])
 
   React.useEffect(() => {
-    // No hardcoded default here: "/" resolves to the right role home via
-    // RoleHome in App.tsx (a customer landing on /queue would just bounce
-    // straight into "not available for your role").
-    if (user) navigate(next ? decodeURIComponent(next) : '/', { replace: true })
+    // "/" is the public landing page now, not a role-based redirect - go
+    // straight to the role's home (a customer landing on /queue would just
+    // bounce straight into "not available for your role").
+    if (user) navigate(next ? decodeURIComponent(next) : homeFor(user.role), { replace: true })
   }, [user, next, navigate])
 
   async function handleSubmit(e: React.FormEvent) {

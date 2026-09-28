@@ -15,6 +15,11 @@ interface AuthContextValue {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null)
 
+/** Where a signed-in user lands: the only two "homes" the app has. */
+export function homeFor(role: Role): string {
+  return role === 'CUSTOMER' ? '/tickets' : '/queue'
+}
+
 function toAuthUser(me: CurrentUserResponse): AuthUser {
   return {
     id: me.id,

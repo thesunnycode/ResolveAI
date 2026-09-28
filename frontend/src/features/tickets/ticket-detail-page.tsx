@@ -6,7 +6,7 @@ import { EmptyState, ErrorState } from '@/components/app/states'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
-import { useAuth } from '@/features/auth/auth-context'
+import { homeFor, useAuth } from '@/features/auth/auth-context'
 import { useIsDemoWorkspace, useShowcase } from '@/features/demo/api'
 import { useIncident } from '@/features/incidents/api'
 import { ApiError, api } from '@/lib/api-client'
@@ -159,7 +159,7 @@ export function TicketDetailPage() {
             title="Ticket not found"
             body="It may have been removed, or it belongs to a queue you don't have access to."
             action={
-              <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+              <Button variant="secondary" size="sm" onClick={() => navigate(user ? homeFor(user.role) : '/')}>
                 Back to my home page
               </Button>
             }

@@ -1,13 +1,14 @@
 import { BoardPage } from '@/features/board/board-page'
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { Route, Routes, useNavigate } from 'react-router-dom'
 import { Compass } from 'lucide-react'
 import { EmptyState } from '@/components/app/states'
 import { Button } from '@/components/ui/button'
 import { AppShell } from '@/components/layout/app-shell'
+import { LandingPage } from '@/components/landing/landing-page'
 import { LoginPage } from '@/features/auth/login-page'
 import { RegisterPage } from '@/features/auth/register-page'
 import { ProtectedRoute } from '@/features/auth/protected-route'
-import { useAuth } from '@/features/auth/auth-context'
+import { homeFor, useAuth } from '@/features/auth/auth-context'
 import { AgentQueuePage } from '@/features/tickets/agent-queue-page'
 import { TicketDetailPage } from '@/features/tickets/ticket-detail-page'
 import { MyTicketsPage } from '@/features/tickets/my-tickets-page'
@@ -21,6 +22,7 @@ import { EvalDashboardPage } from '@/features/eval/eval-dashboard-page'
 
 function NotFoundPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   return (
     <div className="mx-auto max-w-md px-5 py-16">
       <div className="glass rounded-xl">
@@ -29,7 +31,7 @@ function NotFoundPage() {
           title="Page not found"
           body="That address doesn't match anything in ResolveAI."
           action={
-            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>
+            <Button variant="secondary" size="sm" onClick={() => navigate(user ? homeFor(user.role) : '/')}>
               Back to my home page
             </Button>
           }
@@ -39,21 +41,14 @@ function NotFoundPage() {
   )
 }
 
-function RoleHome() {
-  const { user } = useAuth()
-  if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'CUSTOMER' ? '/tickets' : '/queue'} replace />
-}
-
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
 
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-        <Route path="/" element={<RoleHome />} />
-
         <Route path="/tickets" element={<ProtectedRoute roles={['CUSTOMER']}><MyTicketsPage /></ProtectedRoute>} />
         <Route path="/tickets/new" element={<ProtectedRoute roles={['CUSTOMER']}><NewTicketPage /></ProtectedRoute>} />
         <Route path="/tickets/:id" element={<TicketDetailPage />} />

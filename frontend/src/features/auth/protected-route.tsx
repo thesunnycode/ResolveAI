@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { useSlowFlag } from '@/lib/use-slow-flag'
 import { SlowServerHint } from './auth-shell'
 import type { Role } from '@/lib/types'
-import { useAuth } from './auth-context'
+import { homeFor, useAuth } from './auth-context'
 
 /**
  * Doc 06 §7 "Protected route behaviour":
@@ -39,7 +39,7 @@ export function ProtectedRoute({
   }
 
   if (roles && !roles.includes(user.role)) {
-    return <NotAllowed home="/" />
+    return <NotAllowed home={homeFor(user.role)} />
   }
 
   return <>{children}</>

@@ -10,7 +10,7 @@ import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
 import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
-import { useAuth } from './auth-context'
+import { homeFor, useAuth } from './auth-context'
 
 const PASSWORD_RULE = 'At least 10 characters, with a letter and a number.'
 
@@ -57,10 +57,10 @@ export function RegisterPage() {
   }, [])
 
   React.useEffect(() => {
-    // Registration always creates a CUSTOMER (the backend's RegisterRequest
-    // has no role field, deliberately), so this could hardcode /tickets -
-    // but routing through "/" keeps this page from ever having to know that.
-    if (user) navigate('/', { replace: true })
+    // Registration always creates a CUSTOMER, but homeFor() is used anyway
+    // rather than hardcoding /tickets - "/" is the public landing page now,
+    // not a role-based redirect, so this page can't route through it blind.
+    if (user) navigate(homeFor(user.role), { replace: true })
   }, [user, navigate])
 
   const strength = passwordTouched ? passwordStrength(password) : null
