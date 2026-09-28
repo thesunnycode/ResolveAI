@@ -12,10 +12,12 @@ Java 21 · Spring Boot · Spring AI · PostgreSQL + pgvector · Redis · Docker
 
 ✅ **All 10 phases complete.** [Build status below.](#build-status)
 
-**Backend API (live):** [resolveai-demo-e733fdb9c4dd.herokuapp.com](https://resolveai-demo-e733fdb9c4dd.herokuapp.com)
-— demo mode on, all four roles seeded (`GET /api/v1/demo`).
-*(Frontend deployment and the custom domain `resolveai.thesunnycode.me` are in progress —
-this section will link to the actual clickable demo once both are live.)*
+**Live demo:** [resolveai.thesunnycode.me](https://resolveai.thesunnycode.me) — one-click
+sign-in as Agent, Team Lead, Customer, or Admin, no account needed.
+
+Frontend on Vercel, backend on Heroku (`resolveai-demo-e733fdb9c4dd.herokuapp.com`),
+Postgres on Neon (pgvector confirmed live), Redis on Upstash — the frontend proxies
+`/api/*` to the backend, so the browser never makes a cross-origin request.
 
 ---
 
@@ -1204,16 +1206,20 @@ model misread the ticket or the policy is wrong.
 | Managed Postgres + pgvector | ✅ Neon (free tier); `CREATE EXTENSION vector` confirmed live, **v0.8.6** |
 | Managed Redis | ✅ Upstash (free tier), TLS |
 | Deployed backend | ✅ Heroku, container stack — `/actuator/health` returns `UP` against the real managed DB and cache |
-| Demo tenant seeded in production | ✅ `GET /api/v1/demo` → all four roles live |
-| CI → deploy pipeline | ✅ GitHub repo public, Heroku GitHub auto-deploy connected on `main` |
+| Deployed frontend | ✅ Vercel — proxies `/api/*` to the Heroku backend (`vercel.json` rewrite), so the browser never makes a cross-origin request and no CORS entry was needed for it |
+| Demo tenant seeded in production | ✅ `GET /api/v1/demo` → all four roles live, verified end to end through the deployed frontend (demo login → real queue → real AI draft with real citations) |
+| Custom domain | ✅ `resolveai.thesunnycode.me` → Vercel (A record to `76.76.21.21`), confirmed serving the frontend over HTTPS |
+| CI → deploy pipeline | ✅ GitHub repo public; Heroku and Vercel both auto-deploy on push to `main` |
 | A real memory bug, found by deploying | ✅ `-XX:MaxRAMPercentage=75` let the JVM grow to **1146MB against a 512MB dyno quota (224%)** — the container's memory-limit detection returned a far larger figure than the real quota. Fixed with explicit absolute caps (`-Xmx256m`, capped metaspace/code cache/direct memory/thread stacks) sized for a 512MB dyno |
-| Frontend deployment | 🚧 not yet — the backend is reachable, but there is no clickable UI demo until the frontend is deployed and `CORS_ALLOWED_ORIGINS` updated to match |
-| Custom domain | 🚧 `resolveai.thesunnycode.me` added on Heroku, DNS CNAME pending propagation |
+| A real CI bug, found by deploying | ✅ `mvnw` and 5 shell scripts lost their executable bit on a Windows checkout — CI failed every run with `Permission denied` until first push to a real GitHub Actions pipeline surfaced it |
+| A real cross-platform bug, found by deploying | ✅ `pom.xml` unconditionally set a Windows-only JVM selector class for the test JVM, on the documented (and wrong) assumption that "the property is ignored on Linux" — it isn't, and it failed all 41 Testcontainers-backed tests in CI. Scoped to a Windows-only Maven profile |
 | Grafana dashboard, k6 load test, demo GIFs | ❌ not done — no numbers are claimed here that were not actually measured |
 
-Phases 1–9 are complete. Phase 10 has a live, working backend; the remaining items are
-tracked above rather than assumed. See [docs/planning/](docs/planning/) for the full
-241-task breakdown — start with [00-README](docs/planning/00-README.md).
+Phases 1–9 are complete. Phase 10 has a live, fully working deployment (frontend, backend,
+managed DB, managed cache, custom domain, CI, auto-deploy) end to end; the remaining
+items (load test, dashboard screenshot, demo GIFs) are tracked above rather than assumed.
+See [docs/planning/](docs/planning/) for the full 241-task breakdown — start with
+[00-README](docs/planning/00-README.md).
 
 ---
 
