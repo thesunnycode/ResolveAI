@@ -63,6 +63,19 @@ spring:
       connection-timeout: 10000
       pool-name: resolveai-pool
 
+  # ── Outbound mail (team invites only) ───────────────────────────────────
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
   jackson:
     default-property-inclusion: non_null
     serialization:
@@ -216,6 +229,11 @@ resolveai:
     sweep-lock-ttl-seconds: ${CORRELATION_SWEEP_LOCK_TTL_SECONDS:55}
   drafting:
     coverage-threshold: ${DRAFT_COVERAGE_THRESHOLD:0.8}
+  mail:
+    from: ${MAIL_FROM:no-reply@resolveai.app}
+    # Used to build the link inside an invite email; the backend has no other reason
+    # to know where the SPA is hosted.
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
   ai:
     monthly-budget-micros: ${MONTHLY_TOKEN_BUDGET_MICROS:5000000}
     # The tenant-configurable order-reference shape the PII redactor looks for.

@@ -44,6 +44,11 @@ export interface CurrentUserResponse {
   } | null
 }
 
+export interface TenantSummary {
+  slug: string
+  name: string
+}
+
 export interface TokenResponse {
   accessToken: string
   refreshToken: string
@@ -353,6 +358,33 @@ export interface AdminAiPolicy {
   currentMonthSpendMicros: number
   budgetRemainingMicros: number
   retentionDays: number
+}
+
+export interface AdminTeam {
+  id: number
+  name: string
+  skills: string[]
+  isDefault: boolean
+}
+
+export interface AdminTeamMember {
+  id: number
+  fullName: string
+  email: string
+  role: Role
+  teamId: number | null
+  teamName: string | null
+}
+
+export interface AdminInvite {
+  id: number
+  email: string
+  role: Role
+  teamId: number
+  teamName: string
+  createdAt: string
+  expiresAt: string
+  acceptedAt: string | null
 }
 
 export interface ProblemDetail {

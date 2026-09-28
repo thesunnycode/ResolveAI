@@ -41,3 +41,6 @@ seed/generated/*.tmp
 # ── Test output ──────────────────────────────────────────
 surefire-reports/
 .jacoco/
+
+.vercel
+.env*

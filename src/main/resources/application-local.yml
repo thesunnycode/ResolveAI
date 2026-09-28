@@ -17,6 +17,19 @@ spring:
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    # MailHog (docker-compose, http://localhost:8025) wants neither. The base config turns
+    # both on for the real SMTP providers prod uses.
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
   jpa:
     properties:
       # Local only. Formatted SQL in the log is how you notice the N+1 you just wrote,

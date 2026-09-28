@@ -11,9 +11,10 @@ import { Label } from '@/components/ui/field-error'
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api-client'
-import type { AdminAiPolicy, AdminCalendar, AdminSlaPolicyRow } from '@/lib/types'
+import type { AdminAiPolicy, AdminCalendar, AdminSlaPolicyRow, Role } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useAiPolicy, useCalendar, useSlaPolicies, useUpdateAiPolicy, useUpdateCalendar, useUpdateSlaPolicy } from './api'
+import { useCreateInvite, useCreateTeam, useInvites, useTeamMembers, useTeams } from './team-api'
 
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
@@ -356,14 +357,262 @@ function AiPolicyForm({ policy }: { policy: AdminAiPolicy }) {
   )
 }
 
+const INVITE_ROLES: Role[] = ['AGENT', 'TEAM_LEAD']
+const ROLE_LABEL: Record<Role, string> = {
+  CUSTOMER: 'Customer',
+  AGENT: 'Agent',
+  TEAM_LEAD: 'Team Lead',
+  ADMIN: 'Admin',
+}
+
+function CreateTeamForm() {
+  const { push } = useToast()
+  const mutate = useCreateTeam()
+  const [name, setName] = React.useState('')
+  const [skills, setSkills] = React.useState('')
+
+  async function handleCreate() {
+    const parsed = skills.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
+    if (!name.trim() || parsed.length === 0) {
+      push('error', 'A team needs a name and at least one skill.')
+      return
+    }
+    try {
+      await mutate.mutateAsync({ name: name.trim(), skills: parsed })
+      push('success', `Team "${name.trim()}" created.`)
+      setName('')
+      setSkills('')
+    } catch (err) {
+      push('error', err instanceof ApiError ? err.problem.detail : 'Could not create the team.')
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-input p-4">
+      <div>
+        <Label htmlFor="team-name">Team name</Label>
+        <Input id="team-name" className="w-48" value={name} onChange={(e) => setName(e.target.value)} placeholder="Payments" />
+      </div>
+      <div>
+        <Label htmlFor="team-skills">Skills (comma-separated)</Label>
+        <Input
+          id="team-skills"
+          className="w-64"
+          value={skills}
+          onChange={(e) => setSkills(e.target.value)}
+          placeholder="PAYMENT, BILLING"
+        />
+      </div>
+      <Button size="sm" variant="secondary" loading={mutate.isPending} onClick={handleCreate}>
+        Add team
+      </Button>
+    </div>
+  )
+}
+
+function InviteMemberForm({ teams }: { teams: { id: number; name: string }[] }) {
+  const { push } = useToast()
+  const mutate = useCreateInvite()
+  const [email, setEmail] = React.useState('')
+  const [role, setRole] = React.useState<Role>('AGENT')
+  const [teamId, setTeamId] = React.useState<number | ''>('')
+
+  async function handleInvite() {
+    if (!email.trim() || teamId === '') {
+      push('error', 'An email and team are required.')
+      return
+    }
+    try {
+      await mutate.mutateAsync({ email: email.trim(), role, teamId })
+      push('success', `Invite sent to ${email.trim()}.`)
+      setEmail('')
+      setTeamId('')
+    } catch (err) {
+      push('error', err instanceof ApiError ? err.problem.detail : 'Could not send the invite.')
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-input p-4">
+      <div>
+        <Label htmlFor="invite-email">Email</Label>
+        <Input
+          id="invite-email"
+          type="email"
+          className="w-56"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="agent@company.com"
+        />
+      </div>
+      <div>
+        <Label htmlFor="invite-role">Role</Label>
+        <select
+          id="invite-role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          {INVITE_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABEL[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <Label htmlFor="invite-team">Team</Label>
+        <select
+          id="invite-team"
+          value={teamId}
+          onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : '')}
+          className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="">Choose a team</option>
+          {teams.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Button size="sm" loading={mutate.isPending} onClick={handleInvite}>
+        Send invite
+      </Button>
+    </div>
+  )
+}
+
+function TeamTab() {
+  const teams = useTeams()
+  const members = useTeamMembers()
+  const invites = useInvites()
+
+  if (teams.isLoading || members.isLoading || invites.isLoading) {
+    return (
+      <div className="space-y-4 p-5">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    )
+  }
+  if (teams.isError || members.isError || invites.isError || !teams.data) {
+    return (
+      <div className="p-5">
+        <ErrorState error={teams.error ?? members.error ?? invites.error} onRetry={() => teams.refetch()} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8 p-5">
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Teams</h3>
+        <div className="mb-4 overflow-hidden rounded-lg border border-border bg-muted/30">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Skills</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.data.map((team) => (
+                <tr key={team.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    {team.name}
+                    {team.isDefault && <Badge className="ml-2">Default</Badge>}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{team.skills.join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <CreateTeamForm />
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Members</h3>
+        <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Email</th>
+                <th className="px-4 py-3 font-medium">Role</th>
+                <th className="px-4 py-3 font-medium">Team</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(members.data ?? []).map((m) => (
+                <tr key={m.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium text-foreground">{m.fullName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{ROLE_LABEL[m.role]}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{m.teamName ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Pending invites</h3>
+        <div className="mb-4 overflow-hidden rounded-lg border border-border bg-muted/30">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Email</th>
+                <th className="px-4 py-3 font-medium">Role</th>
+                <th className="px-4 py-3 font-medium">Team</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(invites.data ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                    No invites yet.
+                  </td>
+                </tr>
+              ) : (
+                (invites.data ?? []).map((inv) => (
+                  <tr key={inv.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-medium text-foreground">{inv.email}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{ROLE_LABEL[inv.role]}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{inv.teamName}</td>
+                    <td className="px-4 py-3">
+                      {inv.acceptedAt ? (
+                        <Badge variant="success">Accepted</Badge>
+                      ) : new Date(inv.expiresAt) < new Date() ? (
+                        <Badge variant="warning">Expired</Badge>
+                      ) : (
+                        <Badge>Pending</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <InviteMemberForm teams={teams.data} />
+      </section>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   useDocumentTitle('Settings')
   return (
     <Page>
       <PageHeader title="Settings" description="Service targets, business hours and AI guardrails for this workspace." />
-      <Tabs.Root defaultValue="sla" className="glass overflow-hidden rounded-xl">
+      <Tabs.Root defaultValue="team" className="glass overflow-hidden rounded-xl">
         <Tabs.List className="flex gap-1 border-b border-border px-3">
           {[
+            { v: 'team', label: 'Team' },
             { v: 'sla', label: 'SLA Policy' },
             { v: 'calendar', label: 'Calendar' },
             { v: 'ai', label: 'AI Policy' },
@@ -377,6 +626,9 @@ export function SettingsPage() {
             </Tabs.Trigger>
           ))}
         </Tabs.List>
+        <Tabs.Content value="team">
+          <TeamTab />
+        </Tabs.Content>
         <Tabs.Content value="sla">
           <SlaPolicyTab />
         </Tabs.Content>

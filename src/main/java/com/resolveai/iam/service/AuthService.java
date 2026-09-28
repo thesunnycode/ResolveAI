@@ -119,7 +119,13 @@ public class AuthService {
         return issueTokens(tenantId, tenantSlug, userId);
     }
 
-    private TokenResponse issueTokens(Long tenantId, String tenantSlug, Long userId) {
+    /**
+     * Package-visible for {@link BusinessRegistrationService} and {@link InviteService}: both
+     * create an {@code AppUser} outside of login and need the same token pair immediately
+     * afterwards, so the new account is signed in rather than sent back to a login form it
+     * has no password history with.
+     */
+    TokenResponse issueTokens(Long tenantId, String tenantSlug, Long userId) {
         return tenantScope.inTenant(tenantId, () -> {
             AppUser user = users.findById(userId).orElseThrow(
                     () -> new ApiException(ErrorCode.INVALID_CREDENTIALS,

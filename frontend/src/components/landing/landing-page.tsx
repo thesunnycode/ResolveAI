@@ -18,7 +18,7 @@ const features = [
 
 export function LandingPage() {
   const { user } = useAuth()
-  const appLink = user ? homeFor(user.role) : '/login'
+  const appLink = user ? homeFor(user.role) : '/register-business'
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -29,7 +29,7 @@ export function LandingPage() {
             <Link to="/login" className="hidden rounded-full px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground sm:inline-flex">Get help</Link>
             {!user && <Link to="/login" className="rounded-full px-4 py-2 text-sm font-medium hover:bg-accent">Sign in</Link>}
             <Link to={appLink} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-              {user ? 'Go to app' : 'Try the demo'}
+              {user ? 'Go to app' : 'Get started'}
             </Link>
           </nav>
         </div>
@@ -47,13 +47,13 @@ export function LandingPage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={appLink} className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-semibold text-primary-foreground hover:bg-primary/90">
-                {user ? 'Go to app' : 'Try the demo'} <ArrowRight className="size-4" aria-hidden />
+                {user ? 'Go to app' : 'Get started'} <ArrowRight className="size-4" aria-hidden />
               </Link>
               <Link to="/login" className="inline-flex items-center gap-2 rounded-full border bg-card px-6 py-3 font-semibold hover:bg-accent">
                 I need help
               </Link>
             </div>
-            <p className="mt-4 text-sm text-muted-foreground">No sign-up needed. Pick a demo account and look around.</p>
+            <p className="mt-4 text-sm text-muted-foreground">Free to start. You're the Admin of your own workspace from the first click.</p>
           </div>
           <div className="relative">
             <div className="overflow-hidden rounded-2xl border bg-card shadow-lg">
@@ -113,10 +113,12 @@ export function LandingPage() {
         </section>
 
         <section className="mx-auto max-w-6xl px-6 py-20 text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight">See it in one minute</h2>
-          <p className="mt-2 text-muted-foreground">Pick a demo account: customer, agent, team lead or admin.</p>
+          <h2 className="font-heading text-3xl font-bold tracking-tight">Set up your team in a minute</h2>
+          <p className="mt-2 text-muted-foreground">
+            Create your business account, then invite your Agents and Team Leads by email.
+          </p>
           <Link to={appLink} className="mt-8 inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3 font-semibold text-primary-foreground hover:bg-primary/90">
-            {user ? 'Go to app' : 'Try the demo'} <ArrowRight className="size-4" aria-hidden />
+            {user ? 'Go to app' : 'Get started'} <ArrowRight className="size-4" aria-hidden />
           </Link>
         </section>
       </main>

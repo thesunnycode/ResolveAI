@@ -58,6 +58,13 @@ public enum ErrorCode {
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "email-already-exists"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "user-not-found"),
 
+    // ── Invites ─────────────────────────────────────────────────────────────
+    INVITE_NOT_FOUND(HttpStatus.NOT_FOUND, "invite-not-found"),
+    /** Past its {@code expires_at} — the invitee must be re-invited, not resurrected. */
+    INVITE_EXPIRED(HttpStatus.GONE, "invite-expired"),
+    /** The token was already used to create an account. Tokens are single-use. */
+    INVITE_ALREADY_ACCEPTED(HttpStatus.CONFLICT, "invite-already-accepted"),
+
     // ── Tickets ─────────────────────────────────────────────────────────────
     /** Also returned for another tenant's or another customer's ticket. See {@link #FORBIDDEN}. */
     TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "ticket-not-found"),

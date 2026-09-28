@@ -73,6 +73,13 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh").permitAll()
+                        // Business self-signup and the public "pick your business" list -
+                        // both have to work before anyone has a token.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/tenants").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/tenants").permitAll()
+                        // Team invites: the invitee has no account yet, only a mailed link.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/invites/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/invites/*/accept").permitAll()
                         // Demo mode (only exists when resolveai.demo.enabled; a 404
                         // otherwise) and first-party product analytics, which has to accept
                         // events from the login page before anyone is signed in.

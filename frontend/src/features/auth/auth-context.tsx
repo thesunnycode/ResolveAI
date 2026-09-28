@@ -8,8 +8,10 @@ interface AuthContextValue {
   loading: boolean
   login: (tenantSlug: string, email: string, password: string) => Promise<void>
   register: (tenantSlug: string, email: string, password: string, fullName: string) => Promise<void>
-  /** One-click sign-in to the demo workspace as its seeded user for `role`. */
-  loginAsDemo: (role: Role) => Promise<void>
+  /** Creates a new tenant and its founding Admin, then signs them straight in. */
+  registerBusiness: (businessName: string, adminFullName: string, adminEmail: string, password: string) => Promise<void>
+  /** Redeems a team-invite token: creates the Agent/Team Lead account and signs them in. */
+  acceptInvite: (token: string, fullName: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -79,14 +81,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await completeLogin(res.data.accessToken, res.data.refreshToken)
   }
 
-  async function loginAsDemo(role: Role) {
-    const res = await api.post('/demo/login', { role })
-    await completeLogin(res.data.accessToken, res.data.refreshToken)
-  }
-
   async function register(tenantSlug: string, email: string, password: string, fullName: string) {
     await api.post('/auth/register', { tenantSlug, email, password, fullName })
     await login(tenantSlug, email, password)
+  }
+
+  async function registerBusiness(
+    businessName: string,
+    adminFullName: string,
+    adminEmail: string,
+    password: string,
+  ) {
+    const res = await api.post('/tenants', { businessName, adminFullName, adminEmail, password })
+    await completeLogin(res.data.accessToken, res.data.refreshToken)
+  }
+
+  async function acceptInvite(token: string, fullName: string, password: string) {
+    const res = await api.post(`/invites/${token}/accept`, { fullName, password })
+    await completeLogin(res.data.accessToken, res.data.refreshToken)
   }
 
   async function logout() {
@@ -101,7 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginAsDemo, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, registerBusiness, acceptInvite, logout }}
+    >
       {children}
     </AuthContext.Provider>
   )

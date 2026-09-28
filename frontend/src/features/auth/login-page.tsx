@@ -5,10 +5,10 @@ import { ApiError } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/field-error'
 import { Input } from '@/components/ui/input'
-import { DemoAccess } from '@/features/demo/demo-access'
+import { useBusinesses } from '@/features/auth/api'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
-import { AuthShell, OrDivider, SlowServerHint } from './auth-shell'
+import { AuthShell, SlowServerHint } from './auth-shell'
 import { LAST_WORKSPACE_KEY, homeFor, useAuth } from './auth-context'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 
@@ -17,6 +17,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next')
+  const businesses = useBusinesses()
 
   useDocumentTitle('Sign in')
   // Only someone who has signed in on this browser before is "back" (audit U9).
@@ -83,13 +84,10 @@ export function LoginPage() {
                 Signing in to <span className="font-medium text-foreground">{lastWorkspace}</span>
               </>
             ) : (
-              'Sign in to your workspace, or try the demo first.'
+              'Sign in to your workspace.'
             )}
           </p>
         </div>
-
-        <DemoAccess compact />
-        <OrDivider label="or sign in to your workspace" />
 
         <form onSubmit={handleSubmit} className="space-y-0">
           {formError && (
@@ -102,17 +100,30 @@ export function LoginPage() {
             <Label htmlFor="tenantSlug" required>
               Workspace
             </Label>
-            <Input
+            <select
               id="tenantSlug"
-              placeholder="acme"
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               autoComplete="organization"
               aria-describedby="tenantSlug-help"
               required
-            />
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="" disabled>
+                Choose your business
+              </option>
+              {businesses.data?.map((tenant) => (
+                <option key={tenant.slug} value={tenant.slug}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
             <p id="tenantSlug-help" className="mt-1.5 text-xs text-muted-foreground">
-              Your company's ResolveAI name, from your invite — for example <span className="font-mono">acme</span>.
+              Not listed yet?{' '}
+              <Link to="/register-business" className="font-medium text-primary hover:underline">
+                Create a business account
+              </Link>
+              .
             </p>
           </div>
 

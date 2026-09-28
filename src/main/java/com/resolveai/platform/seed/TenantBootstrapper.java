@@ -128,16 +128,30 @@ public class TenantBootstrapper {
                         Role.CUSTOMER));
             }
 
-            // Plain SQL because there is no BusinessCalendar entity for the seed to use.
-            jdbc.update("""
-                    INSERT INTO business_calendar (tenant_id, timezone, working_days, day_start, day_end)
-                    VALUES (?, ?, ?::smallint[], ?::time, ?::time)
-                    """, tenant.getId(), calendar.timezone(), toPgArray(calendar.workingDays()),
-                    calendar.dayStart(), calendar.dayEnd());
-
+            ensureCalendar(tenant.getId(), calendar);
             ensureSlaPolicies(tenant.getId(), spec.tier());
         });
         return tenant;
+    }
+
+    /**
+     * A business calendar row for the tenant, if it has none yet.
+     *
+     * <p>Plain SQL because there is no {@code BusinessCalendar} entity - the seed never
+     * needed one, and the only other caller ({@link com.resolveai.iam.service.BusinessRegistrationService})
+     * doesn't either.
+     */
+    public void ensureCalendar(Long tenantId, CalendarSpec calendar) {
+        Long existing = jdbc.queryForObject(
+                "SELECT count(*) FROM business_calendar WHERE tenant_id = ?", Long.class, tenantId);
+        if (existing != null && existing > 0) {
+            return;
+        }
+        jdbc.update("""
+                INSERT INTO business_calendar (tenant_id, timezone, working_days, day_start, day_end)
+                VALUES (?, ?, ?::smallint[], ?::time, ?::time)
+                """, tenantId, calendar.timezone(), toPgArray(calendar.workingDays()),
+                calendar.dayStart(), calendar.dayEnd());
     }
 
     /** ENTERPRISE targets in business minutes: {priority, first response, resolution}. */

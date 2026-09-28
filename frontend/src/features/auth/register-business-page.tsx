@@ -5,7 +5,6 @@ import { ApiError } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { FieldError, Label } from '@/components/ui/field-error'
 import { Input } from '@/components/ui/input'
-import { useBusinesses } from '@/features/auth/api'
 import { useDocumentTitle } from '@/components/layout/route-a11y'
 import { track } from '@/lib/analytics'
 import { useSlowFlag } from '@/lib/use-slow-flag'
@@ -13,13 +12,16 @@ import { AuthShell, SlowServerHint } from './auth-shell'
 import { homeFor, useAuth } from './auth-context'
 import { PASSWORD_RULE, localErrors, passwordStrength } from './password-rules'
 
-export function RegisterPage() {
-  useDocumentTitle('Create an account')
-  const { register, user } = useAuth()
-  const navigate = useNavigate()
-  const businesses = useBusinesses()
+function businessErrors(businessName: string): Record<string, string> {
+  return businessName.trim().length < 2 ? { businessName: 'Enter your business name.' } : {}
+}
 
-  const [tenantSlug, setTenantSlug] = React.useState('')
+export function RegisterBusinessPage() {
+  useDocumentTitle('Create a business account')
+  const { registerBusiness, user } = useAuth()
+  const navigate = useNavigate()
+
+  const [businessName, setBusinessName] = React.useState('')
   const [fullName, setFullName] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -31,13 +33,13 @@ export function RegisterPage() {
   const slow = useSlowFlag(submitting)
 
   React.useEffect(() => {
-    track('auth_page_viewed', { page: 'register', width: window.innerWidth })
+    track('auth_page_viewed', { page: 'register-business', width: window.innerWidth })
   }, [])
 
   React.useEffect(() => {
-    // Registration always creates a CUSTOMER, but homeFor() is used anyway
-    // rather than hardcoding /tickets - "/" is the public landing page now,
-    // not a role-based redirect, so this page can't route through it blind.
+    // The founder is always an Admin - homeFor() still used rather than hardcoding
+    // /queue, for the same reason register-page.tsx gives: "/" is the public
+    // landing page now, this page can't route through it blind.
     if (user) navigate(homeFor(user.role), { replace: true })
   }, [user, navigate])
 
@@ -46,31 +48,29 @@ export function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
-    const local = localErrors(fullName, password)
+    const local = { ...businessErrors(businessName), ...localErrors(fullName, password) }
     setFieldErrors(local)
     if (Object.keys(local).length > 0) {
       setPasswordTouched(true)
       return
     }
     setSubmitting(true)
-    track('register_submitted')
+    track('register_submitted', { method: 'business' })
     try {
-      await register(tenantSlug.trim(), email.trim(), password, fullName.trim())
-      track('login_succeeded', { method: 'register' })
+      await registerBusiness(businessName.trim(), fullName.trim(), email.trim(), password)
+      track('login_succeeded', { method: 'register-business' })
     } catch (err) {
       track('register_failed', {
+        method: 'business',
         status: err instanceof ApiError ? err.problem.status : 0,
         code: err instanceof ApiError ? err.problem.errorCode : 'UNKNOWN',
       })
-      if (err instanceof ApiError && err.problem.errorCode === 'TENANT_NOT_FOUND') {
-        // Inline, under the field it is about, rather than a banner above the form.
-        setFieldErrors({ tenantSlug: err.problem.detail })
-      } else if (err instanceof ApiError && err.problem.errors) {
+      if (err instanceof ApiError && err.problem.errors) {
         const next: Record<string, string> = {}
         for (const e2 of err.problem.errors) next[e2.field] = e2.message
         setFieldErrors(next)
       } else if (err instanceof ApiError) {
-        setFormError(err.problem.detail || 'Could not create your account.')
+        setFormError(err.problem.detail || 'Could not create your business.')
       } else {
         setFormError('Something went wrong. Try again.')
       }
@@ -83,10 +83,12 @@ export function RegisterPage() {
     <AuthShell>
       <div className="animate-slide-up">
         <div className="mb-7">
-          <h1 className="font-heading text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground">Create your account</h1>
+          <h1 className="font-heading text-2xl font-semibold leading-tight tracking-[-0.03em] text-foreground">
+            Create a business account
+          </h1>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            For customers of a company that uses ResolveAI. Support agents get an invite from their workspace admin
-            instead.
+            Sets up a new workspace for your company, with you as its Admin. From there you can
+            create teams and invite Agents and Team Leads.
           </p>
         </div>
 
@@ -98,42 +100,24 @@ export function RegisterPage() {
           )}
 
           <div className="mb-4">
-            <Label htmlFor="tenantSlug" required>
-              Workspace
+            <Label htmlFor="businessName" required>
+              Business name
             </Label>
-            <select
-              id="tenantSlug"
-              value={tenantSlug}
-              onChange={(e) => setTenantSlug(e.target.value)}
-              aria-describedby="tenantSlug-help"
+            <Input
+              id="businessName"
+              placeholder="Acme Retail"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              error={!!fieldErrors.businessName}
+              autoComplete="organization"
               required
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="" disabled>
-                Choose your business
-              </option>
-              {businesses.data?.map((tenant) => (
-                <option key={tenant.slug} value={tenant.slug}>
-                  {tenant.name}
-                </option>
-              ))}
-            </select>
-            {fieldErrors.tenantSlug ? (
-              <FieldError message={fieldErrors.tenantSlug} />
-            ) : (
-              <p id="tenantSlug-help" className="mt-1.5 text-xs text-muted-foreground">
-                Not listed yet?{' '}
-                <Link to="/register-business" className="font-medium text-primary hover:underline">
-                  Create a business account
-                </Link>
-                .
-              </p>
-            )}
+            />
+            <FieldError message={fieldErrors.businessName} />
           </div>
 
           <div className="mb-4">
             <Label htmlFor="fullName" required>
-              Full name
+              Your full name
             </Label>
             <Input
               id="fullName"
@@ -187,8 +171,6 @@ export function RegisterPage() {
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
-            {/* On blur, not on keystroke — live validation while someone is
-                still typing their password is hostile. Doc 06 §4.5. */}
             {fieldErrors.password ? (
               <FieldError message={fieldErrors.password} />
             ) : strength ? (
@@ -196,21 +178,20 @@ export function RegisterPage() {
                 {strength.label}
               </p>
             ) : (
-              // The rule up front, so nobody has to fail once to learn it.
               <p className="mt-1.5 text-xs text-muted-foreground">{PASSWORD_RULE}</p>
             )}
           </div>
 
           <Button type="submit" size="lg" className="w-full" loading={submitting}>
-            Create account
+            Create business account
           </Button>
           {slow && <SlowServerHint />}
         </form>
 
         <p className="mt-5 text-sm text-muted-foreground">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-primary hover:underline">
-            Sign in
+          Joining an existing business instead?{' '}
+          <Link to="/register" className="font-medium text-primary hover:underline">
+            Create a customer account
           </Link>
         </p>
       </div>
