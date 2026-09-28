@@ -1,6 +1,7 @@
-import { Link2, Loader2, MessageSquare } from 'lucide-react'
+import { CheckCircle2, Link2, Loader2, MessageSquare, XCircle } from 'lucide-react'
 import * as React from 'react'
 import { Link } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { humanize } from '@/lib/labels'
 import type { TicketSummary } from '@/lib/types'
@@ -43,6 +44,7 @@ export function TicketRow({
   // Untriaged tickets have no SLA policy resolved yet, so `sla` itself is null.
   const primary = primarySlaClock(ticket.sla)
   const isAnalysing = ticket.status === 'OPEN' && ticket.priority === 'UNTRIAGED'
+  const isTerminal = ticket.status === 'RESOLVED' || ticket.status === 'CLOSED'
 
   React.useEffect(() => {
     if (selected) rowRef.current?.scrollIntoView({ block: 'nearest' })
@@ -68,6 +70,7 @@ export function TicketRow({
         'group relative flex items-start gap-3 border-b border-border px-4 py-2.5 transition-colors last:border-0 sm:items-center sm:px-5',
         'hover:bg-surface-2/50 has-[a:focus-visible]:bg-surface-2/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-inset has-[a:focus-visible]:ring-primary',
         selected && 'bg-surface-2/70 shadow-[inset_3px_0_0_var(--color-primary)]',
+        isTerminal && 'opacity-60',
       )}
     >
       <PriorityGlyph priority={ticket.priority} className="mt-1 sm:mt-0" />
@@ -79,7 +82,10 @@ export function TicketRow({
             onFocus={onSelect}
             onClick={onOpen}
             aria-current={selected ? 'true' : undefined}
-            className="line-clamp-2 min-w-0 text-base font-medium text-text outline-none after:absolute after:inset-0 after:content-[''] sm:truncate sm:line-clamp-none"
+            className={cn(
+              'line-clamp-2 min-w-0 text-base font-medium text-text outline-none after:absolute after:inset-0 after:content-[\'\'] sm:truncate sm:line-clamp-none',
+              isTerminal && 'line-through decoration-text-subtle/60',
+            )}
           >
             {ticket.subject}
           </Link>
@@ -133,7 +139,19 @@ export function TicketRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
-        {isAnalysing ? (
+        {isTerminal ? (
+          <div className="flex w-36 justify-end">
+            {ticket.status === 'RESOLVED' ? (
+              <Badge variant="success">
+                <CheckCircle2 className="size-3" aria-hidden /> Resolved
+              </Badge>
+            ) : (
+              <Badge variant="neutral">
+                <XCircle className="size-3" aria-hidden /> Closed
+              </Badge>
+            )}
+          </div>
+        ) : isAnalysing ? (
           <span className="inline-flex items-center justify-end gap-1.5 text-sm text-text-subtle sm:w-32">
             <Loader2 className="size-3.5 animate-spin" aria-hidden /> <span className="hidden sm:inline">analysing&hellip;</span>
           </span>
@@ -144,7 +162,7 @@ export function TicketRow({
           </div>
         )}
 
-        {onAssignToMe && (
+        {onAssignToMe && !isTerminal && (
           <div className="relative z-10 flex justify-end sm:w-28">
             {!ticket.assignee && (
               <Button variant="ghost" size="sm" loading={assigning} onClick={handleAssign} aria-label="Assign to me" className="border border-border">
