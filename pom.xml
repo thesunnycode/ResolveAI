@@ -13,7 +13,7 @@
 	<version>0.0.1-SNAPSHOT</version>
 	<name>resolveai</name>
 	<description>AI-powered helpdesk and incident triage platform</description>
-	<url>https://github.com/sunnykrsingh/resolveai</url>
+	<url>https://github.com/thesunnycode/ResolveAI</url>
 	<licenses>
 		<license>
 			<name>MIT License</name>
@@ -290,19 +290,6 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<!--
-					  Tests only: use the select()-based NIO selector instead of JDK 21's
-					  default on Windows (WEPoll). In the test JVM, where Tomcat and the
-					  Reactor Netty test client both poll sockets, WEPoll intermittently
-					  missed readiness events: a request sat unread until Tomcat's 20s
-					  timeout reset it ("Connection reset"), and a response body once never
-					  arrived at all, hanging the build. Thread dumps showed both pollers
-					  idle in WEPoll.wait with data pending. The property is ignored on
-					  Linux and macOS, so CI is unaffected.
-					-->
-					<argLine>-Djava.nio.channels.spi.SelectorProvider=sun.nio.ch.WindowsSelectorProvider</argLine>
-				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -342,5 +329,42 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!--
+		  Windows only, and only for the test JVM. JDK 21's default NIO selector on
+		  Windows (WEPoll) intermittently missed readiness events in the test JVM, where
+		  Tomcat and the Reactor Netty test client both poll sockets: a request sat unread
+		  until Tomcat's 20s timeout reset it ("Connection reset"), and a response body
+		  once never arrived at all, hanging the build. Thread dumps showed both pollers
+		  idle in WEPoll.wait with data pending.
+
+		  This used to be set unconditionally, on the assumption that the JDK ignores the
+		  property on other platforms. It does not: if the property is set at all, the JDK
+		  tries to load the named class regardless of OS, and sun.nio.ch.WindowsSelectorProvider
+		  does not exist on Linux — which is exactly what broke every CI run once this repo
+		  first got a working GitHub Actions pipeline. Scoped to a Windows-activated
+		  profile so Linux/macOS (CI included) never sets the property at all.
+		-->
+		<profile>
+			<id>windows-selector-workaround</id>
+			<activation>
+				<os>
+					<family>windows</family>
+				</os>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<argLine>-Djava.nio.channels.spi.SelectorProvider=sun.nio.ch.WindowsSelectorProvider</argLine>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>
