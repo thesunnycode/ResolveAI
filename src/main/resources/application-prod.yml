@@ -48,6 +48,13 @@ server:
   forward-headers-strategy: framework
   tomcat:
     max-http-form-post-size: 2MB
+    threads:
+      # Default is 200. A demo dyno on a 512MB memory quota can't afford 200
+      # pre-provisioned request-handling threads (~1MB stack each, worst case);
+      # a single-tenant portfolio demo never sees enough concurrent requests
+      # to need more than a handful.
+      max: 20
+      min-spare: 4
 
 management:
   endpoints:

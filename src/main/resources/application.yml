@@ -112,7 +112,9 @@ spring:
       enabled: true
 
 server:
-  port: 8080
+  # Heroku (and most PaaS targets) assign a container's listening port at
+  # runtime via $PORT; only local dev falls back to a fixed 8080.
+  port: ${PORT:8080}
   error:
     # Nothing about the internals reaches a client. The @RestControllerAdvice owns every
     # error response; these settings make sure Spring's fallback page cannot leak past it.
