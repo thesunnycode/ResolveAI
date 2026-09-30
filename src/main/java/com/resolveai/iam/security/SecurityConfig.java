@@ -72,7 +72,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
-                                "/api/v1/auth/refresh").permitAll()
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password/*").permitAll()
                         // Business self-signup and the public "pick your business" list -
                         // both have to work before anyone has a token.
                         .requestMatchers(HttpMethod.GET, "/api/v1/tenants").permitAll()

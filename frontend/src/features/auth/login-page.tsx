@@ -34,7 +34,6 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
-  const [showReset, setShowReset] = React.useState(false)
   const slow = useSlowFlag(submitting)
 
   React.useEffect(() => {
@@ -147,15 +146,12 @@ export function LoginPage() {
               <Label htmlFor="password" required>
                 Password
               </Label>
-              <button
-                type="button"
-                onClick={() => setShowReset((v) => !v)}
+              <Link
+                to="/forgot-password"
                 className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline"
-                aria-expanded={showReset}
-                aria-controls="reset-help"
               >
                 Forgot password?
-              </button>
+              </Link>
             </div>
             <div className="relative">
               <Input
@@ -176,12 +172,6 @@ export function LoginPage() {
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
-            {showReset && (
-              <p id="reset-help" className="mt-2 rounded-md bg-muted px-3 py-2 text-sm leading-relaxed text-muted-foreground">
-                Passwords are reset by your workspace admin — ask them and they can set a new one for you.
-                Self-service reset by email isn't available yet.
-              </p>
-            )}
           </div>
 
           <Button type="submit" size="lg" className="w-full" loading={submitting}>

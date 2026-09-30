@@ -9,6 +9,8 @@ import { LoginPage } from '@/features/auth/login-page'
 import { RegisterPage } from '@/features/auth/register-page'
 import { RegisterBusinessPage } from '@/features/auth/register-business-page'
 import { InviteAcceptPage } from '@/features/auth/invite-accept-page'
+import { ForgotPasswordPage } from '@/features/auth/forgot-password-page'
+import { ResetPasswordPage } from '@/features/auth/reset-password-page'
 import { ProtectedRoute } from '@/features/auth/protected-route'
 import { homeFor, useAuth } from '@/features/auth/auth-context'
 import { AgentQueuePage } from '@/features/tickets/agent-queue-page'
@@ -52,6 +54,8 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register-business" element={<RegisterBusinessPage />} />
       <Route path="/invite/accept" element={<InviteAcceptPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route path="/tickets" element={<ProtectedRoute roles={['CUSTOMER']}><MyTicketsPage /></ProtectedRoute>} />

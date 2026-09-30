@@ -559,7 +559,7 @@ function TeamTab() {
       </section>
 
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">Pending invites</h3>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Invites</h3>
         <div className="mb-4 overflow-hidden rounded-lg border border-border bg-muted/30">
           <table className="w-full text-left text-sm">
             <thead>

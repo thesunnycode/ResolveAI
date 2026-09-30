@@ -20,10 +20,8 @@ import com.resolveai.iam.web.dto.InvitePreviewResponse;
 import com.resolveai.iam.web.dto.InviteResponse;
 import com.resolveai.iam.web.dto.TokenResponse;
 import com.resolveai.platform.tenant.TenantScope;
-import java.security.SecureRandom;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -43,8 +41,6 @@ import org.springframework.stereotype.Service;
 public class InviteService {
 
     private static final Logger log = LoggerFactory.getLogger(InviteService.class);
-    private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int TOKEN_BYTES = 32;
     private static final int DEFAULT_AGENT_CAPACITY = 15;
 
     private final InviteRepository invites;
@@ -90,7 +86,7 @@ public class InviteService {
         Tenant tenant = tenants.findById(principal.tenantId())
                 .orElseThrow(() -> new ApiException(ErrorCode.TENANT_NOT_FOUND, "Tenant not found."));
 
-        String token = generateToken();
+        String token = SecureTokenGenerator.generate();
         Invite invite = new Invite(principal.tenantId(), request.email().trim().toLowerCase(Locale.ROOT),
                 request.role(), team, principal.userId(), token, OffsetDateTime.now().plusDays(7));
         Invite saved = invites.saveAndFlush(invite);
@@ -174,11 +170,5 @@ public class InviteService {
                     "This invite has expired. Ask an admin to send a new one.");
         }
         return invite;
-    }
-
-    private static String generateToken() {
-        byte[] bytes = new byte[TOKEN_BYTES];
-        RANDOM.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

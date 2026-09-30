@@ -65,6 +65,11 @@ public enum ErrorCode {
     /** The token was already used to create an account. Tokens are single-use. */
     INVITE_ALREADY_ACCEPTED(HttpStatus.CONFLICT, "invite-already-accepted"),
 
+    // ── Password reset ──────────────────────────────────────────────────────
+    /** Also covers "already used" - tokens are single-use, and both read as "get a new link". */
+    PASSWORD_RESET_TOKEN_INVALID(HttpStatus.BAD_REQUEST, "password-reset-token-invalid"),
+    PASSWORD_RESET_TOKEN_EXPIRED(HttpStatus.GONE, "password-reset-token-expired"),
+
     // ── Tickets ─────────────────────────────────────────────────────────────
     /** Also returned for another tenant's or another customer's ticket. See {@link #FORBIDDEN}. */
     TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "ticket-not-found"),

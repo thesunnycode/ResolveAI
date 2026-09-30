@@ -8,12 +8,15 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 /**
- * The one email this product sends: a team invite. Plain text, no template engine - a
- * single message type does not earn one.
+ * The two emails this product sends: a team invite, and a password reset link. Plain text,
+ * no template engine - two message types don't earn one either.
  *
- * <p>A failed send is logged, not thrown: the {@code Invite} row was already committed, and
- * the admin can see it as "pending" and re-share the link manually rather than the whole
- * request failing after the database write already happened.
+ * <p>A failed send is logged, not thrown: the underlying row (an {@code Invite}, or a
+ * {@code PasswordResetToken}) was already committed, so a bounced email fails silently to
+ * the caller rather than surfacing a request failure after the database write already
+ * happened - and for password reset specifically, the response must look identical whether
+ * the send succeeded or not (see {@link PasswordResetService}, which never reveals whether an
+ * account exists).
  */
 @Service
 public class MailService {
@@ -44,6 +47,26 @@ public class MailService {
             sender.send(message);
         } catch (Exception e) {
             log.error("Failed to send invite email to {}", toEmail, e);
+        }
+    }
+
+    public void sendPasswordReset(String toEmail, String tenantName, String resetLink) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(settings.from());
+        message.setTo(toEmail);
+        message.setSubject("Reset your password for " + tenantName + " on ResolveAI");
+        message.setText("""
+                Someone requested a password reset for your %s account on ResolveAI.
+
+                Set a new password here: %s
+
+                This link expires in 1 hour and can only be used once. If you didn't request
+                this, you can ignore it - your password will not change.
+                """.formatted(tenantName, resetLink));
+        try {
+            sender.send(message);
+        } catch (Exception e) {
+            log.error("Failed to send password reset email to {}", toEmail, e);
         }
     }
 }

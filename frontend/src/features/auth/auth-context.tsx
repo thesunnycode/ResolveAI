@@ -12,6 +12,10 @@ interface AuthContextValue {
   registerBusiness: (businessName: string, adminFullName: string, adminEmail: string, password: string) => Promise<void>
   /** Redeems a team-invite token: creates the Agent/Team Lead account and signs them in. */
   acceptInvite: (token: string, fullName: string, password: string) => Promise<void>
+  /** Always resolves, regardless of whether the workspace/email exists - see the backend. */
+  requestPasswordReset: (tenantSlug: string, email: string) => Promise<void>
+  /** Redeems a password-reset token: sets the new password and signs them in. */
+  resetPassword: (token: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -101,6 +105,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await completeLogin(res.data.accessToken, res.data.refreshToken)
   }
 
+  async function requestPasswordReset(tenantSlug: string, email: string) {
+    await api.post('/auth/forgot-password', { tenantSlug, email })
+  }
+
+  async function resetPassword(token: string, password: string) {
+    const res = await api.post(`/auth/reset-password/${token}`, { password })
+    await completeLogin(res.data.accessToken, res.data.refreshToken)
+  }
+
   async function logout() {
     const refreshToken = authStorage.getRefreshToken()
     try {
@@ -114,7 +127,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, registerBusiness, acceptInvite, logout }}
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        registerBusiness,
+        acceptInvite,
+        requestPasswordReset,
+        resetPassword,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
