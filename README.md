@@ -26,8 +26,8 @@ instead of forty parallel investigations.
 <table align="center">
 <tr>
 <td align="center"><b>73</b><br><sub>API endpoints</sub></td>
-<td align="center"><b>616</b><br><sub>tests</sub></td>
 <td align="center"><b>39</b><br><sub>DB tables</sub></td>
+<td align="center"><b>pgvector</b><br><sub>+ Redis</sub></td>
 <td align="center"><b>Java 21</b><br><sub>Spring Boot 4</sub></td>
 </tr>
 </table>
@@ -40,7 +40,7 @@ instead of forty parallel investigations.
 
 ### What it does
 
-- **AI triage** — every ticket is redacted, embedded, classified and routed before an agent sees it. The model returns signals; `PriorityPolicy` (a pure function, 45 tests, no network) computes the priority through 8 named rules
+- **AI triage** — every ticket is redacted, embedded, classified and routed before an agent sees it. The model returns signals; `PriorityPolicy` (a pure function, no network) computes the priority through 8 named rules
 - **SLA engine** — business-hours arithmetic against per-tenant calendars, clocks stored as append-only segments, deadlines polled with `SELECT … FOR UPDATE SKIP LOCKED` so the poller survives restarts
 - **Incident correlation** — tickets cluster by embedding similarity + entity overlap; a statistical gate (cluster size ≥ K *and* arrival rate > 3× baseline) decides if an incident exists. The model writes the title; the math decides whether it's real
 - **Citation-enforced drafts** — resolution drafts are individually-cited claims. Numeric facts not in the cited span are dropped deterministically; anything below 0.8 entailment coverage is suppressed entirely rather than shown
@@ -56,13 +56,11 @@ instead of forty parallel investigations.
 |---|---|
 | Language | Java 21 (virtual threads) |
 | Framework | Spring Boot 4.1 · Spring AI 2.0 · Spring Security |
-| Database | PostgreSQL 16 + pgvector + tsvector |
-| Cache | Redis 7 (token storage, idempotency, rate limiting) |
-| Migrations | Flyway — V1 through V18 |
-| AI | OpenAI gpt-4.1-mini (primary) · llama3.2:3b local fallback via Ollama |
-| Frontend | React 18 · TypeScript · Vite · shadcn/ui |
-| Infra | Docker Compose (local) · Heroku container stack (backend) · Vercel (frontend) |
-| CI | GitHub Actions |
+| Database | PostgreSQL 16 + pgvector |
+| Cache | Redis 7 |
+| AI | OpenAI gpt-4.1-mini · llama3.2:3b local fallback via Ollama |
+| Frontend | React 18 · TypeScript · Vite |
+| Infra | Heroku (backend) · Vercel (frontend) · Neon (DB) · Upstash (Redis) |
 
 <br>
 
@@ -220,9 +218,9 @@ git push heroku main
 ```bash
 bash ops/verify-stack.sh         # 7 containers, pgvector, HNSW index
 bash ops/verify-migrations.sh    # schema from empty + 10 structural guarantees
-bash ops/verify-openapi.sh       # Redocly lint + 75 operations
+bash ops/verify-openapi.sh       # Redocly lint + 73 operations
 node ops/verify-postman.mjs      # Postman collection vs OpenAPI contract
-./mvnw clean verify              # 616 tests (includes Testcontainers suites)
+./mvnw clean verify              # full test suite (includes Testcontainers suites)
 ```
 
 <br>
